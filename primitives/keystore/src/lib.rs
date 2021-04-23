@@ -45,6 +45,38 @@ pub enum Error {
 	Other(String)
 }
 
+/// Return type of [`CryptoStore::has_keys`].
+#[must_use]
+#[derive(Debug, PartialEq)]
+pub enum HasKeys {
+	/// No key found
+	None,
+	/// Found some key(s)
+	Found(Vec<usize>),
+	/// Found all keys
+	FoundAll(Vec<usize>)
+}
+
+impl HasKeys {
+    /// Was any key found in the store.
+    pub fn found_any(&self) -> bool {
+        matches!(self, Self::Found(_) | Self::FoundAll(_))
+    }
+
+    /// Were all keys found in the store.
+    pub fn found_all(&self) -> bool {
+        matches!(self, Self::FoundAll(_))
+    }
+
+    /// Create an iterator over the found key indices.
+    pub fn into_found(self) -> impl Iterator<Item = usize> {
+        match self {
+            Self::None => Vec::new().into_iter(),
+            Self::Found(found) | Self::FoundAll(found) => found.into_iter(),
+        }
+    }
+}
+
 /// Something that generates, stores and provides access to keys.
 #[async_trait]
 pub trait CryptoStore: Send + Sync {
@@ -114,8 +146,8 @@ pub trait CryptoStore: Send + Sync {
 
 	/// Checks if the private keys for the given public key and key type combinations exist.
 	///
-	/// Returns `true` iff all private keys could be found.
-	async fn has_keys(&self, public_keys: &[(Vec<u8>, KeyTypeId)]) -> bool;
+	/// Returns the indices of the matching keys in `public_keys`.
+	async fn has_keys(&self, public_keys: &[(Vec<u8>, KeyTypeId)]) -> HasKeys;
 
 	/// Sign with key
 	///
@@ -274,8 +306,8 @@ pub trait SyncCryptoStore: CryptoStore + Send + Sync {
 
 	/// Checks if the private keys for the given public key and key type combinations exist.
 	///
-	/// Returns `true` iff all private keys could be found.
-	fn has_keys(&self, public_keys: &[(Vec<u8>, KeyTypeId)]) -> bool;
+	/// Returns the indices of the matching keys in `public_keys`.
+	fn has_keys(&self, public_keys: &[(Vec<u8>, KeyTypeId)]) -> HasKeys;
 
 	/// Sign with key
 	///

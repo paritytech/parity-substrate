@@ -352,7 +352,7 @@ where
 			if SyncCryptoStore::has_keys(
 				&*self.keystore,
 				&[(p.to_raw_vec(), sp_application_crypto::key_types::AURA)],
-			) {
+			).found_any() {
 				Some(p.clone())
 			} else {
 				None

@@ -23,7 +23,7 @@ use sp_core::{
 	ed25519, sr25519, ecdsa,
 };
 use crate::{
-	{CryptoStore, SyncCryptoStorePtr, Error, SyncCryptoStore},
+	CryptoStore, HasKeys, SyncCryptoStorePtr, Error, SyncCryptoStore,
 	vrf::{VRFTranscriptData, VRFSignature, make_transcript},
 };
 use std::{collections::{HashMap, HashSet}, sync::Arc};
@@ -115,7 +115,7 @@ impl CryptoStore for KeyStore {
 		SyncCryptoStore::insert_unknown(self, id, suri, public)
 	}
 
-	async fn has_keys(&self, public_keys: &[(Vec<u8>, KeyTypeId)]) -> bool {
+	async fn has_keys(&self, public_keys: &[(Vec<u8>, KeyTypeId)]) -> HasKeys {
 		SyncCryptoStore::has_keys(self, public_keys)
 	}
 
@@ -260,8 +260,18 @@ impl SyncCryptoStore for KeyStore {
 		Ok(())
 	}
 
-	fn has_keys(&self, public_keys: &[(Vec<u8>, KeyTypeId)]) -> bool {
-		public_keys.iter().all(|(k, t)| self.keys.read().get(&t).and_then(|s| s.get(k)).is_some())
+	fn has_keys(&self, public_keys: &[(Vec<u8>, KeyTypeId)]) -> HasKeys {
+		let found = public_keys.iter().enumerate().filter_map(|(i, (p, t))|
+			self.keys.read().get(&t).and_then(|s| s.get(p)).map(|_| i)
+		).collect::<Vec<_>>();
+
+		if found.is_empty() {
+			HasKeys::None
+		} else if found.len() == public_keys.len() {
+			HasKeys::FoundAll(found)
+		} else {
+			HasKeys::Found(found)
+		}
 	}
 
 	fn supported_keys(

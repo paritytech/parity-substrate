@@ -7,7 +7,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-// 	http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -32,10 +32,7 @@ use sp_core::{
 	Encode,
 };
 use sp_keystore::{
-	CryptoStore,
-	SyncCryptoStorePtr,
-	Error as TraitError,
-	SyncCryptoStore,
+	CryptoStore, HasKeys, SyncCryptoStorePtr, Error as TraitError, SyncCryptoStore,
 	vrf::{VRFTranscriptData, VRFSignature, make_transcript},
 };
 use sp_application_crypto::{ed25519, sr25519, ecdsa, AppPair, AppKey, IsWrappedBy};
@@ -113,7 +110,7 @@ impl CryptoStore for LocalKeystore {
 		SyncCryptoStore::insert_unknown(self, id, suri, public)
 	}
 
-	async fn has_keys(&self, public_keys: &[(Vec<u8>, KeyTypeId)]) -> bool {
+	async fn has_keys(&self, public_keys: &[(Vec<u8>, KeyTypeId)]) -> HasKeys {
 		SyncCryptoStore::has_keys(self, public_keys)
 	}
 
@@ -277,9 +274,18 @@ impl SyncCryptoStore for LocalKeystore {
 		self.0.write().insert_unknown(key_type, suri, public).map_err(|_| ())
 	}
 
-	fn has_keys(&self, public_keys: &[(Vec<u8>, KeyTypeId)]) -> bool {
-		public_keys.iter()
-			.all(|(p, t)| self.0.read().key_phrase_by_type(&p, *t).ok().flatten().is_some())
+	fn has_keys(&self, public_keys: &[(Vec<u8>, KeyTypeId)]) -> HasKeys {
+		let found = public_keys.iter().enumerate().filter_map(|(i, (p, t))|
+			self.0.read().key_phrase_by_type(&p, *t).ok().map(|_| i)
+		).collect::<Vec<_>>();
+
+		if found.is_empty() {
+			HasKeys::None
+		} else if found.len() == public_keys.len() {
+			HasKeys::FoundAll(found)
+		} else {
+			HasKeys::Found(found)
+		}
 	}
 
 	fn sr25519_vrf_sign(
@@ -570,23 +576,83 @@ mod tests {
 
 		let key: ed25519::AppPair = store.0.write().generate().unwrap();
 		let key2 = ed25519::Pair::generate().0;
+		let key3: ed25519::AppPair = store.0.write().generate().unwrap();
 
-		assert!(
-			!SyncCryptoStore::has_keys(&store, &[(key2.public().to_vec(), ed25519::AppPublic::ID)])
+		assert_eq!(
+			SyncCryptoStore::has_keys( &store, &[]),
+			HasKeys::None
 		);
 
-		assert!(
-			!SyncCryptoStore::has_keys(
+		assert_eq!(
+			SyncCryptoStore::has_keys( &store, &[(key2.public().to_vec(), ed25519::AppPublic::ID)]),
+			HasKeys::None
+		);
+
+		assert_eq!(
+			SyncCryptoStore::has_keys(
 				&store,
 				&[
-					(key2.public().to_vec(), ed25519::AppPublic::ID),
+					(key3.public().to_raw_vec(), ed25519::AppPublic::ID),
 					(key.public().to_raw_vec(), ed25519::AppPublic::ID),
 				],
-			)
+			),
+			HasKeys::FoundAll(vec![0,1])
+		);
+
+		assert_eq!(
+			SyncCryptoStore::has_keys(
+				&store,
+				&[
+					(key.public().to_raw_vec(), ed25519::AppPublic::ID),
+					(key2.public().to_raw_vec(), ed25519::AppPublic::ID),
+					(key3.public().to_raw_vec(), ed25519::AppPublic::ID)
+				]
+			),
+			HasKeys::Found(vec![0, 2])
 		);
 
 		assert!(
-			SyncCryptoStore::has_keys(&store, &[(key.public().to_raw_vec(), ed25519::AppPublic::ID)])
+			SyncCryptoStore::has_keys(
+				&store,
+				&[
+					(key.public().to_raw_vec(), ed25519::AppPublic::ID),
+					(key2.public().to_vec(), ed25519::AppPublic::ID),
+					(key3.public().to_raw_vec(), ed25519::AppPublic::ID)
+				])
+				.found_any()
+		);
+
+		assert!(
+			SyncCryptoStore::has_keys(
+				&store,
+				&[
+					(key.public().to_raw_vec(), ed25519::AppPublic::ID),
+					(key3.public().to_raw_vec(), ed25519::AppPublic::ID)
+				])
+				.found_all()
+		);
+
+		// found all implies found any
+		assert!(
+			SyncCryptoStore::has_keys(
+				&store,
+				&[
+					(key.public().to_raw_vec(), ed25519::AppPublic::ID),
+					(key3.public().to_raw_vec(), ed25519::AppPublic::ID)
+				])
+				.found_any()
+		);
+
+		assert_eq!(
+			SyncCryptoStore::has_keys(
+				&store,
+				&[
+					(key.public().to_raw_vec(), ed25519::AppPublic::ID),
+					(key2.public().to_vec(), ed25519::AppPublic::ID),
+					(key3.public().to_raw_vec(), ed25519::AppPublic::ID)
+				])
+				.into_found().collect::<Vec<_>>(),
+				vec![0, 2]
 		);
 	}
 

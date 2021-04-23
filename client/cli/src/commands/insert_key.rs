@@ -168,6 +168,6 @@ mod tests {
 			path.path().join("chains").join("test_id").join("keystore"),
 			None,
 		).unwrap();
-		assert!(keystore.has_keys(&[(key.public().to_raw_vec(), KeyTypeId(*b"test"))]));
+		assert!(keystore.has_keys(&[(key.public().to_raw_vec(), KeyTypeId(*b"test"))]).found_all());
 	}
 }
