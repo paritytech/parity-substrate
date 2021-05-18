@@ -1,14 +1,3 @@
-error[E0277]: the trait bound `pallet::Call<T>: Decode` is not satisfied
-  --> $DIR/call_argument_invalid_bound_2.rs:17:12
-   |
-17 |     #[pallet::call]
-   |               ^^^^ the trait `Decode` is not implemented for `pallet::Call<T>`
-   |
-  ::: $WORKSPACE/frame/support/src/dispatch.rs
-   |
-   |     type Call: UnfilteredDispatchable + Codec + Clone + PartialEq + Eq;
-   |                                         ----- required by this bound in `frame_support::Callable::Call`
-
 error[E0277]: the trait bound `pallet::Call<T>: pallet::_::_parity_scale_codec::Encode` is not satisfied
   --> $DIR/call_argument_invalid_bound_2.rs:17:12
    |
@@ -19,6 +8,27 @@ error[E0277]: the trait bound `pallet::Call<T>: pallet::_::_parity_scale_codec::
    |
    |     type Call: UnfilteredDispatchable + Codec + Clone + PartialEq + Eq;
    |                                         ----- required by this bound in `frame_support::Callable::Call`
+   |
+help: consider introducing a `where` bound, but there might be an alternative better way to express this requirement
+   |
+17 |     #[pallet::call where pallet::Call<T>: pallet::_::_parity_scale_codec::Encode]
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0277]: the trait bound `pallet::Call<T>: Decode` is not satisfied
+  --> $DIR/call_argument_invalid_bound_2.rs:17:12
+   |
+17 |     #[pallet::call]
+   |               ^^^^ the trait `Decode` is not implemented for `pallet::Call<T>`
+   |
+  ::: $WORKSPACE/frame/support/src/dispatch.rs
+   |
+   |     type Call: UnfilteredDispatchable + Codec + Clone + PartialEq + Eq;
+   |                                         ----- required by this bound in `frame_support::Callable::Call`
+   |
+help: consider introducing a `where` bound, but there might be an alternative better way to express this requirement
+   |
+17 |     #[pallet::call where pallet::Call<T>: Decode]
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 error[E0369]: binary operation `==` cannot be applied to type `&<T as pallet::Config>::Bar`
   --> $DIR/call_argument_invalid_bound_2.rs:20:37

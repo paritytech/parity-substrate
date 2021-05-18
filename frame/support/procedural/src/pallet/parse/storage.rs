@@ -97,6 +97,8 @@ pub struct StorageDef {
 	pub where_clause: Option<syn::WhereClause>,
 	/// The span of the pallet::storage attribute.
 	pub attr_span: proc_macro2::Span,
+	/// The span of the type in the type alias item. E.g. `StorageValue<...>`
+	pub type_span: proc_macro2::Span,
 	/// The `cfg` attributes.
 	pub cfg_attrs: Vec<syn::Attribute>,
 	/// If generics are named (e.g. `StorageValue<Value = u32, ..>`) then this contains all the
@@ -104,7 +106,6 @@ pub struct StorageDef {
 	/// If generics are not named, this is none.
 	pub named_generics: Option<StorageGenerics>,
 }
-
 
 /// The parsed generic from the
 #[derive(Clone)]
@@ -552,6 +553,8 @@ impl StorageDef {
 			return Err(syn::Error::new(item.span(), "Invalid pallet::storage, expect item type."));
 		};
 
+		let type_span = item.ty.span();
+
 		let mut attrs: Vec<PalletStorageAttr> = helper::take_item_pallet_attrs(&mut item.attrs)?;
 		if attrs.len() > 1 {
 			let msg = "Invalid pallet::storage, multiple argument pallet::getter found";
@@ -602,6 +605,7 @@ impl StorageDef {
 
 		Ok(StorageDef {
 			attr_span,
+			type_span,
 			index,
 			vis: item.vis.clone(),
 			ident: item.ident.clone(),

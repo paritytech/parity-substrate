@@ -103,10 +103,21 @@ pub fn expand_pallet_struct(def: &mut Def) -> proc_macro2::TokenStream {
 	};
 
 	let storage_info = if let Some(storage_info_span) = def.pallet_struct.generate_storage_info {
-		let storage_names = &def.storages.iter().map(|storage| &storage.ident).collect::<Vec<_>>();
-		let storage_cfg_attrs = &def.storages.iter()
-			.map(|storage| &storage.cfg_attrs)
-			.collect::<Vec<_>>();
+		let storage_info_append = &def.storages.iter().map(|storage| {
+			let cfg_attrs = &storage.cfg_attrs;
+			let ident = &storage.ident;
+
+			quote::quote_spanned!(storage.type_span =>
+				#( #cfg_attrs )*
+				{
+					let mut storage_info = <
+						#ident<#type_use_gen>
+						as #frame_support::traits::StorageInfoTrait
+					>::storage_info();
+					res.append(&mut storage_info);
+				}
+			)
+		}).collect::<Vec<_>>();
 
 		quote::quote_spanned!(storage_info_span =>
 			impl<#type_impl_gen> #frame_support::traits::StorageInfoTrait
@@ -118,16 +129,7 @@ pub fn expand_pallet_struct(def: &mut Def) -> proc_macro2::TokenStream {
 				{
 					let mut res = #frame_support::sp_std::vec![];
 
-					#(
-						#(#storage_cfg_attrs)*
-						{
-							let mut storage_info = <
-								#storage_names<#type_use_gen>
-								as #frame_support::traits::StorageInfoTrait
-							>::storage_info();
-							res.append(&mut storage_info);
-						}
-					)*
+					#( #storage_info_append )*
 
 					res
 				}

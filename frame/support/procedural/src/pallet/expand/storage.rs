@@ -138,21 +138,21 @@ pub fn expand_storages(def: &mut Def) -> proc_macro2::TokenStream {
 
 			let ident = &storage.ident;
 			let gen = &def.type_use_generics(storage.attr_span);
-			let full_ident = quote::quote_spanned!(storage.attr_span => #ident<#gen> );
+			let full_ident = quote::quote_spanned!(storage.type_span => #ident<#gen> );
 
 			let cfg_attrs = &storage.cfg_attrs;
 
 			let metadata_trait = match &storage.metadata {
-				Metadata::Value { .. } => quote::quote_spanned!(storage.attr_span =>
+				Metadata::Value { .. } => quote::quote_spanned!(storage.type_span =>
 					#frame_support::storage::types::StorageValueMetadata
 				),
-				Metadata::Map { .. } => quote::quote_spanned!(storage.attr_span =>
+				Metadata::Map { .. } => quote::quote_spanned!(storage.type_span =>
 					#frame_support::storage::types::StorageMapMetadata
 				),
-				Metadata::DoubleMap { .. } => quote::quote_spanned!(storage.attr_span =>
+				Metadata::DoubleMap { .. } => quote::quote_spanned!(storage.type_span =>
 					#frame_support::storage::types::StorageDoubleMapMetadata
 				),
-				Metadata::NMap { .. } => quote::quote_spanned!(storage.attr_span =>
+				Metadata::NMap { .. } => quote::quote_spanned!(storage.type_span =>
 					#frame_support::storage::types::StorageNMapMetadata
 				),
 			};
@@ -160,7 +160,7 @@ pub fn expand_storages(def: &mut Def) -> proc_macro2::TokenStream {
 			let ty = match &storage.metadata {
 				Metadata::Value { value } => {
 					let value = clean_type_string(&quote::quote!(#value).to_string());
-					quote::quote_spanned!(storage.attr_span =>
+					quote::quote_spanned!(storage.type_span =>
 						#frame_support::metadata::StorageEntryType::Plain(
 							#frame_support::metadata::DecodeDifferent::Encode(#value)
 						)
@@ -169,7 +169,7 @@ pub fn expand_storages(def: &mut Def) -> proc_macro2::TokenStream {
 				Metadata::Map { key, value } => {
 					let value = clean_type_string(&quote::quote!(#value).to_string());
 					let key = clean_type_string(&quote::quote!(#key).to_string());
-					quote::quote_spanned!(storage.attr_span =>
+					quote::quote_spanned!(storage.type_span =>
 						#frame_support::metadata::StorageEntryType::Map {
 							hasher: <#full_ident as #metadata_trait>::HASHER,
 							key: #frame_support::metadata::DecodeDifferent::Encode(#key),
@@ -182,7 +182,7 @@ pub fn expand_storages(def: &mut Def) -> proc_macro2::TokenStream {
 					let value = clean_type_string(&quote::quote!(#value).to_string());
 					let key1 = clean_type_string(&quote::quote!(#key1).to_string());
 					let key2 = clean_type_string(&quote::quote!(#key2).to_string());
-					quote::quote_spanned!(storage.attr_span =>
+					quote::quote_spanned!(storage.type_span =>
 						#frame_support::metadata::StorageEntryType::DoubleMap {
 							hasher: <#full_ident as #metadata_trait>::HASHER1,
 							key2_hasher: <#full_ident as #metadata_trait>::HASHER2,
@@ -198,7 +198,7 @@ pub fn expand_storages(def: &mut Def) -> proc_macro2::TokenStream {
 						.map(|key| clean_type_string(&quote::quote!(#key).to_string()))
 						.collect::<Vec<_>>();
 					let value = clean_type_string(&quote::quote!(#value).to_string());
-					quote::quote_spanned!(storage.attr_span =>
+					quote::quote_spanned!(storage.type_span =>
 						#frame_support::metadata::StorageEntryType::NMap {
 							keys: #frame_support::metadata::DecodeDifferent::Encode(&[
 								#( #keys, )*
@@ -212,7 +212,7 @@ pub fn expand_storages(def: &mut Def) -> proc_macro2::TokenStream {
 				}
 			};
 
-			quote::quote_spanned!(storage.attr_span =>
+			quote::quote_spanned!(storage.type_span =>
 				#(#cfg_attrs)* #frame_support::metadata::StorageEntryMetadata {
 					name: #frame_support::metadata::DecodeDifferent::Encode(
 						<#full_ident as #metadata_trait>::NAME

@@ -230,6 +230,10 @@ pub mod pallet {
 	#[pallet::getter(fn nmap)]
 	pub type NMap<T> = StorageNMap<_, storage::Key<Blake2_128Concat, u8>, u32>;
 
+	struct Foo;
+	#[pallet::storage]
+	type Bar<T> = StorageValue<Value = Foo>;
+
 	#[pallet::storage]
 	#[pallet::getter(fn nmap2)]
 	pub type NMap2<T> = StorageNMap<
