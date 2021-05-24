@@ -488,6 +488,15 @@
 			"website": "https://sora.org"
 		},
 		{
+			"prefix": 80,
+			"network": "phoenix-network",
+			"displayName": "Phoenix Network",
+			"symbols": ["PNX"],
+			"decimals": [12],
+			"standardAccount": "*25519",
+			"website": "https://cycan.network"
+		},
+		{
 			"prefix": 252,
 			"network": "social-network",
 			"displayName": "Social Network",
