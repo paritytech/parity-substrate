@@ -19,6 +19,7 @@
 use std::{convert::TryFrom, time::SystemTime};
 
 use crate::{NetworkStatus, NetworkState, NetworkStatusSinks, config::Configuration};
+use futures::{select, StreamExt};
 use futures_timer::Delay;
 use prometheus_endpoint::{register, Gauge, U64, Registry, PrometheusError, Opts, GaugeVec};
 use sc_telemetry::{telemetry, TelemetryHandle, SUBSTRATE_INFO};
@@ -27,11 +28,13 @@ use sp_runtime::traits::{NumberFor, Block, SaturatedConversion, UniqueSaturatedI
 use sp_transaction_pool::{PoolStatus, MaintainedTransactionPool};
 use sp_utils::metrics::register_globals;
 use sp_utils::mpsc::TracingUnboundedReceiver;
-use sc_client_api::{ClientInfo, UsageProvider};
+use sc_client_api::{ClientInfo, UsageProvider, BlockchainEvents};
 use sc_network::config::Role;
 use std::sync::Arc;
+use std::pin::Pin;
 use std::time::Duration;
 use wasm_timer::Instant;
+use futures::{pin_mut, FutureExt};
 
 struct PrometheusMetrics {
 	// generic info
@@ -104,6 +107,30 @@ impl PrometheusMetrics {
 	}
 }
 
+// struct WakableFuture {
+//     inner_future: Delay,
+//     waker: Arc<RwLock<Option<Waker>>>,
+//     waker_present: bool
+// }
+
+// impl WakableFuture {
+// 	new(inner_future: Delay) -> Self {
+// 		Self { inner_future, waker: Arc::new(RwLock::new(None)), waker_present: false }
+// 	}
+// }
+
+// impl Future for WakableFuture {
+//     type Output = ();
+
+//     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+//         if !self.waker_present {
+//             self.waker_present = true;
+//             self.waker.write().unwrap().insert(cx.waker().clone());
+//         }
+//         Pin::new(&mut self.inner_future).poll(cx)
+//     }
+// }
+
 /// A `MetricsService` periodically sends general client and
 /// network state to the telemetry as well as (optionally)
 /// a Prometheus endpoint.
@@ -166,10 +193,25 @@ impl MetricsService {
 		network: NetworkStatusSinks<TBl>,
 	) where
 		TBl: Block,
-		TCl: ProvideRuntimeApi<TBl> + UsageProvider<TBl>,
+		TCl: ProvideRuntimeApi<TBl> + UsageProvider<TBl> + BlockchainEvents<TBl>,
 		TExPool: MaintainedTransactionPool<Block = TBl, Hash = <TBl as Block>::Hash>,
 	{
-		let mut timer = Delay::new(Duration::from_secs(0));
+		//@todo A3 TODO: timer wrapped with alternative trigger future?
+		let mut timer = futures_timer::Delay::new(Duration::from_secs(5));
+		let mut timer = timer.fuse();
+		//let mut timer = WakableFuture::new(timer);
+		
+		//let wakable = timer.waker.clone();
+
+		let mut import_notification_stream = futures::future::FutureExt::fuse(client.import_notification_stream().into_future());
+		
+		//.map(| event | 
+			// if let Some(waker) = wakable.read().unwrap().as_ref() {
+			// 	waker.wake_by_ref();
+			// });
+		//pin_mut!(import_notification_stream, timer);
+		//let w = timer.get_waker();
+
 		let timer_interval = Duration::from_secs(5);
 
 		// Metric and telemetry update interval.
@@ -182,7 +224,11 @@ impl MetricsService {
 
 		loop {
 			// Wait for the next tick of the timer.
-			(&mut timer).await;
+			let _res = select! {
+				a_res = timer => {},
+				b_res = import_notification_stream => {},
+			};
+			//(&mut timer).await;
 
 			// Try to get the latest network information.
 			let mut net_status = None;
@@ -209,7 +255,7 @@ impl MetricsService {
 			);
 
 			// Schedule next tick.
-			timer.reset(timer_interval);
+			//TODO: *timer.reset(timer_interval);
 		}
 	}
 

@@ -241,6 +241,8 @@ async fn build_network_future<
 						notification.header.number().clone(),
 					);
 				}
+
+				//TODO: trigger metrics update.
 			}
 
 			// List of blocks that the client has finalized.

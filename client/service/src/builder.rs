@@ -640,6 +640,7 @@ pub fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
 			client.clone(),
 			transaction_pool.clone(),
 			network_status_sinks.clone()
+			// @todo A2 spawning telemetry blocking thread
 		)
 	);
 
