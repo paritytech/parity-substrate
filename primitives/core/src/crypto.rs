@@ -579,6 +579,12 @@ ss58_address_format!(
 		(67, "equilibrium", "Equilibrium Network, standard account (*25519).")
 	SoraAccount =>
 		(69, "sora", "SORA Network, standard account (*25519).")
+	MetaprimeAccount =>
+		(83, "metaprime", "MetaPrime Network, standard account (*25519).")
+	MetaprimeTestAccount =>
+		(88, "hanoi", "Hanoi MetaPrime Network, standard account (*25519).")
+	MetaprimeFractalAccount =>
+		(96, "fractal", "Fractal MetaPrime Network, standard account (*25519).")
 	SocialAccount =>
 		(252, "social-network", "Social Network, standard account (*25519).")
 	BasiliskAccount =>

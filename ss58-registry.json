@@ -488,6 +488,34 @@
 			"website": "https://sora.org"
 		},
 		{
+			"prefix": 83,
+			"network" "metaprime",
+			"displayName": "MetaPrime Network",
+			"symbols": ["MTPRM", "mKSM"],
+			"decimals": [12],
+			"standardAccount": "*25519",
+			"website": "https://metaprime.network",
+		},
+
+		{
+			"prefix": 88,
+			"network" "hanoi",
+			"displayName": "Hanoi MetaPrime Testnet",
+			"symbols": ["hMTPRM"],
+			"decimals": [12],
+			"standardAccount": "*25519",
+			"website": "https://metaprime.network",
+		},
+		{
+			"prefix": 96,
+			"network" "fractal",
+			"displayName": "Fractal MetaPrime Network",
+			"symbols": ["fMTPRM", "mKSM"],
+			"decimals": [12],
+			"standardAccount": "*25519",
+			"website": "https://metaprime.network",
+		},
+		{
 			"prefix": 252,
 			"network": "social-network",
 			"displayName": "Social Network",
