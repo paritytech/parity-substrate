@@ -486,6 +486,15 @@
 			"decimals": [18],
 			"standardAccount": "*25519",
 			"website": "https://sora.org"
+    },
+    {
+      "prefix": 73,
+			"network": "zeitgeist",
+			"displayName": "Zeitgeist",
+			"symbols": ["ZTG"],
+			"decimals": [10],
+			"standardAccount": "*25519",
+			"website": "https://zeitgeist.pm"
 		},
 		{
 			"prefix": 252,
