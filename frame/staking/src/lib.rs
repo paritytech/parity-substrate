@@ -654,15 +654,15 @@ impl<T: Config> SessionInterface<<T as frame_system::Config>::AccountId> for T w
 		Convert<<T as frame_system::Config>::AccountId, Option<<T as frame_system::Config>::AccountId>>,
 {
 	fn disable_validator(validator: &<T as frame_system::Config>::AccountId) -> Result<bool, ()> {
-		<pallet_session::Module<T>>::disable(validator)
+		<pallet_session::Pallet<T>>::disable(validator)
 	}
 
 	fn validators() -> Vec<<T as frame_system::Config>::AccountId> {
-		<pallet_session::Module<T>>::validators()
+		<pallet_session::Pallet<T>>::validators()
 	}
 
 	fn prune_historical_up_to(up_to: SessionIndex) {
-		<pallet_session::historical::Module<T>>::prune_up_to(up_to);
+		<pallet_session::historical::Pallet<T>>::prune_up_to(up_to);
 	}
 }
 

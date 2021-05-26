@@ -24,7 +24,7 @@ use ::grandpa as finality_grandpa;
 use codec::Encode;
 use frame_support::{
 	parameter_types,
-	traits::{KeyOwnerProofSystem, OnFinalize, OnInitialize},
+	traits::{KeyOwnerProofSystem, OnFinalize, OnInitialize, GenesisBuild},
 };
 use pallet_staking::EraIndex;
 use sp_core::{crypto::KeyTypeId, H256};

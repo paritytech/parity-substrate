@@ -598,7 +598,7 @@ impl<T: Config> OneSessionHandler<T::AccountId> for Module<T>
 
 		// if we didn't issue a change, we update the mapping to note that the current
 		// set corresponds to the latest equivalent session (i.e. now).
-		let session_index = <pallet_session::Module<T>>::current_index();
+		let session_index = <pallet_session::Pallet<T>>::current_index();
 		SetIdSession::insert(current_set_id, &session_index);
 	}
 

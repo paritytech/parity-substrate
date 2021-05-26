@@ -32,55 +32,71 @@ use sp_runtime::KeyTypeId;
 use sp_runtime::traits::{Convert, OpaqueKeys};
 use sp_session::{MembershipProof, ValidatorCount};
 use frame_support::{
-	decl_module, decl_storage, Parameter, print,
+	Parameter, print,
 	traits::{ValidatorSet, ValidatorSetWithIdentification},
 };
 use sp_trie::{MemoryDB, Trie, TrieMut, Recorder, EMPTY_PREFIX};
 use sp_trie::trie_types::{TrieDBMut, TrieDB};
-use super::{SessionIndex, Module as SessionModule};
+use super::{SessionIndex, Pallet as SessionModule, pallet as pallet_session};
+pub use pallet::*;
 
 mod shared;
 pub mod offchain;
 pub mod onchain;
 
-/// Config necessary for the historical module.
-pub trait Config: super::Config {
-	/// Full identification of the validator.
-	type FullIdentification: Parameter;
+#[frame_support::pallet]
+pub mod pallet {
+	use super::*;
+	use frame_support::pallet_prelude::*;
+	use frame_system::pallet_prelude::*;
 
-	/// A conversion from validator ID to full identification.
-	///
-	/// This should contain any references to economic actors associated with the
-	/// validator, since they may be outdated by the time this is queried from a
-	/// historical trie.
-	///
-	/// It must return the identification for the current session index.
-	type FullIdentificationOf: Convert<Self::ValidatorId, Option<Self::FullIdentification>>;
-}
+	#[pallet::pallet]
+	#[pallet::generate_store(pub(super) trait Store)]
+	pub struct Pallet<T>(_);
 
-decl_storage! {
-	trait Store for Module<T: Config> as Session {
-		/// Mapping from historical session indices to session-data root hash and validator count.
-		HistoricalSessions get(fn historical_root):
-			map hasher(twox_64_concat) SessionIndex => Option<(T::Hash, ValidatorCount)>;
-		/// The range of historical sessions we store. [first, last)
-		StoredRange: Option<(SessionIndex, SessionIndex)>;
-		/// Deprecated.
-		CachedObsolete:
-			map hasher(twox_64_concat) SessionIndex
-			=> Option<Vec<(T::ValidatorId, T::FullIdentification)>>;
+	/// Config necessary for the historical module.
+	#[pallet::config]
+	pub trait Config: pallet_session::Config + frame_system::Config {
+		/// Full identification of the validator.
+		type FullIdentification: Parameter;
+
+		/// A conversion from validator ID to full identification.
+		///
+		/// This should contain any references to economic actors associated with the
+		/// validator, since they may be outdated by the time this is queried from a
+		/// historical trie.
+		///
+		/// It must return the identification for the current session index.
+		type FullIdentificationOf: Convert<Self::ValidatorId, Option<Self::FullIdentification>>;
 	}
+
+	/// Mapping from historical session indices to session-data root hash and validator count.
+	#[pallet::storage]
+	#[pallet::getter(fn historical_root)]
+	pub type HistoricalSessions<T: Config> =
+		StorageMap<_, Twox64Concat, SessionIndex, (T::Hash, ValidatorCount)>;
+
+	/// The range of historical sessions we store. [first, last)
+	#[pallet::storage]
+	pub type StoredRange<T: Config> = StorageValue<_, (SessionIndex, SessionIndex)>;
+
+	#[pallet::storage]
+	pub type CachedObsolete<T: Config> =
+		StorageMap<_, Twox64Concat, SessionIndex, (T::ValidatorId, T::FullIdentification)>;
+
+	#[pallet::hooks]
+	/// Deprecated.
+	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
+
+	#[pallet::call]
+	impl<T: Config> Pallet<T> {}
 }
 
-decl_module! {
-	pub struct Module<T: Config> for enum Call where origin: T::Origin {}
-}
-
-impl<T: Config> Module<T> {
+impl<T: Config> Pallet<T> {
 	/// Prune historical stored session roots up to (but not including)
 	/// `up_to`.
 	pub fn prune_up_to(up_to: SessionIndex) {
-		<Self as Store>::StoredRange::mutate(|range| {
+		<<Self as Store>::StoredRange>::mutate(|range| {
 			let (start, end) = match *range {
 				Some(range) => range,
 				None => return, // nothing to prune.
@@ -104,20 +120,20 @@ impl<T: Config> Module<T> {
 	}
 }
 
-impl<T: Config> ValidatorSet<T::AccountId> for Module<T> {
+impl<T: Config> ValidatorSet<T::AccountId> for Pallet<T> {
 	type ValidatorId = T::ValidatorId;
 	type ValidatorIdOf = T::ValidatorIdOf;
 
 	fn session_index() -> sp_staking::SessionIndex {
-		super::Module::<T>::current_index()
+		super::Pallet::<T>::current_index()
 	}
 
 	fn validators() -> Vec<Self::ValidatorId> {
-		super::Module::<T>::validators()
+		super::Pallet::<T>::validators()
 	}
 }
 
-impl<T: Config> ValidatorSetWithIdentification<T::AccountId> for Module<T> {
+impl<T: Config> ValidatorSetWithIdentification<T::AccountId> for Pallet<T> {
 	type Identification = T::FullIdentification;
 	type IdentificationOf = T::FullIdentificationOf;
 }
@@ -141,7 +157,7 @@ impl<T: Config, I> crate::SessionManager<T::ValidatorId> for NoteHistoricalRoot<
 {
 	fn new_session(new_index: SessionIndex) -> Option<Vec<T::ValidatorId>> {
 
-		StoredRange::mutate(|range| {
+		StoredRange::<T>::mutate(|range| {
 			range.get_or_insert_with(|| (new_index, new_index)).1 = new_index + 1;
 		});
 
@@ -180,7 +196,8 @@ impl<T: Config, I> crate::SessionManager<T::ValidatorId> for NoteHistoricalRoot<
 }
 
 /// A tuple of the validator's ID and their full identification.
-pub type IdentificationTuple<T> = (<T as crate::Config>::ValidatorId, <T as Config>::FullIdentification);
+pub type IdentificationTuple<T> = (<T as crate::Config>::ValidatorId, 
+		<T as Config>::FullIdentification);
 
 /// A trie instance for checking and generating proofs.
 pub struct ProvingTrie<T: Config> {
@@ -281,7 +298,7 @@ impl<T: Config> ProvingTrie<T> {
 }
 
 impl<T: Config, D: AsRef<[u8]>> frame_support::traits::KeyOwnerProofSystem<(KeyTypeId, D)>
-	for Module<T>
+	for Pallet<T>
 {
 	type Proof = MembershipProof;
 	type IdentificationTuple = IdentificationTuple<T>;
@@ -346,10 +363,10 @@ pub(crate) mod tests {
 		NEXT_VALIDATORS, force_new_session,
 		set_next_validators, Test, System, Session,
 	};
-	use frame_support::traits::{KeyOwnerProofSystem, OnInitialize};
+	use frame_support::traits::{KeyOwnerProofSystem, OnInitialize, GenesisBuild};
 	use frame_support::BasicExternalities;
 
-	type Historical = Module<Test>;
+	type Historical = Pallet<Test>;
 
 	pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
 		let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
@@ -412,27 +429,27 @@ pub(crate) mod tests {
 
 			}
 
-			assert_eq!(StoredRange::get(), Some((0, 100)));
+			assert_eq!(StoredRange::<Test>::get(), Some((0, 100)));
 
 			for i in 0..100 {
 				assert!(Historical::historical_root(i).is_some())
 			}
 
 			Historical::prune_up_to(10);
-			assert_eq!(StoredRange::get(), Some((10, 100)));
+			assert_eq!(StoredRange::<Test>::get(), Some((10, 100)));
 
 			Historical::prune_up_to(9);
-			assert_eq!(StoredRange::get(), Some((10, 100)));
+			assert_eq!(StoredRange::<Test>::get(), Some((10, 100)));
 
 			for i in 10..100 {
 				assert!(Historical::historical_root(i).is_some())
 			}
 
 			Historical::prune_up_to(99);
-			assert_eq!(StoredRange::get(), Some((99, 100)));
+			assert_eq!(StoredRange::<Test>::get(), Some((99, 100)));
 
 			Historical::prune_up_to(100);
-			assert_eq!(StoredRange::get(), None);
+			assert_eq!(StoredRange::<Test>::get(), None);
 
 			for i in 99..199u64 {
 				set_next_validators(vec![i]);
@@ -443,14 +460,14 @@ pub(crate) mod tests {
 
 			}
 
-			assert_eq!(StoredRange::get(), Some((100, 200)));
+			assert_eq!(StoredRange::<Test>::get(), Some((100, 200)));
 
 			for i in 100..200 {
 				assert!(Historical::historical_root(i).is_some())
 			}
 
 			Historical::prune_up_to(9999);
-			assert_eq!(StoredRange::get(), None);
+			assert_eq!(StoredRange::<Test>::get(), None);
 
 			for i in 100..200 {
 				assert!(Historical::historical_root(i).is_none())
