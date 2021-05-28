@@ -228,7 +228,6 @@ mod tests {
 	{
 		let exec = NativeExecutor::<substrate_test_runtime_client::LocalExecutor>::new(
 			WasmExecutionMethod::Interpreted,
-			Some(128),
 			1,
 		);
 		let bytes = substrate_test_runtime::wasm_binary_unwrap();
@@ -241,7 +240,7 @@ mod tests {
 	fn should_get_runtime_version() {
 		let wasm = WasmBlob::new(substrate_test_runtime::wasm_binary_unwrap().to_vec());
 		let executor =
-			NativeExecutor::<LocalExecutor>::new(WasmExecutionMethod::Interpreted, Some(128), 1);
+			NativeExecutor::<LocalExecutor>::new(WasmExecutionMethod::Interpreted, 1);
 
 		let version = WasmOverride::runtime_version(&executor, &wasm, Some(128))
 			.expect("should get the `RuntimeVersion` of the test-runtime wasm blob");

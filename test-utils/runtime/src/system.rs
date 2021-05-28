@@ -365,7 +365,7 @@ mod tests {
 	);
 
 	fn executor() -> NativeExecutor<NativeDispatch> {
-		NativeExecutor::new(WasmExecutionMethod::Interpreted, None, 8)
+		NativeExecutor::new(WasmExecutionMethod::Interpreted, 8)
 	}
 
 	fn new_test_ext() -> TestExternalities {
@@ -422,13 +422,12 @@ mod tests {
 				heap_pages: None,
 			};
 
-			executor().call::<NeverNativeValue, fn() -> _>(
+			executor().call::<NeverNativeValue>(
 				&mut ext,
 				&runtime_code,
 				"Core_execute_block",
 				&b.encode(),
 				false,
-				None,
 			).0.unwrap();
 		})
 	}
@@ -522,13 +521,12 @@ mod tests {
 				heap_pages: None,
 			};
 
-			executor().call::<NeverNativeValue, fn() -> _>(
+			executor().call::<NeverNativeValue>(
 				&mut ext,
 				&runtime_code,
 				"Core_execute_block",
 				&b.encode(),
 				false,
-				None,
 			).0.unwrap();
 		})
 	}

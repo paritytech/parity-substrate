@@ -19,7 +19,7 @@
 //! Methods that light client could use to execute runtime calls.
 
 use std::{
-	sync::Arc, panic::UnwindSafe, result, cell::RefCell,
+	sync::Arc, cell::RefCell,
 };
 
 use codec::{Encode, Decode};
@@ -104,7 +104,6 @@ impl<Block, B, Local> CallExecutor<Block> for
 			Result<NativeOrEncoded<R>, Self::Error>
 		) -> Result<NativeOrEncoded<R>, Self::Error>,
 		R: Encode + Decode + PartialEq,
-		NC: FnOnce() -> result::Result<R, sp_api::ApiError> + UnwindSafe,
 	>(
 		&self,
 		initialize_block_fn: IB,
@@ -115,7 +114,6 @@ impl<Block, B, Local> CallExecutor<Block> for
 		_: Option<&RefCell<StorageTransactionCache<Block, B::State>>>,
 		initialize_block: InitializeBlock<'a, Block>,
 		_manager: ExecutionManager<EM>,
-		native_call: Option<NC>,
 		recorder: &Option<ProofRecorder<Block>>,
 		extensions: Option<Extensions>,
 	) -> ClientResult<NativeOrEncoded<R>> where ExecutionManager<EM>: Clone {
@@ -129,8 +127,7 @@ impl<Block, B, Local> CallExecutor<Block> for
 					Result<NativeOrEncoded<R>, Local::Error>,
 					Result<NativeOrEncoded<R>, Local::Error>,
 				) -> Result<NativeOrEncoded<R>, Local::Error>,
-				_,
-				NC
+				_
 			>(
 				&self.local,
 				initialize_block_fn,
@@ -141,7 +138,6 @@ impl<Block, B, Local> CallExecutor<Block> for
 				None,
 				initialize_block,
 				ExecutionManager::NativeWhenPossible,
-				native_call,
 				recorder,
 				extensions,
 			).map_err(|e| ClientError::Execution(Box::new(e.to_string()))),

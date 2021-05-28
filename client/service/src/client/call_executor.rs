@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{sync::Arc, panic::UnwindSafe, result, cell::RefCell};
+use std::{sync::Arc, cell::RefCell};
 use codec::{Encode, Decode};
 use sp_runtime::{
 	generic::BlockId, traits::{Block as BlockT, HashFor, NumberFor},
@@ -164,9 +164,8 @@ where
 			extensions.unwrap_or_default(),
 			&runtime_code,
 			self.spawn_handle.clone(),
-		).execute_using_consensus_failure_handler::<_, NeverNativeValue, fn() -> _>(
+		).execute_using_consensus_failure_handler::<_, NeverNativeValue>(
 			strategy.get_manager(),
-			None,
 		)?;
 
 		Ok(return_data.into_encoded())
@@ -180,7 +179,6 @@ where
 			Result<NativeOrEncoded<R>, Self::Error>
 		) -> Result<NativeOrEncoded<R>, Self::Error>,
 		R: Encode + Decode + PartialEq,
-		NC: FnOnce() -> result::Result<R, sp_api::ApiError> + UnwindSafe,
 	>(
 		&self,
 		initialize_block_fn: IB,
@@ -193,7 +191,6 @@ where
 		>>,
 		initialize_block: InitializeBlock<'a, Block>,
 		execution_manager: ExecutionManager<EM>,
-		native_call: Option<NC>,
 		recorder: &Option<ProofRecorder<Block>>,
 		extensions: Option<Extensions>,
 	) -> Result<NativeOrEncoded<R>, sp_blockchain::Error> where ExecutionManager<EM>: Clone {
@@ -247,7 +244,6 @@ where
 				// .with_storage_transaction_cache(storage_transaction_cache.as_mut().map(|c| &mut **c))
 				state_machine.execute_using_consensus_failure_handler(
 					execution_manager,
-					native_call.map(|n| || (n)().map_err(|e| Box::new(e) as Box<_>)),
 				)
 			},
 			None => {
@@ -269,7 +265,6 @@ where
 				).with_storage_transaction_cache(storage_transaction_cache.as_mut().map(|c| &mut **c));
 				state_machine.execute_using_consensus_failure_handler(
 					execution_manager,
-					native_call.map(|n| || (n)().map_err(|e| Box::new(e) as Box<_>)),
 				)
 			}
 		}.map_err(Into::into)
@@ -353,7 +348,7 @@ mod tests {
 	#[test]
 	fn should_get_override_if_exists() {
 		let executor =
-			NativeExecutor::<LocalExecutor>::new(WasmExecutionMethod::Interpreted, Some(128), 1);
+			NativeExecutor::<LocalExecutor>::new(WasmExecutionMethod::Interpreted, 1);
 
 		let overrides = crate::client::wasm_override::dummy_overrides(&executor);
 		let onchain_code = WrappedRuntimeCode(substrate_test_runtime::wasm_binary_unwrap().into());

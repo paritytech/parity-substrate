@@ -174,20 +174,18 @@ fn panic_execution_with_foreign_code_gives_error() {
 	t.insert(<pallet_balances::TotalIssuance<Runtime>>::hashed_key().to_vec(), 69_u128.encode());
 	t.insert(<frame_system::BlockHash<Runtime>>::hashed_key_for(0), vec![0u8; 32]);
 
-	let r = executor_call::<NeverNativeValue, fn() -> _>(
+	let r = executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_initialize_block",
 		&vec![].and(&from_block_number(1u32)),
 		true,
-		None,
 	).0;
 	assert!(r.is_ok());
-	let v = executor_call::<NeverNativeValue, fn() -> _>(
+	let v = executor_call::<NeverNativeValue>(
 		&mut t,
 		"BlockBuilder_apply_extrinsic",
 		&vec![].and(&xt()),
 		true,
-		None,
 	).0.unwrap();
 	let r = ApplyExtrinsicResult::decode(&mut &v.as_encoded()[..]).unwrap();
 	assert_eq!(r, Err(InvalidTransaction::Payment.into()));
@@ -203,20 +201,18 @@ fn bad_extrinsic_with_native_equivalent_code_gives_error() {
 	t.insert(<pallet_balances::TotalIssuance<Runtime>>::hashed_key().to_vec(), 69_u128.encode());
 	t.insert(<frame_system::BlockHash<Runtime>>::hashed_key_for(0), vec![0u8; 32]);
 
-	let r = executor_call::<NeverNativeValue, fn() -> _>(
+	let r = executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_initialize_block",
 		&vec![].and(&from_block_number(1u32)),
 		true,
-		None,
 	).0;
 	assert!(r.is_ok());
-	let v = executor_call::<NeverNativeValue, fn() -> _>(
+	let v = executor_call::<NeverNativeValue>(
 		&mut t,
 		"BlockBuilder_apply_extrinsic",
 		&vec![].and(&xt()),
 		true,
-		None,
 	).0.unwrap();
 	let r = ApplyExtrinsicResult::decode(&mut &v.as_encoded()[..]).unwrap();
 	assert_eq!(r, Err(InvalidTransaction::Payment.into()));
@@ -245,23 +241,21 @@ fn successful_execution_with_native_equivalent_code_gives_ok() {
 	);
 	t.insert(<frame_system::BlockHash<Runtime>>::hashed_key_for(0), vec![0u8; 32]);
 
-	let r = executor_call::<NeverNativeValue, fn() -> _>(
+	let r = executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_initialize_block",
 		&vec![].and(&from_block_number(1u32)),
 		true,
-		None,
 	).0;
 	assert!(r.is_ok());
 
 	let fees = t.execute_with(|| transfer_fee(&xt()));
 
-	let r = executor_call::<NeverNativeValue, fn() -> _>(
+	let r = executor_call::<NeverNativeValue>(
 		&mut t,
 		"BlockBuilder_apply_extrinsic",
 		&vec![].and(&xt()),
 		true,
-		None,
 	).0;
 	assert!(r.is_ok());
 
@@ -294,23 +288,21 @@ fn successful_execution_with_foreign_code_gives_ok() {
 	);
 	t.insert(<frame_system::BlockHash<Runtime>>::hashed_key_for(0), vec![0u8; 32]);
 
-	let r = executor_call::<NeverNativeValue, fn() -> _>(
+	let r = executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_initialize_block",
 		&vec![].and(&from_block_number(1u32)),
 		true,
-		None,
 	).0;
 	assert!(r.is_ok());
 
 	let fees = t.execute_with(|| transfer_fee(&xt()));
 
-	let r = executor_call::<NeverNativeValue, fn() -> _>(
+	let r = executor_call::<NeverNativeValue>(
 		&mut t,
 		"BlockBuilder_apply_extrinsic",
 		&vec![].and(&xt()),
 		true,
-		None,
 	).0;
 	assert!(r.is_ok());
 
@@ -332,12 +324,11 @@ fn full_native_block_import_works() {
 	let transfer_weight = default_transfer_call().get_dispatch_info().weight;
 	let timestamp_weight = pallet_timestamp::Call::set::<Runtime>(Default::default()).get_dispatch_info().weight;
 
-	executor_call::<NeverNativeValue, fn() -> _>(
+	executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_execute_block",
 		&block1.0,
 		true,
-		None,
 	).0.unwrap();
 
 	t.execute_with(|| {
@@ -379,12 +370,11 @@ fn full_native_block_import_works() {
 
 	fees = t.execute_with(|| transfer_fee(&xt()));
 
-	executor_call::<NeverNativeValue, fn() -> _>(
+	executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_execute_block",
 		&block2.0,
 		true,
-		None,
 	).0.unwrap();
 
 	t.execute_with(|| {
@@ -464,12 +454,11 @@ fn full_wasm_block_import_works() {
 	let mut alice_last_known_balance: Balance = Default::default();
 	let mut fees = t.execute_with(|| transfer_fee(&xt()));
 
-	executor_call::<NeverNativeValue, fn() -> _>(
+	executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_execute_block",
 		&block1.0,
 		false,
-		None,
 	).0.unwrap();
 
 	t.execute_with(|| {
@@ -480,12 +469,11 @@ fn full_wasm_block_import_works() {
 
 	fees = t.execute_with(|| transfer_fee(&xt()));
 
-	executor_call::<NeverNativeValue, fn() -> _>(
+	executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_execute_block",
 		&block2.0,
 		false,
-		None,
 	).0.unwrap();
 
 	t.execute_with(|| {
@@ -647,12 +635,11 @@ fn deploying_wasm_contract_should_work() {
 
 	let mut t = new_test_ext(compact_code_unwrap(), false);
 
-	executor_call::<NeverNativeValue, fn() -> _>(
+	executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_execute_block",
 		&b.0,
 		false,
-		None,
 	).0.unwrap();
 
 	t.execute_with(|| {
@@ -670,12 +657,11 @@ fn wasm_big_block_import_fails() {
 
 	set_heap_pages(&mut t.ext(), 4);
 
-	let result = executor_call::<NeverNativeValue, fn() -> _>(
+	let result = executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_execute_block",
 		&block_with_size(42, 0, 120_000).0,
 		false,
-		None,
 	).0;
 	assert!(result.is_err()); // Err(Wasmi(Trap(Trap { kind: Host(AllocatorOutOfSpace) })))
 }
@@ -684,12 +670,11 @@ fn wasm_big_block_import_fails() {
 fn native_big_block_import_succeeds() {
 	let mut t = new_test_ext(compact_code_unwrap(), false);
 
-	executor_call::<NeverNativeValue, fn() -> _>(
+	executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_execute_block",
 		&block_with_size(42, 0, 120_000).0,
 		true,
-		None,
 	).0.unwrap();
 }
 
@@ -698,12 +683,11 @@ fn native_big_block_import_fails_on_fallback() {
 	let mut t = new_test_ext(compact_code_unwrap(), false);
 
 	assert!(
-		executor_call::<NeverNativeValue, fn() -> _>(
+		executor_call::<NeverNativeValue>(
 			&mut t,
 			"Core_execute_block",
 			&block_with_size(42, 0, 120_000).0,
 			false,
-			None,
 		).0.is_err()
 	);
 }
@@ -721,20 +705,18 @@ fn panic_execution_gives_error() {
 	t.insert(<pallet_balances::TotalIssuance<Runtime>>::hashed_key().to_vec(), 0_u128.encode());
 	t.insert(<frame_system::BlockHash<Runtime>>::hashed_key_for(0), vec![0u8; 32]);
 
-	let r = executor_call::<NeverNativeValue, fn() -> _>(
+	let r = executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_initialize_block",
 		&vec![].and(&from_block_number(1u32)),
 		false,
-		None,
 	).0;
 	assert!(r.is_ok());
-	let r = executor_call::<NeverNativeValue, fn() -> _>(
+	let r = executor_call::<NeverNativeValue>(
 		&mut t,
 		"BlockBuilder_apply_extrinsic",
 		&vec![].and(&xt()),
 		false,
-		None,
 	).0.unwrap().into_encoded();
 	let r = ApplyExtrinsicResult::decode(&mut &r[..]).unwrap();
 	assert_eq!(r, Err(InvalidTransaction::Payment.into()));
@@ -763,12 +745,11 @@ fn successful_execution_gives_ok() {
 	);
 	t.insert(<frame_system::BlockHash<Runtime>>::hashed_key_for(0), vec![0u8; 32]);
 
-	let r = executor_call::<NeverNativeValue, fn() -> _>(
+	let r = executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_initialize_block",
 		&vec![].and(&from_block_number(1u32)),
 		false,
-		None,
 	).0;
 	assert!(r.is_ok());
 	t.execute_with(|| {
@@ -777,12 +758,11 @@ fn successful_execution_gives_ok() {
 
 	let fees = t.execute_with(|| transfer_fee(&xt()));
 
-	let r = executor_call::<NeverNativeValue, fn() -> _>(
+	let r = executor_call::<NeverNativeValue>(
 		&mut t,
 		"BlockBuilder_apply_extrinsic",
 		&vec![].and(&xt()),
 		false,
-		None,
 	).0.unwrap().into_encoded();
 	ApplyExtrinsicResult::decode(&mut &r[..])
 		.unwrap()
@@ -802,12 +782,11 @@ fn full_native_block_import_works_with_changes_trie() {
 	let block = Block::decode(&mut &block_data[..]).unwrap();
 
 	let mut t = new_test_ext(compact_code_unwrap(), true);
-	executor_call::<NeverNativeValue, fn() -> _>(
+	executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_execute_block",
 		&block.encode(),
 		true,
-		None,
 	).0.unwrap();
 
 	assert!(t.ext().storage_changes_root(&GENESIS_HASH).unwrap().is_some());
@@ -818,12 +797,11 @@ fn full_wasm_block_import_works_with_changes_trie() {
 	let block1 = changes_trie_block();
 
 	let mut t = new_test_ext(compact_code_unwrap(), true);
-	executor_call::<NeverNativeValue, fn() -> _>(
+	executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_execute_block",
 		&block1.0,
 		false,
-		None,
 	).0.unwrap();
 
 	assert!(t.ext().storage_changes_root(&GENESIS_HASH).unwrap().is_some());

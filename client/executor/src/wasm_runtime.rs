@@ -75,7 +75,7 @@ impl VersionedRuntime {
 		ext: &mut dyn Externalities,
 		f: F,
 	) -> Result<R, Error>
-		where F: FnOnce(
+		where F: Fn(
 			&Arc<dyn WasmModule>,
 			&dyn WasmInstance,
 			Option<&RuntimeVersion>,
@@ -177,26 +177,19 @@ impl RuntimeCache {
 
 	/// Prepares a WASM module instance and executes given function for it.
 	///
-	/// This uses internal cache to find avaiable instance or create a new one.
+	/// This uses internal cache to find available instance or create a new one.
+	///
 	/// # Parameters
+	/// - `code` - Provides external code or tells the executor to fetch it from storage.
+	/// - `runtime_code` - The runtime wasm code used setup the runtime.
+	/// - `default_heap_pages` - Number of 64KB pages to allocate for Wasm execution.
+	/// - `wasm_method` - Type of WASM backend to use.
+	/// - `host_functions` - The host functions that should be registered for the Wasm runtime.
+	/// - `allow_missing_func_imports` - Ignore missing function imports.
+	/// - `max_runtime_instances` - The size of the instances cache.
+	/// - `f` - Function to execute.
 	///
-	/// `code` - Provides external code or tells the executor to fetch it from storage.
-	///
-	/// `runtime_code` - The runtime wasm code used setup the runtime.
-	///
-	/// `default_heap_pages` - Number of 64KB pages to allocate for Wasm execution.
-	///
-	/// `wasm_method` - Type of WASM backend to use.
-	///
-	/// `host_functions` - The host functions that should be registered for the Wasm runtime.
-	///
-	/// `allow_missing_func_imports` - Ignore missing function imports.
-	///
-	/// `max_runtime_instances` - The size of the instances cache.
-	///
-	/// `f` - Function to execute.
-	///
-	/// # Returns result of `f` wrapped in an additonal result.
+	/// # Returns result of `f` wrapped in an additional result.
 	/// In case of failure one of two errors can be returned:
 	///
 	/// `Err::InvalidCode` is returned for runtime code issues.
@@ -208,12 +201,12 @@ impl RuntimeCache {
 		runtime_code: &'c RuntimeCode<'c>,
 		ext: &mut dyn Externalities,
 		wasm_method: WasmExecutionMethod,
-		default_heap_pages: u64,
+		heap_pages: u64,
 		host_functions: &[&'static dyn Function],
 		allow_missing_func_imports: bool,
 		f: F,
 	) -> Result<Result<R, Error>, Error>
-		where F: FnOnce(
+		where F: Fn(
 			&Arc<dyn WasmModule>,
 			&dyn WasmInstance,
 			Option<&RuntimeVersion>,
@@ -221,8 +214,6 @@ impl RuntimeCache {
 		-> Result<R, Error>,
 	{
 		let code_hash = &runtime_code.hash;
-		let heap_pages = runtime_code.heap_pages.unwrap_or(default_heap_pages);
-
 		let mut runtimes = self.runtimes.lock(); // this must be released prior to calling f
 		let pos = runtimes.iter().position(|r| r.as_ref().map_or(
 			false,
@@ -235,7 +226,7 @@ impl RuntimeCache {
 			Some(n) => runtimes[n]
 				.clone()
 				.expect("`position` only returns `Some` for entries that are `Some`"),
-			None =>  {
+			None => {
 				let code = runtime_code.fetch_runtime_code().ok_or(WasmError::CodeNotFound)?;
 
 				#[cfg(not(target_os = "unknown"))]
@@ -276,20 +267,21 @@ impl RuntimeCache {
 		match pos {
 			Some(0) => {},
 			Some(n) => {
-				for i in (1 .. n + 1).rev() {
+				for i in (1..n + 1).rev() {
 					runtimes.swap(i, i - 1);
 				}
 			}
 			None => {
-				runtimes[MAX_RUNTIMES-1] = Some(runtime.clone());
-				for i in (1 .. MAX_RUNTIMES).rev() {
+				runtimes[MAX_RUNTIMES - 1] = Some(runtime.clone());
+				for i in (1..MAX_RUNTIMES).rev() {
 					runtimes.swap(i, i - 1);
 				}
 			}
 		}
 		drop(runtimes);
 
-		Ok(runtime.with_instance(ext, f))
+		let r = runtime.with_instance(ext, f);
+		Ok(r)
 	}
 }
 

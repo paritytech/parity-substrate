@@ -97,18 +97,16 @@ pub fn from_block_number(n: u32) -> Header {
 }
 
 pub fn executor() -> NativeExecutor<Executor> {
-	NativeExecutor::new(WasmExecutionMethod::Interpreted, None, 8)
+	NativeExecutor::new(WasmExecutionMethod::Interpreted, 8)
 }
 
 pub fn executor_call<
 	R:Decode + Encode + PartialEq,
-	NC: FnOnce() -> std::result::Result<R, Box<dyn std::error::Error + Send + Sync>> + std::panic::UnwindSafe
 >(
 	t: &mut TestExternalities<BlakeTwo256>,
 	method: &str,
 	data: &[u8],
 	use_native: bool,
-	native_call: Option<NC>,
 ) -> (Result<NativeOrEncoded<R>>, bool) {
 	let mut t = t.ext();
 
@@ -120,13 +118,12 @@ pub fn executor_call<
 		heap_pages: heap_pages.and_then(|hp| Decode::decode(&mut &hp[..]).ok()),
 	};
 
-	executor().call::<R, NC>(
+	executor().call::<R>(
 		&mut t,
 		&runtime_code,
 		method,
 		data,
 		use_native,
-		native_call,
 	)
 }
 
@@ -180,23 +177,21 @@ pub fn construct_block(
 	};
 
 	// execute the block to get the real header.
-	executor_call::<NeverNativeValue, fn() -> _>(
+	executor_call::<NeverNativeValue>(
 		env,
 		"Core_initialize_block",
 		&header.encode(),
 		true,
-		None,
 	).0.unwrap();
 
 	for extrinsic in extrinsics.iter() {
 		// Try to apply the `extrinsic`. It should be valid, in the sense that it passes
 		// all pre-inclusion checks.
-		let r = executor_call::<NeverNativeValue, fn() -> _>(
+		let r = executor_call::<NeverNativeValue>(
 			env,
 			"BlockBuilder_apply_extrinsic",
 			&extrinsic.encode(),
 			true,
-			None,
 		).0.expect("application of an extrinsic failed").into_encoded();
 		match ApplyExtrinsicResult::decode(&mut &r[..]).expect("apply result deserialization failed") {
 			Ok(_) => {},
@@ -204,12 +199,11 @@ pub fn construct_block(
 		}
 	}
 
-	let header = match executor_call::<NeverNativeValue, fn() -> _>(
+	let header = match executor_call::<NeverNativeValue>(
 		env,
 		"BlockBuilder_finalize_block",
 		&[0u8;0],
 		true,
-		None,
 	).0.unwrap() {
 		NativeOrEncoded::Native(_) => unreachable!(),
 		NativeOrEncoded::Encoded(h) => Header::decode(&mut &h[..]).unwrap(),

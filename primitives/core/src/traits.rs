@@ -20,10 +20,15 @@
 use std::{
 	borrow::Cow,
 	fmt::{Debug, Display},
-	panic::UnwindSafe,
 };
 
 pub use sp_externalities::{Externalities, ExternalitiesExt};
+
+/// Default num of pages for the heap is 64 MB.
+const INIT_HEAP_PAGES: u64 = 1024;
+
+/// Maximum is 2 GB worth of heap.
+const MAX_HEAP_PAGES: u64 = 2 * 1024 * 1024 * 1024 / (64 * 1024);
 
 /// Code execution engine.
 pub trait CodeExecutor: Sized + Send + Sync + ReadRuntimeVersion + Clone + 'static {
@@ -32,17 +37,34 @@ pub trait CodeExecutor: Sized + Send + Sync + ReadRuntimeVersion + Clone + 'stat
 
 	/// Call a given method in the runtime. Returns a tuple of the result (either the output data
 	/// or an execution error) together with a `bool`, which is true if native execution was used.
-	fn call<
-		R: codec::Codec + PartialEq,
-		NC: FnOnce() -> Result<R, Box<dyn std::error::Error + Send + Sync>> + UnwindSafe,
-	>(
+	fn call<R: codec::Codec + PartialEq>(
 		&self,
 		ext: &mut dyn Externalities,
 		runtime_code: &RuntimeCode,
 		method: &str,
 		data: &[u8],
 		use_native: bool,
-		native_call: Option<NC>,
+	) -> (Result<crate::NativeOrEncoded<R>, Self::Error>, bool) {
+		let mut heap_pages = INIT_HEAP_PAGES;
+		loop {
+			let (r, used_native) = self.do_call(ext, heap_pages, runtime_code, method, data, use_native);
+			if r.is_ok() || used_native || heap_pages == MAX_HEAP_PAGES {
+				return (r, used_native)
+			}
+			heap_pages = (heap_pages * 2).min(MAX_HEAP_PAGES);
+		}
+	}
+
+	/// Call a given method in the runtime. Returns a tuple of the result (either the output data
+	/// or an execution error) together with a `bool`, which is true if native execution was used.
+	fn do_call<R: codec::Codec + PartialEq>(
+		&self,
+		ext: &mut dyn Externalities,
+		heap_pages: u64,
+		runtime_code: &RuntimeCode,
+		method: &str,
+		data: &[u8],
+		use_native: bool,
 	) -> (Result<crate::NativeOrEncoded<R>, Self::Error>, bool);
 }
 

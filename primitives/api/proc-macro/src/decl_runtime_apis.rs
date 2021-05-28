@@ -410,7 +410,6 @@ fn generate_call_api_at_calls(decl: &ItemTrait) -> Result<TokenStream> {
 			#[cfg(any(feature = "std", test))]
 			pub fn #fn_name<
 				R: #crate_::Encode + #crate_::Decode + PartialEq,
-				NC: FnOnce() -> std::result::Result<R, #crate_::ApiError> + std::panic::UnwindSafe,
 				Block: #crate_::BlockT,
 				T: #crate_::CallApiAt<Block>,
 				C: #crate_::Core<Block>,
@@ -424,7 +423,6 @@ fn generate_call_api_at_calls(decl: &ItemTrait) -> Result<TokenStream> {
 					#crate_::StorageTransactionCache<Block, T::StateBackend>
 				>,
 				initialized_block: &std::cell::RefCell<Option<#crate_::BlockId<Block>>>,
-				native_call: Option<NC>,
 				context: #crate_::ExecutionContext,
 				recorder: &Option<#crate_::ProofRecorder<Block>>,
 			) -> std::result::Result<#crate_::NativeOrEncoded<R>, #crate_::ApiError> {
@@ -442,11 +440,10 @@ fn generate_call_api_at_calls(decl: &ItemTrait) -> Result<TokenStream> {
 					if version.apis.iter().any(|(s, v)| {
 						s == &ID && *v < #versions
 					}) {
-						let params = #crate_::CallApiAtParams::<_, _, fn() -> _, _> {
+						let params = #crate_::CallApiAtParams::<_, _, _> {
 							core_api,
 							at,
 							function: #old_names,
-							native_call: None,
 							arguments: args,
 							overlayed_changes: changes,
 							storage_transaction_cache,
@@ -466,7 +463,6 @@ fn generate_call_api_at_calls(decl: &ItemTrait) -> Result<TokenStream> {
 					core_api,
 					at,
 					function: #trait_fn_name,
-					native_call,
 					arguments: args,
 					overlayed_changes: changes,
 					storage_transaction_cache,

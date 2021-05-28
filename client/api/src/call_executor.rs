@@ -18,7 +18,7 @@
 
 //! A method call executor interface.
 
-use std::{panic::UnwindSafe, result, cell::RefCell};
+use std::cell::RefCell;
 use codec::{Encode, Decode};
 use sp_runtime::{
 	generic::BlockId, traits::{Block as BlockT, HashFor},
@@ -78,7 +78,6 @@ pub trait CallExecutor<B: BlockT> {
 			Result<NativeOrEncoded<R>, Self::Error>
 		) -> Result<NativeOrEncoded<R>, Self::Error>,
 		R: Encode + Decode + PartialEq,
-		NC: FnOnce() -> result::Result<R, sp_api::ApiError> + UnwindSafe,
 	>(
 		&self,
 		initialize_block_fn: IB,
@@ -91,7 +90,6 @@ pub trait CallExecutor<B: BlockT> {
 		>>,
 		initialize_block: InitializeBlock<'a, B>,
 		execution_manager: ExecutionManager<EM>,
-		native_call: Option<NC>,
 		proof_recorder: &Option<ProofRecorder<B>>,
 		extensions: Option<Extensions>,
 	) -> sp_blockchain::Result<NativeOrEncoded<R>> where ExecutionManager<EM>: Clone;

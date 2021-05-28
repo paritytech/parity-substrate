@@ -21,7 +21,7 @@
 use std::{
 	marker::PhantomData,
 	collections::{HashSet, BTreeMap, HashMap},
-	sync::Arc, panic::UnwindSafe, result,
+	sync::Arc,
 	path::PathBuf
 };
 use log::{info, trace, warn};
@@ -1678,11 +1678,10 @@ impl<B, E, Block, RA> CallApiAt<Block> for Client<B, E, Block, RA> where
 	fn call_api_at<
 		'a,
 		R: Encode + Decode + PartialEq,
-		NC: FnOnce() -> result::Result<R, sp_api::ApiError> + UnwindSafe,
 		C: CoreApi<Block>,
 	>(
 		&self,
-		params: CallApiAtParams<'a, Block, C, NC, B::State>,
+		params: CallApiAtParams<'a, Block, C, B::State>,
 	) -> Result<NativeOrEncoded<R>, sp_api::ApiError> {
 		let core_api = params.core_api;
 		let at = params.at;
@@ -1692,7 +1691,7 @@ impl<B, E, Block, RA> CallApiAt<Block> for Client<B, E, Block, RA> where
 			params.context,
 		);
 
-		self.executor.contextual_call::<_, fn(_,_) -> _,_,_>(
+		self.executor.contextual_call::<_,_,_>(
 			|| core_api
 				.initialize_block(at, &self.prepare_environment_block(at)?)
 				.map_err(Error::RuntimeApiError),
@@ -1703,7 +1702,6 @@ impl<B, E, Block, RA> CallApiAt<Block> for Client<B, E, Block, RA> where
 			Some(params.storage_transaction_cache),
 			params.initialize_block,
 			manager,
-			params.native_call,
 			params.recorder,
 			Some(extensions),
 		).map_err(Into::into)

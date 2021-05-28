@@ -91,12 +91,11 @@ fn fee_multiplier_increases_and_decreases_on_big_weight() {
 	);
 
 	// execute a big block.
-	executor_call::<NeverNativeValue, fn() -> _>(
+	executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_execute_block",
 		&block1.0,
 		true,
-		None,
 	).0.unwrap();
 
 	// weight multiplier is increased for next block.
@@ -108,12 +107,11 @@ fn fee_multiplier_increases_and_decreases_on_big_weight() {
 	});
 
 	// execute a big block.
-	executor_call::<NeverNativeValue, fn() -> _>(
+	executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_execute_block",
 		&block2.0,
 		true,
-		None,
 	).0.unwrap();
 
 	// weight multiplier is increased for next block.
@@ -158,21 +156,19 @@ fn transaction_fee_is_correct() {
 		function: Call::Balances(default_transfer_call()),
 	});
 
-	let r = executor_call::<NeverNativeValue, fn() -> _>(
+	let r = executor_call::<NeverNativeValue>(
 		&mut t,
 		"Core_initialize_block",
 		&vec![].and(&from_block_number(1u32)),
 		true,
-		None,
 	).0;
 
 	assert!(r.is_ok());
-	let r = executor_call::<NeverNativeValue, fn() -> _>(
+	let r = executor_call::<NeverNativeValue>(
 		&mut t,
 		"BlockBuilder_apply_extrinsic",
 		&vec![].and(&xt.clone()),
 		true,
-		None,
 	).0;
 	assert!(r.is_ok());
 
@@ -256,12 +252,11 @@ fn block_weight_capacity_report() {
 			len / 1024 / 1024,
 		);
 
-		let r = executor_call::<NeverNativeValue, fn() -> _>(
+		let r = executor_call::<NeverNativeValue>(
 			&mut t,
 			"Core_execute_block",
 			&block.0,
 			true,
-			None,
 		).0;
 
 		println!(" || Result = {:?}", r);
@@ -321,12 +316,11 @@ fn block_length_capacity_report() {
 			len / 1024 / 1024,
 		);
 
-		let r = executor_call::<NeverNativeValue, fn() -> _>(
+		let r = executor_call::<NeverNativeValue>(
 			&mut t,
 			"Core_execute_block",
 			&block.0,
 			true,
-			None,
 		).0;
 
 		println!(" || Result = {:?}", r);

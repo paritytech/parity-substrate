@@ -74,13 +74,13 @@ fn call_in_wasm<E: Externalities>(
 ) -> Result<Vec<u8>, String> {
 	let executor = crate::WasmExecutor::new(
 		execution_method,
-		Some(1024),
 		HostFunctions::host_functions(),
 		8,
 		None,
 	);
 	executor.uncached_call(
 		RuntimeBlob::uncompress_if_needed(&wasm_binary_unwrap()[..]).unwrap(),
+		1024,
 		ext,
 		true,
 		function,
@@ -536,7 +536,6 @@ fn should_trap_when_heap_exhausted(wasm_method: WasmExecutionMethod) {
 
 	let executor = crate::WasmExecutor::new(
 		wasm_method,
-		Some(17),  // `17` is the initial number of pages compiled into the binary.
 		HostFunctions::host_functions(),
 		8,
 		None,
@@ -545,6 +544,7 @@ fn should_trap_when_heap_exhausted(wasm_method: WasmExecutionMethod) {
 	let err = executor
 		.uncached_call(
 			RuntimeBlob::uncompress_if_needed(&wasm_binary_unwrap()[..]).unwrap(),
+			17,
 			&mut ext.ext(),
 			true,
 			"test_exhaust_heap",
@@ -633,7 +633,6 @@ test_wasm_execution!(parallel_execution);
 fn parallel_execution(wasm_method: WasmExecutionMethod) {
 	let executor = std::sync::Arc::new(crate::WasmExecutor::new(
 		wasm_method,
-		Some(1024),
 		HostFunctions::host_functions(),
 		8,
 		None,
@@ -648,6 +647,7 @@ fn parallel_execution(wasm_method: WasmExecutionMethod) {
 					executor
 						.uncached_call(
 							RuntimeBlob::uncompress_if_needed(&wasm_binary_unwrap()[..]).unwrap(),
+							1024,
 							&mut ext,
 							true,
 							"test_twox_128",

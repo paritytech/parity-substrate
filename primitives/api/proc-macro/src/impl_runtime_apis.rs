@@ -18,7 +18,7 @@
 use crate::utils::{
 	generate_crate_access, generate_hidden_includes,
 	generate_runtime_mod_name_for_trait, generate_method_runtime_api_impl_name,
-	extract_parameter_names_types_and_borrows, generate_native_call_generator_fn_name,
+	extract_parameter_names_types_and_borrows,
 	return_type_extract_type, generate_call_api_at_fn_name, prefix_function_with_trait,
 	extract_all_signature_types, extract_block_type_from_trait_path, extract_impl_trait,
 	AllowSelfRefInParameters, RequireQualifiedTraitPath,
@@ -30,7 +30,7 @@ use quote::quote;
 
 use syn::{
 	spanned::Spanned, parse_macro_input, Ident, Type, ItemImpl, Path, Signature, Attribute,
-	ImplItem, parse::{Parse, ParseStream, Result, Error}, PathArguments, GenericArgument, TypePath,
+	ImplItem, parse::{Parse, ParseStream, Result, Error}, TypePath,
 	fold::{self, Fold}, parse_quote,
 };
 
@@ -421,8 +421,6 @@ fn generate_api_impl_for_runtime(impls: &[ItemImpl]) -> Result<TokenStream> {
 struct ApiRuntimeImplToApiRuntimeApiImpl<'a> {
 	runtime_block: &'a TypePath,
 	runtime_mod_path: &'a Path,
-	runtime_type: &'a Type,
-	trait_generic_arguments: &'a [GenericArgument],
 	impl_trait: &'a Ident,
 }
 
@@ -440,22 +438,8 @@ impl<'a> Fold for ApiRuntimeImplToApiRuntimeApiImpl<'a> {
 	fn fold_impl_item_method(&mut self, mut input: syn::ImplItemMethod) -> syn::ImplItemMethod {
 		let block = {
 			let runtime_mod_path = self.runtime_mod_path;
-			let runtime = self.runtime_type;
-			let native_call_generator_ident =
-				generate_native_call_generator_fn_name(&input.sig.ident);
 			let call_api_at_call = generate_call_api_at_fn_name(&input.sig.ident);
-			let trait_generic_arguments = self.trait_generic_arguments;
 			let crate_ = generate_crate_access(HIDDEN_INCLUDES_ID);
-
-			// Generate the access to the native parameters
-			let param_tuple_access = if input.sig.inputs.len() == 1 {
-				vec![ quote!( p ) ]
-			} else {
-				input.sig.inputs.iter().enumerate().map(|(i, _)| {
-					let i = syn::Index::from(i);
-					quote!( p.#i )
-				}).collect::<Vec<_>>()
-			};
 
 			let (param_types, error) = match extract_parameter_names_types_and_borrows(
 				&input.sig,
@@ -515,12 +499,6 @@ impl<'a> Fold for ApiRuntimeImplToApiRuntimeApiImpl<'a> {
 								changes,
 								storage_transaction_cache,
 								initialized_block,
-								params.map(|p| {
-									#runtime_mod_path #native_call_generator_ident ::
-										<#runtime, __SR_API_BLOCK__ #(, #trait_generic_arguments )*> (
-										#( #param_tuple_access ),*
-									)
-								}),
 								context,
 								recorder,
 							)
@@ -606,21 +584,13 @@ fn generate_api_impl_for_runtime_api(impls: &[ItemImpl]) -> Result<TokenStream> 
 			.ok_or_else(|| Error::new(impl_trait_path.span(), "Empty trait path not possible!"))?
 			.clone();
 		let runtime_block = extract_block_type_from_trait_path(impl_trait_path)?;
-		let runtime_type = &impl_.self_ty;
 		let mut runtime_mod_path = extend_with_runtime_decl_path(impl_trait_path.clone());
 		// remove the trait to get just the module path
 		runtime_mod_path.segments.pop();
 
-		let trait_generic_arguments = match impl_trait.arguments {
-			PathArguments::Parenthesized(_) | PathArguments::None => vec![],
-			PathArguments::AngleBracketed(ref b) => b.args.iter().cloned().collect(),
-		};
-
 		let mut visitor = ApiRuntimeImplToApiRuntimeApiImpl {
 			runtime_block,
 			runtime_mod_path: &runtime_mod_path,
-			runtime_type: &*runtime_type,
-			trait_generic_arguments: &trait_generic_arguments,
 			impl_trait: &impl_trait.ident,
 		};
 

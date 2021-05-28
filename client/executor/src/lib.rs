@@ -80,7 +80,6 @@ mod tests {
 
 		let executor = WasmExecutor::new(
 			WasmExecutionMethod::Interpreted,
-			Some(8),
 			sp_io::SubstrateHostFunctions::host_functions(),
 			8,
 			None,
@@ -88,6 +87,7 @@ mod tests {
 		let res = executor
 			.uncached_call(
 				RuntimeBlob::uncompress_if_needed(&wasm_binary_unwrap()[..]).unwrap(),
+				8,
 				&mut ext,
 				true,
 				"test_empty_return",

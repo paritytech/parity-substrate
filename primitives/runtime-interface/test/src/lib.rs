@@ -41,7 +41,6 @@ fn call_wasm_method_with_result<HF: HostFunctionsT>(
 
 	let executor = sc_executor::WasmExecutor::new(
 		sc_executor::WasmExecutionMethod::Interpreted,
-		Some(8),
 		host_functions,
 		8,
 		None,
@@ -49,6 +48,7 @@ fn call_wasm_method_with_result<HF: HostFunctionsT>(
 	executor
 		.uncached_call(
 			RuntimeBlob::uncompress_if_needed(binary).expect("Failed to parse binary"),
+			1024,
 			&mut ext_ext,
 			false,
 			method,

@@ -77,13 +77,11 @@ pub use sp_core::{offchain, ExecutionContext};
 pub use sp_version::{ApiId, RuntimeVersion, ApisVec, create_apis_vec};
 #[doc(hidden)]
 pub use sp_std::{slice, mem};
-#[cfg(feature = "std")]
-use sp_std::result;
 #[doc(hidden)]
 pub use codec::{Encode, Decode, DecodeLimit, self};
 use sp_core::OpaqueMetadata;
 #[cfg(feature = "std")]
-use std::{panic::UnwindSafe, cell::RefCell};
+use std::cell::RefCell;
 
 
 /// Maximum nesting level for extrinsics.
@@ -511,18 +509,13 @@ pub enum InitializeBlock<'a, Block: BlockT> {
 
 /// Parameters for [`CallApiAt::call_api_at`].
 #[cfg(feature = "std")]
-pub struct CallApiAtParams<'a, Block: BlockT, C, NC, Backend: StateBackend<HashFor<Block>>> {
+pub struct CallApiAtParams<'a, Block: BlockT, C, Backend: StateBackend<HashFor<Block>>> {
 	/// A reference to something that implements the [`Core`] api.
 	pub core_api: &'a C,
 	/// The block id that determines the state that should be setup when calling the function.
 	pub at: &'a BlockId<Block>,
 	/// The name of the function that should be called.
 	pub function: &'static str,
-	/// An optional native call that calls the `function`. This is an optimization to call into a
-	/// native runtime without requiring to encode/decode the parameters. The native runtime can
-	/// still be called when this value is `None`, we then just fallback to encoding/decoding the
-	/// parameters.
-	pub native_call: Option<NC>,
 	/// The encoded arguments of the function.
 	pub arguments: Vec<u8>,
 	/// The overlayed changes that are on top of the state.
@@ -549,11 +542,10 @@ pub trait CallApiAt<Block: BlockT> {
 	fn call_api_at<
 		'a,
 		R: Encode + Decode + PartialEq,
-		NC: FnOnce() -> result::Result<R, ApiError> + UnwindSafe,
 		C: Core<Block>,
 	>(
 		&self,
-		params: CallApiAtParams<'a, Block, C, NC, Self::StateBackend>,
+		params: CallApiAtParams<'a, Block, C, Self::StateBackend>,
 	) -> Result<NativeOrEncoded<R>, ApiError>;
 
 	/// Returns the runtime version at the given block.
