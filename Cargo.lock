@@ -4644,6 +4644,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-assets-freezer"
+version = "3.0.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "pallet-assets",
+ "pallet-balances",
+ "parity-scale-codec",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-atomic-swap"
 version = "3.0.0"
 dependencies = [

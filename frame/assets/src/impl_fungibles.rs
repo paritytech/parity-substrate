@@ -44,7 +44,8 @@ impl<T: Config<I>, I: 'static> fungibles::Inspect<<T as SystemConfig>::AccountId
 		who: &<T as SystemConfig>::AccountId,
 		keep_alive: bool,
 	) -> Self::Balance {
-		Pallet::<T, I>::reducible_balance(asset, who, keep_alive).unwrap_or(Zero::zero())
+		let f = DebitFlags { keep_alive, ignore_freezer: false };
+		Pallet::<T, I>::reducible_balance(asset, who, f).unwrap_or(Zero::zero())
 	}
 
 	fn can_deposit(
@@ -60,7 +61,28 @@ impl<T: Config<I>, I: 'static> fungibles::Inspect<<T as SystemConfig>::AccountId
 		who: &<T as SystemConfig>::AccountId,
 		amount: Self::Balance,
 	) -> WithdrawConsequence<Self::Balance> {
-		Pallet::<T, I>::can_decrease(asset, who, amount, false)
+		let f = DebitFlags { keep_alive: false, ignore_freezer: false };
+		Pallet::<T, I>::can_decrease(asset, who, amount, f)
+	}
+}
+
+impl<T: Config<I>, I: 'static> fungibles::InspectWithoutFreezer<<T as SystemConfig>::AccountId> for Pallet<T, I> {
+	fn reducible_balance(
+		asset: Self::AssetId,
+		who: &<T as SystemConfig>::AccountId,
+		keep_alive: bool,
+	) -> Self::Balance {
+		let f = DebitFlags { keep_alive, ignore_freezer: true };
+		Pallet::<T, I>::reducible_balance(asset, who, f).unwrap_or(Zero::zero())
+	}
+
+	fn can_withdraw(
+		asset: Self::AssetId,
+		who: &<T as SystemConfig>::AccountId,
+		amount: Self::Balance,
+	) -> WithdrawConsequence<Self::Balance> {
+		let f = DebitFlags { keep_alive: false, ignore_freezer: true };
+		Pallet::<T, I>::can_decrease(asset, who, amount, f)
 	}
 }
 
@@ -78,22 +100,7 @@ impl<T: Config<I>, I: 'static> fungibles::Mutate<<T as SystemConfig>::AccountId>
 		who: &<T as SystemConfig>::AccountId,
 		amount: Self::Balance,
 	) -> Result<Self::Balance, DispatchError> {
-		let f = DebitFlags {
-			keep_alive: false,
-			best_effort: false,
-		};
-		Self::do_burn(asset, who, amount, None, f)
-	}
-
-	fn slash(
-		asset: Self::AssetId,
-		who: &<T as SystemConfig>::AccountId,
-		amount: Self::Balance,
-	) -> Result<Self::Balance, DispatchError> {
-		let f = DebitFlags {
-			keep_alive: false,
-			best_effort: true,
-		};
+		let f = DebitFlags { keep_alive: false, ignore_freezer: false };
 		Self::do_burn(asset, who, amount, None, f)
 	}
 }
@@ -104,14 +111,9 @@ impl<T: Config<I>, I: 'static> fungibles::Transfer<T::AccountId> for Pallet<T, I
 		source: &T::AccountId,
 		dest: &T::AccountId,
 		amount: T::Balance,
-		keep_alive: bool,
+		death: WhenDust,
 	) -> Result<T::Balance, DispatchError> {
-		let f = TransferFlags {
-			keep_alive,
-			best_effort: false,
-			burn_dust: false
-		};
-		Self::do_transfer(asset, source, dest, amount, None, f)
+		Self::do_transfer(asset, source, dest, amount, None, death)
 	}
 }
 
@@ -126,31 +128,15 @@ impl<T: Config<I>, I: 'static> fungibles::Unbalanced<T::AccountId> for Pallet<T,
 			}
 		});
 	}
-	fn decrease_balance(asset: T::AssetId, who: &T::AccountId, amount: Self::Balance)
-						-> Result<Self::Balance, DispatchError>
+	fn decrease_balance(asset: T::AssetId, who: &T::AccountId, amount: Self::Balance, keep_alive: bool)
+		-> Result<Self::Balance, DispatchError>
 	{
-		let f = DebitFlags { keep_alive: false, best_effort: false };
+		let f = DebitFlags { keep_alive, ignore_freezer: false };
 		Self::decrease_balance(asset, who, amount, f, |_, _| Ok(()))
-	}
-	fn decrease_balance_at_most(asset: T::AssetId, who: &T::AccountId, amount: Self::Balance)
-								-> Self::Balance
-	{
-		let f = DebitFlags { keep_alive: false, best_effort: true };
-		Self::decrease_balance(asset, who, amount, f, |_, _| Ok(()))
-			.unwrap_or(Zero::zero())
 	}
 	fn increase_balance(asset: T::AssetId, who: &T::AccountId, amount: Self::Balance)
-						-> Result<Self::Balance, DispatchError>
+		-> DispatchResult
 	{
-		Self::increase_balance(asset, who, amount, |_| Ok(()))?;
-		Ok(amount)
-	}
-	fn increase_balance_at_most(asset: T::AssetId, who: &T::AccountId, amount: Self::Balance)
-								-> Self::Balance
-	{
-		match Self::increase_balance(asset, who, amount, |_| Ok(())) {
-			Ok(()) => amount,
-			Err(_) => Zero::zero(),
-		}
+		Self::increase_balance(asset, who, amount, |_| Ok(()))
 	}
 }

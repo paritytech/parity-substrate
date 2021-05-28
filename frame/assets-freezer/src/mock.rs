@@ -18,12 +18,11 @@
 //! Test environment for Assets pallet.
 
 use super::*;
-use crate as pallet_assets;
+use crate as pallet_assets_freezer;
 
 use sp_core::H256;
 use sp_runtime::{traits::{BlakeTwo256, IdentityLookup}, testing::Header};
 use frame_support::{parameter_types, construct_runtime};
-
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
 
@@ -34,8 +33,9 @@ construct_runtime!(
 		UncheckedExtrinsic = UncheckedExtrinsic,
 	{
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 		Assets: pallet_assets::{Pallet, Call, Storage, Event<T>},
+		AssetsFreezer: pallet_assets_freezer::{Pallet, Call, Storage, Event<T>},
+		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 	}
 );
 
@@ -90,7 +90,7 @@ parameter_types! {
 	pub const MetadataDepositPerByte: u64 = 1;
 }
 
-impl Config for Test {
+impl pallet_assets::Config for Test {
 	type Event = Event;
 	type Balance = u64;
 	type AssetId = u32;
@@ -101,30 +101,15 @@ impl Config for Test {
 	type MetadataDepositPerByte = MetadataDepositPerByte;
 	type ApprovalDeposit = ApprovalDeposit;
 	type StringLimit = StringLimit;
-	type Freezer = TestFreezer;
+	type Freezer = AssetsFreezer;
 	type WeightInfo = ();
-	type Extra = ();
+	type Extra = super::FreezeData<u64>;
 }
 
-use std::cell::RefCell;
-use std::collections::HashMap;
-
-thread_local! {
-	static FROZEN: RefCell<HashMap<(u32, u64), u64>> = RefCell::new(Default::default());
-}
-
-pub struct TestFreezer;
-impl FrozenBalance<u32, u64, u64> for TestFreezer {
-	fn frozen_balance(asset: u32, who: &u64) -> Option<u64> {
-		FROZEN.with(|f| f.borrow().get(&(asset, who.clone())).cloned())
-	}
-}
-
-pub(crate) fn set_frozen_balance(asset: u32, who: u64, amount: u64) {
-	FROZEN.with(|f| f.borrow_mut().insert((asset, who), amount));
-}
-pub(crate) fn clear_frozen_balance(asset: u32, who: u64) {
-	FROZEN.with(|f| f.borrow_mut().remove(&(asset, who)));
+impl Config for Test {
+	type Event = Event;
+	type Assets = Assets;
+	type Store = Assets;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {

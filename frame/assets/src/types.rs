@@ -117,62 +117,20 @@ pub struct DestroyWitness {
 	pub(super) approvals: u32,
 }
 
-/// Trait for allowing a minimum balance on the account to be specified, beyond the
-/// `minimum_balance` of the asset. This is additive - the `minimum_balance` of the asset must be
-/// met *and then* anything here in addition.
-pub trait FrozenBalance<AssetId, AccountId, Balance> {
-	/// Return the frozen balance. Under normal behaviour, this amount should always be
-	/// withdrawable.
-	///
-	/// In reality, the balance of every account must be at least the sum of this (if `Some`) and
-	/// the asset's minimum_balance, since there may be complications to destroying an asset's
-	/// account completely.
-	///
-	/// If `None` is returned, then nothing special is enforced.
-	///
-	/// If any operation ever breaks this requirement (which will only happen through some sort of
-	/// privileged intervention), then `melted` is called to do any cleanup.
-	fn frozen_balance(asset: AssetId, who: &AccountId) -> Option<Balance>;
-
-	/// Called when an account has been removed.
-	fn died(asset: AssetId, who: &AccountId);
-}
-
-impl<AssetId, AccountId, Balance> FrozenBalance<AssetId, AccountId, Balance> for () {
-	fn frozen_balance(_: AssetId, _: &AccountId) -> Option<Balance> { None }
-	fn died(_: AssetId, _: &AccountId) {}
-}
-
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub(super) struct TransferFlags {
-	/// The debited account must stay alive at the end of the operation; an error is returned if
-	/// this cannot be achieved legally.
-	pub(super) keep_alive: bool,
-	/// Less than the amount specified needs be debited by the operation for it to be considered
-	/// successful. If `false`, then the amount debited will always be at least the amount
-	/// specified.
-	pub(super) best_effort: bool,
-	/// Any additional funds debited (due to minimum balance requirements) should be burned rather
-	/// than credited to the destination account.
-	pub(super) burn_dust: bool,
-}
-
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub(super) struct DebitFlags {
 	/// The debited account must stay alive at the end of the operation; an error is returned if
 	/// this cannot be achieved legally.
 	pub(super) keep_alive: bool,
-	/// Less than the amount specified needs be debited by the operation for it to be considered
-	/// successful. If `false`, then the amount debited will always be at least the amount
-	/// specified.
-	pub(super) best_effort: bool,
+	/// Ignore the freezer. Don't set this to true unless you actually are the underlying freezer.
+	pub(super) ignore_freezer: bool,
 }
 
-impl From<TransferFlags> for DebitFlags {
-	fn from(f: TransferFlags) -> Self {
+impl From<WhenDust> for DebitFlags {
+	fn from(death: WhenDust) -> Self {
 		Self {
-			keep_alive: f.keep_alive,
-			best_effort: f.best_effort,
+			keep_alive: death.keep_alive(),
+			ignore_freezer: false,
 		}
 	}
 }

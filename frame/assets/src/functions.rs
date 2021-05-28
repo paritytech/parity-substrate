@@ -61,7 +61,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 	}
 
 	pub(super) fn dead_account(
-		what: T::AssetId,
+		_what: T::AssetId,
 		who: &T::AccountId,
 		d: &mut AssetDetails<T::Balance, T::AccountId, DepositBalanceOf<T, I>>,
 		sufficient: bool,
@@ -73,7 +73,6 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 			frame_system::Pallet::<T>::dec_consumers(who);
 		}
 		d.accounts = d.accounts.saturating_sub(1);
-		T::Freezer::died(what, who)
 	}
 
 	pub(super) fn can_increase(
@@ -112,7 +111,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 		id: T::AssetId,
 		who: &T::AccountId,
 		amount: T::Balance,
-		keep_alive: bool,
+		f: DebitFlags,
 	) -> WithdrawConsequence<T::Balance> {
 		use WithdrawConsequence::*;
 		let details = match Asset::<T, I>::get(id) {
@@ -130,7 +129,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 			return Frozen
 		}
 		if let Some(rest) = account.balance.checked_sub(&amount) {
-			if let Some(frozen) = T::Freezer::frozen_balance(id, who) {
+			if let (Some(frozen), false) = (T::Freezer::frozen_balance(id, who), f.ignore_freezer) {
 				match frozen.checked_add(&details.min_balance) {
 					Some(required) if rest < required => return Frozen,
 					None => return Overflow,
@@ -140,7 +139,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 
 			let is_provider = false;
 			let is_required = is_provider && !frame_system::Pallet::<T>::can_dec_provider(who);
-			let must_keep_alive = keep_alive || is_required;
+			let must_keep_alive = f.keep_alive || is_required;
 
 			if rest < details.min_balance {
 				if must_keep_alive {
@@ -161,7 +160,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 	pub(super) fn reducible_balance(
 		id: T::AssetId,
 		who: &T::AccountId,
-		keep_alive: bool,
+		f: DebitFlags,
 	) -> Result<T::Balance, DispatchError> {
 		let details = Asset::<T, I>::get(id).ok_or_else(|| Error::<T, I>::Unknown)?;
 		ensure!(!details.is_frozen, Error::<T, I>::Frozen);
@@ -169,7 +168,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 		let account = Account::<T, I>::get(id, who);
 		ensure!(!account.is_frozen, Error::<T, I>::Frozen);
 
-		let amount = if let Some(frozen) = T::Freezer::frozen_balance(id, who) {
+		let amount = if let (Some(frozen), false) = (T::Freezer::frozen_balance(id, who), f.ignore_freezer) {
 			// Frozen balance: account CANNOT be deleted
 			let required = frozen
 				.checked_add(&details.min_balance)
@@ -178,7 +177,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 		} else {
 			let is_provider = false;
 			let is_required = is_provider && !frame_system::Pallet::<T>::can_dec_provider(who);
-			if keep_alive || is_required {
+			if f.keep_alive || is_required {
 				// We want to keep the account around.
 				account.balance.saturating_sub(details.min_balance)
 			} else {
@@ -210,11 +209,12 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 		amount: T::Balance,
 		f: DebitFlags,
 	) -> Result<T::Balance, DispatchError> {
-		let actual = Self::reducible_balance(id, target, f.keep_alive)?.min(amount);
-		ensure!(f.best_effort || actual >= amount, Error::<T, I>::BalanceLow);
+		let actual = Self::reducible_balance(id, target, f.into())?
+			.min(amount);
+		ensure!(actual >= amount, Error::<T, I>::BalanceLow);
 
-		let conseq = Self::can_decrease(id, target, actual, f.keep_alive);
-		let actual = match conseq.into_result() {
+		let conseq = Self::can_decrease(id, target, actual, f.into());
+		let actual = match conseq.into_result(false) {
 			Ok(dust) => actual.saturating_add(dust), //< guaranteed by reducible_balance
 			Err(e) => {
 				debug_assert!(false, "passed from reducible_balance; qed");
@@ -409,7 +409,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 		dest: &T::AccountId,
 		amount: T::Balance,
 		maybe_need_admin: Option<T::AccountId>,
-		f: TransferFlags,
+		death: WhenDust,
 	) -> Result<T::Balance, DispatchError> {
 		// Early exist if no-op.
 		if amount.is_zero() {
@@ -418,8 +418,8 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 		}
 
 		// Figure out the debit and credit, together with side-effects.
-		let debit = Self::prep_debit(id, &source, amount, f.into())?;
-		let (credit, maybe_burn) = Self::prep_credit(id, &dest, amount, debit, f.burn_dust)?;
+		let debit = Self::prep_debit(id, &source, amount, death.into())?;
+		let (credit, maybe_burn) = Self::prep_credit(id, &dest, amount, debit, death.dispose())?;
 
 		let mut source_account = Account::<T, I>::get(id, &source);
 

@@ -53,17 +53,17 @@ pub enum WithdrawConsequence<Balance> {
 impl<Balance: Zero> WithdrawConsequence<Balance> {
 	/// Convert the type into a `Result` with `DispatchError` as the error or the additional `Balance`
 	/// by which the account will be reduced.
-	pub fn into_result(self) -> Result<Balance, DispatchError> {
+	pub fn into_result(self, keep_alive: bool) -> Result<Balance, DispatchError> {
 		use WithdrawConsequence::*;
 		match self {
-			NoFunds => Err(TokenError::NoFunds.into()),
-			WouldDie => Err(TokenError::WouldDie.into()),
+			Success => Ok(Zero::zero()),
+			ReducedToZero(result) if !keep_alive => Ok(result),
+			WouldDie | ReducedToZero(_) => Err(TokenError::WouldDie.into()),
 			UnknownAsset => Err(TokenError::UnknownAsset.into()),
 			Underflow => Err(ArithmeticError::Underflow.into()),
 			Overflow => Err(ArithmeticError::Overflow.into()),
 			Frozen => Err(TokenError::Frozen.into()),
-			ReducedToZero(result) => Ok(result),
-			Success => Ok(Zero::zero()),
+			NoFunds => Err(TokenError::NoFunds.into()),
 		}
 	}
 }
@@ -122,6 +122,50 @@ pub enum BalanceStatus {
 	Free,
 	/// Funds are reserved, as corresponding to `reserved` item in Balances.
 	Reserved,
+}
+
+/// When happens if/when a debited account has been reduced below the dust threshold (aka "minimum
+/// balance" or "existential deposit").
+#[derive(Copy, Clone, Eq, PartialEq, Encode, Decode, RuntimeDebug)]
+pub enum WhenDust {
+	/// Operation must not result in the account going out of existence.
+	KeepAlive,
+	/// Any dust resulting from the deletion of the debited account should be disposed of.
+	Dispose,
+	/// Any dust resulting from the deletion of the debited account should be added to the
+	/// resulting credit.
+	Credit,
+}
+
+impl WhenDust {
+	/// Return `true` if the account balance should be disposed of should it fall below minimum.
+	pub fn dispose(self) -> bool { matches!(self, WhenDust::Dispose) }
+
+	/// Return `true` if the account balance should neve be allowed to fall below minimum.
+	pub fn keep_alive(self) -> bool { matches!(self, WhenDust::KeepAlive) }
+}
+
+
+/// Trait for allowing a minimum balance on the account to be specified, beyond the
+/// `minimum_balance` of the asset. This is additive - the `minimum_balance` of the asset must be
+/// met *and then* anything here in addition.
+pub trait FrozenBalance<AssetId, AccountId, Balance> {
+	/// Return the frozen balance. Under normal behaviour, this amount should always be
+	/// withdrawable.
+	///
+	/// In reality, the balance of every account must be at least the sum of this (if `Some`) and
+	/// the asset's minimum_balance, since there may be complications to destroying an asset's
+	/// account completely.
+	///
+	/// If `None` is returned, then nothing special is enforced.
+	///
+	/// If any operation ever breaks this requirement (which will only happen through some sort of
+	/// privileged intervention), then `melted` is called to do any cleanup.
+	fn frozen_balance(asset: AssetId, who: &AccountId) -> Option<Balance>;
+}
+
+impl<AssetId, AccountId, Balance> FrozenBalance<AssetId, AccountId, Balance> for () {
+	fn frozen_balance(_: AssetId, _: &AccountId) -> Option<Balance> { None }
 }
 
 bitflags::bitflags! {

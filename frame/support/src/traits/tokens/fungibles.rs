@@ -19,11 +19,11 @@
 
 use super::*;
 use crate::dispatch::{DispatchError, DispatchResult};
-use super::misc::{AssetId, Balance};
+use super::misc::{AssetId, Balance, WhenDust};
 use sp_runtime::traits::Saturating;
 
 mod balanced;
-pub use balanced::{Balanced, Unbalanced};
+pub use balanced::{Balanced, Unbalanced, BalancedHold, UnbalancedHold};
 mod imbalance;
 pub use imbalance::{Imbalance, HandleImbalanceDrop, DebtOf, CreditOf};
 
@@ -45,14 +45,39 @@ pub trait Inspect<AccountId> {
 	fn balance(asset: Self::AssetId, who: &AccountId) -> Self::Balance;
 
 	/// Get the maximum amount of `asset` that `who` can withdraw/transfer successfully.
-	fn reducible_balance(asset: Self::AssetId, who: &AccountId, keep_alive: bool) -> Self::Balance;
+	fn reducible_balance(
+		asset: Self::AssetId,
+		who: &AccountId,
+		keep_alive: bool,
+	) -> Self::Balance;
 
 	/// Returns `true` if the `asset` balance of `who` may be increased by `amount`.
-	fn can_deposit(asset: Self::AssetId, who: &AccountId, amount: Self::Balance)
-		-> DepositConsequence;
+	fn can_deposit(
+		asset: Self::AssetId,
+		who: &AccountId,
+		amount: Self::Balance,
+	) -> DepositConsequence;
 
 	/// Returns `Failed` if the `asset` balance of `who` may not be decreased by `amount`, otherwise
 	/// the consequence.
+	fn can_withdraw(
+		asset: Self::AssetId,
+		who: &AccountId,
+		amount: Self::Balance,
+	) -> WithdrawConsequence<Self::Balance>;
+}
+
+/// Trait for providing balance-inspection access to a set of named fungible assets, ignoring any
+/// per-balance freezing mechanism.
+pub trait InspectWithoutFreezer<AccountId>: Inspect<AccountId> {
+	/// Get the maximum amount of `asset` that `who` can withdraw/transfer successfully.
+	fn reducible_balance(
+		asset: Self::AssetId,
+		who: &AccountId,
+		keep_alive: bool,
+	) -> Self::Balance;
+
+	/// Returns `true` if the `asset` balance of `who` may be increased by `amount`.
 	fn can_withdraw(
 		asset: Self::AssetId,
 		who: &AccountId,
@@ -111,7 +136,7 @@ pub trait Mutate<AccountId>: Inspect<AccountId> {
 		dest: &AccountId,
 		amount: Self::Balance,
 	) -> Result<Self::Balance, DispatchError> {
-		let extra = Self::can_withdraw(asset, &source, amount).into_result()?;
+		let extra = Self::can_withdraw(asset, &source, amount).into_result(false)?;
 		Self::can_deposit(asset, &dest, amount.saturating_add(extra)).into_result()?;
 		let actual = Self::burn_from(asset, source, amount)?;
 		debug_assert!(actual == amount.saturating_add(extra), "can_withdraw must agree with withdraw; qed");
@@ -130,14 +155,35 @@ pub trait Mutate<AccountId>: Inspect<AccountId> {
 
 /// Trait for providing a set of named fungible assets which can only be transferred.
 pub trait Transfer<AccountId>: Inspect<AccountId> {
-	/// Transfer funds from one account into another.
+	/// Transfer `amount` of `asset` from `source` account into `dest`, possibly transferring a
+	/// little more depending on the value of `death`.
+	///
+	/// If successful, will return the amount transferred, which will never be less than `amount`.
+	/// On error, nothing will be done and an `Err` returned.
 	fn transfer(
 		asset: Self::AssetId,
 		source: &AccountId,
 		dest: &AccountId,
 		amount: Self::Balance,
-		keep_alive: bool,
+		death: WhenDust,
 	) -> Result<Self::Balance, DispatchError>;
+
+	/// Transfer `amount` of `asset` from `source` account into `dest`, or as much of it that are
+	/// available for transfer, possibly transferring a little more depending on the value of
+	/// `death`.
+	///
+	/// If successful, will return the amount transferred. On error, nothing will be done and an
+	/// `Err` returned.
+	fn transfer_best_effort(
+		asset: Self::AssetId,
+		source: &AccountId,
+		dest: &AccountId,
+		amount: Self::Balance,
+		death: WhenDust,
+	) -> Result<Self::Balance, DispatchError> {
+		let possible = Self::reducible_balance(asset, source, death.keep_alive());
+		Self::transfer(asset, source, dest, amount.min(possible), death)
+	}
 }
 
 /// Trait for inspecting a set of named fungible assets which can be placed on hold.
@@ -147,10 +193,25 @@ pub trait InspectHold<AccountId>: Inspect<AccountId> {
 
 	/// Check to see if some `amount` of `asset` may be held on the account of `who`.
 	fn can_hold(asset: Self::AssetId, who: &AccountId, amount: Self::Balance) -> bool;
+
+	/// Return the amount of `asset` which can be reduced of account `who` from the part of their
+	/// account balance on hold.
+	///
+	/// Generally, this should be the same as `balance_on_hold`, but if the account is frozen or
+	/// has somehow had its balance reduced below that which is on hold, then it may be less.
+	///
+	/// If your type implements `InspectWithoutFreezer`, then this can generally be
+	/// implemented very simply with:
+	///
+	/// ```nocompile
+	/// <Self as InspectWithoutFreezer<_>>::reducible_balance(asset, who, true)
+	///     .min(Self::balance_on_hold(asset, who))
+	/// ```
+	fn reducible_balance_on_hold(asset: Self::AssetId, who: &AccountId) -> Self::Balance;
 }
 
 /// Trait for mutating a set of named fungible assets which can be placed on hold.
-pub trait MutateHold<AccountId>: InspectHold<AccountId> + Transfer<AccountId> {
+pub trait MutateHold<AccountId>: InspectHold<AccountId> {
 	/// Hold some funds in an account.
 	fn hold(asset: Self::AssetId, who: &AccountId, amount: Self::Balance) -> DispatchResult;
 
@@ -161,14 +222,11 @@ pub trait MutateHold<AccountId>: InspectHold<AccountId> + Transfer<AccountId> {
 	fn release(asset: Self::AssetId, who: &AccountId, amount: Self::Balance, best_effort: bool)
 		-> Result<Self::Balance, DispatchError>;
 
-	/// Transfer held funds into a destination account.
+	/// Transfer exactly `amount` of `asset` from `source` account into `dest`.
 	///
 	/// If `on_hold` is `true`, then the destination account must already exist and the assets
 	/// transferred will still be on hold in the destination account. If not, then the destination
 	/// account need not already exist, but must be creatable.
-	///
-	/// If `best_effort` is `true`, then an amount less than `amount` may be transferred without
-	/// error.
 	///
 	/// The actual amount transferred is returned, or `Err` in the case of error and nothing is
 	/// changed.
@@ -177,34 +235,26 @@ pub trait MutateHold<AccountId>: InspectHold<AccountId> + Transfer<AccountId> {
 		source: &AccountId,
 		dest: &AccountId,
 		amount: Self::Balance,
-		best_effort: bool,
 		on_hold: bool,
 	) -> Result<Self::Balance, DispatchError>;
-}
 
-/// Trait for mutating one of several types of fungible assets which can be held.
-pub trait BalancedHold<AccountId>: Balanced<AccountId> + MutateHold<AccountId> {
-	/// Release and slash some funds in an account.
+	/// Transfer as much as possible of `asset` on hold in `source` account, up to `amount`, into
+	/// `dest` account.
 	///
-	/// The resulting imbalance is the first item of the tuple returned.
+	/// If `on_hold` is `true`, then the destination account must already exist and the assets
+	/// transferred will still be on hold in the destination account. If not, then the destination
+	/// account need not already exist, but must be creatable.
 	///
-	/// As much funds up to `amount` will be deducted as possible. If this is less than `amount`,
-	/// then a non-zero second item will be returned.
-	fn slash_held(asset: Self::AssetId, who: &AccountId, amount: Self::Balance)
-		-> (CreditOf<AccountId, Self>, Self::Balance);
-}
-
-impl<
-	AccountId,
-	T: Balanced<AccountId> + MutateHold<AccountId>,
-> BalancedHold<AccountId> for T {
-	fn slash_held(asset: Self::AssetId, who: &AccountId, amount: Self::Balance)
-		-> (CreditOf<AccountId, Self>, Self::Balance)
-	{
-		let actual = match Self::release(asset, who, amount, true) {
-			Ok(x) => x,
-			Err(_) => return (Imbalance::zero(asset), amount),
-		};
-		<Self as fungibles::Balanced<AccountId>>::slash(asset, who, actual)
+	/// The actual amount transferred is returned, or `Err` in the case of error and nothing is
+	/// changed.
+	fn transfer_best_effort_held(
+		asset: Self::AssetId,
+		source: &AccountId,
+		dest: &AccountId,
+		amount: Self::Balance,
+		on_hold: bool,
+	) -> Result<Self::Balance, DispatchError> {
+		let possible = Self::reducible_balance_on_hold(asset, source);
+		Self::transfer_held(asset, source, dest, amount.min(possible), on_hold)
 	}
 }

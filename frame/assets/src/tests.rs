@@ -231,7 +231,7 @@ fn min_balance_should_work() {
 		assert_eq!(Assets::balance(0, 1), 100);
 		assert_eq!(Asset::<Test>::get(0).unwrap().accounts, 1);
 
-		assert_ok!(Assets::burn(Origin::signed(1), 0, 1, 91));
+		assert_ok!(Assets::slash(Origin::signed(1), 0, 1, 91));
 		assert!(Assets::balance(0, 1).is_zero());
 		assert_eq!(Asset::<Test>::get(0).unwrap().accounts, 0);
 	});
@@ -250,7 +250,7 @@ fn querying_total_supply_should_work() {
 		assert_eq!(Assets::balance(0, 1), 50);
 		assert_eq!(Assets::balance(0, 2), 19);
 		assert_eq!(Assets::balance(0, 3), 31);
-		assert_ok!(Assets::burn(Origin::signed(1), 0, 3, u64::max_value()));
+		assert_ok!(Assets::slash(Origin::signed(1), 0, 3, u64::max_value()));
 		assert_eq!(Assets::total_supply(0), 69);
 	});
 }
@@ -316,7 +316,7 @@ fn origin_guards_should_work() {
 		assert_noop!(Assets::freeze(Origin::signed(2), 0, 1), Error::<Test>::NoPermission);
 		assert_noop!(Assets::thaw(Origin::signed(2), 0, 2), Error::<Test>::NoPermission);
 		assert_noop!(Assets::mint(Origin::signed(2), 0, 2, 100), Error::<Test>::NoPermission);
-		assert_noop!(Assets::burn(Origin::signed(2), 0, 1, 100), Error::<Test>::NoPermission);
+		assert_noop!(Assets::slash(Origin::signed(2), 0, 1, 100), Error::<Test>::NoPermission);
 		assert_noop!(Assets::force_transfer(Origin::signed(2), 0, 1, 2, 100), Error::<Test>::NoPermission);
 		let w = Asset::<Test>::get(0).unwrap().destroy_witness();
 		assert_noop!(Assets::destroy(Origin::signed(2), 0, w), Error::<Test>::NoPermission);
@@ -356,7 +356,7 @@ fn set_team_should_work() {
 		assert_ok!(Assets::freeze(Origin::signed(4), 0, 2));
 		assert_ok!(Assets::thaw(Origin::signed(3), 0, 2));
 		assert_ok!(Assets::force_transfer(Origin::signed(3), 0, 2, 3, 100));
-		assert_ok!(Assets::burn(Origin::signed(3), 0, 3, 100));
+		assert_ok!(Assets::slash(Origin::signed(3), 0, 3, 100));
 	});
 }
 
@@ -383,7 +383,7 @@ fn transferring_amount_more_than_available_balance_should_not_work() {
 		assert_ok!(Assets::transfer(Origin::signed(1), 0, 2, 50));
 		assert_eq!(Assets::balance(0, 1), 50);
 		assert_eq!(Assets::balance(0, 2), 50);
-		assert_ok!(Assets::burn(Origin::signed(1), 0, 1, u64::max_value()));
+		assert_ok!(Assets::slash(Origin::signed(1), 0, 1, u64::max_value()));
 		assert_eq!(Assets::balance(0, 1), 0);
 		assert_noop!(Assets::transfer(Origin::signed(1), 0, 1, 50), Error::<Test>::BalanceLow);
 		assert_noop!(Assets::transfer(Origin::signed(2), 0, 1, 51), Error::<Test>::BalanceLow);
@@ -417,7 +417,7 @@ fn burning_asset_balance_with_positive_balance_should_work() {
 		assert_ok!(Assets::force_create(Origin::root(), 0, 1, true, 1));
 		assert_ok!(Assets::mint(Origin::signed(1), 0, 1, 100));
 		assert_eq!(Assets::balance(0, 1), 100);
-		assert_ok!(Assets::burn(Origin::signed(1), 0, 1, u64::max_value()));
+		assert_ok!(Assets::slash(Origin::signed(1), 0, 1, u64::max_value()));
 		assert_eq!(Assets::balance(0, 1), 0);
 	});
 }
@@ -428,7 +428,7 @@ fn burning_asset_balance_with_zero_balance_does_nothing() {
 		assert_ok!(Assets::force_create(Origin::root(), 0, 1, true, 1));
 		assert_ok!(Assets::mint(Origin::signed(1), 0, 1, 100));
 		assert_eq!(Assets::balance(0, 2), 0);
-		assert_ok!(Assets::burn(Origin::signed(1), 0, 2, u64::max_value()));
+		assert_ok!(Assets::slash(Origin::signed(1), 0, 2, u64::max_value()));
 		assert_eq!(Assets::balance(0, 2), 0);
 		assert_eq!(Assets::total_supply(0), 100);
 	});
@@ -519,7 +519,6 @@ fn freezer_should_work() {
 		// and if we clear it, we can remove the account completely.
 		clear_frozen_balance(0, 1);
 		assert_ok!(Assets::transfer(Origin::signed(1), 0, 2, 50));
-		assert_eq!(hooks(), vec![Hook::Died(0, 1)]);
 	});
 }
 

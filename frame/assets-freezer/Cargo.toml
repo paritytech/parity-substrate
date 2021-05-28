@@ -1,0 +1,48 @@
+[package]
+name = "pallet-assets-freezer"
+version = "3.0.0"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2018"
+license = "Apache-2.0"
+homepage = "https://substrate.dev"
+repository = "https://github.com/paritytech/substrate/"
+description = "Extension pallet for managing frozen assets"
+readme = "README.md"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+serde = { version = "1.0.101", optional = true }
+codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false }
+sp-std = { version = "3.0.0", default-features = false, path = "../../primitives/std" }
+sp-runtime = { version = "3.0.0", default-features = false, path = "../../primitives/runtime" }
+frame-support = { version = "3.0.0", default-features = false, path = "../support" }
+frame-system = { version = "3.0.0", default-features = false, path = "../system" }
+frame-benchmarking = { version = "3.1.0", default-features = false, path = "../benchmarking", optional = true }
+
+[dev-dependencies]
+sp-core = { version = "3.0.0", path = "../../primitives/core" }
+sp-std = { version = "3.0.0", path = "../../primitives/std" }
+sp-io = { version = "3.0.0", path = "../../primitives/io" }
+pallet-balances = { version = "3.0.0", path = "../balances" }
+pallet-assets = { version = "3.0.0", default-features = false, path = "../assets" }
+
+[features]
+default = ["std"]
+std = [
+	"serde",
+	"codec/std",
+	"sp-std/std",
+	"sp-runtime/std",
+	"frame-support/std",
+	"frame-system/std",
+	"frame-benchmarking/std",
+	"pallet-assets/std",
+]
+runtime-benchmarks = [
+	"frame-benchmarking",
+	"sp-runtime/runtime-benchmarks",
+	"frame-system/runtime-benchmarks",
+]
+try-runtime = ["frame-support/try-runtime"]

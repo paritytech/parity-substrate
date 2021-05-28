@@ -63,6 +63,7 @@ members = [
 	"client/transaction-pool",
 	"client/transaction-pool/graph",
 	"frame/assets",
+	"frame/assets-freezer",
 	"frame/atomic-swap",
 	"frame/aura",
 	"frame/authority-discovery",

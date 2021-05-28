@@ -164,8 +164,9 @@ use frame_support::{
 		Currency, OnUnbalanced, TryDrop, StoredMap,
 		WithdrawReasons, LockIdentifier, LockableCurrency, ExistenceRequirement,
 		Imbalance, SignedImbalance, ReservableCurrency, Get, ExistenceRequirement::KeepAlive,
-		ExistenceRequirement::AllowDeath,
-		tokens::{fungible, DepositConsequence, WithdrawConsequence, BalanceStatus as Status}
+		ExistenceRequirement::AllowDeath, tokens::{
+			fungible, DepositConsequence, WithdrawConsequence, BalanceStatus as Status, WhenDust
+		}
 	}
 };
 #[cfg(feature = "std")]
@@ -948,7 +949,8 @@ impl<T: Config<I>, I: 'static> fungible::Inspect<T::AccountId> for Pallet<T, I> 
 	fn can_deposit(who: &T::AccountId, amount: Self::Balance) -> DepositConsequence {
 		Self::deposit_consequence(who, amount, &Self::account(who))
 	}
-	fn can_withdraw(who: &T::AccountId, amount: Self::Balance) -> WithdrawConsequence<Self::Balance> {
+	fn can_withdraw(who: &T::AccountId, amount: Self::Balance) -> WithdrawConsequence<Self::Balance>
+	{
 		Self::withdraw_consequence(who, amount, &Self::account(who))
 	}
 }
@@ -968,7 +970,7 @@ impl<T: Config<I>, I: 'static> fungible::Mutate<T::AccountId> for Pallet<T, I> {
 	fn burn_from(who: &T::AccountId, amount: Self::Balance) -> Result<Self::Balance, DispatchError> {
 		if amount.is_zero() { return Ok(Self::Balance::zero()); }
 		let actual = Self::try_mutate_account(who, |account, _is_new| -> Result<T::Balance, DispatchError> {
-			let extra = Self::withdraw_consequence(who, amount, &account).into_result()?;
+			let extra = Self::withdraw_consequence(who, amount, &account).into_result(false)?;
 			let actual = amount + extra;
 			account.free -= actual;
 			Ok(actual)
@@ -983,9 +985,9 @@ impl<T: Config<I>, I: 'static> fungible::Transfer<T::AccountId> for Pallet<T, I>
 		source: &T::AccountId,
 		dest: &T::AccountId,
 		amount: T::Balance,
-		keep_alive: bool,
+		death: WhenDust,
 	) -> Result<T::Balance, DispatchError> {
-		let er = if keep_alive { KeepAlive } else { AllowDeath };
+		let er = if death.keep_alive() { KeepAlive } else { AllowDeath };
 		<Self as Currency::<T::AccountId>>::transfer(source, dest, amount, er)
 			.map(|_| amount)
 	}
@@ -1018,6 +1020,9 @@ impl<T: Config<I>, I: 'static> fungible::InspectHold<T::AccountId> for Pallet<T,
 		};
 		a.free >= required_free
 	}
+	fn reducible_balance_on_hold(who: &T::AccountId) -> Self::Balance {
+		Self::balance_on_hold(who)
+	}
 }
 impl<T: Config<I>, I: 'static> fungible::MutateHold<T::AccountId> for Pallet<T, I> {
 	fn hold(who: &T::AccountId, amount: Self::Balance) -> DispatchResult {
@@ -1048,11 +1053,10 @@ impl<T: Config<I>, I: 'static> fungible::MutateHold<T::AccountId> for Pallet<T, 
 		source: &T::AccountId,
 		dest: &T::AccountId,
 		amount: Self::Balance,
-		best_effort: bool,
 		on_hold: bool,
 	) -> Result<Self::Balance, DispatchError> {
 		let status = if on_hold { Status::Reserved } else { Status::Free };
-		Self::do_transfer_reserved(source, dest, amount, best_effort, status)
+		Self::do_transfer_reserved(source, dest, amount, false, status)
 	}
 }
 

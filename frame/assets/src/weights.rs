@@ -48,7 +48,7 @@ pub trait WeightInfo {
 	fn force_create() -> Weight;
 	fn destroy(c: u32, s: u32, a: u32, ) -> Weight;
 	fn mint() -> Weight;
-	fn burn() -> Weight;
+	fn slash() -> Weight;
 	fn transfer() -> Weight;
 	fn transfer_keep_alive() -> Weight;
 	fn force_transfer() -> Weight;
@@ -103,7 +103,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(2 as Weight))
 			.saturating_add(T::DbWeight::get().writes(2 as Weight))
 	}
-	fn burn() -> Weight {
+	fn slash() -> Weight {
 		(46_000_000 as Weight)
 			.saturating_add(T::DbWeight::get().reads(2 as Weight))
 			.saturating_add(T::DbWeight::get().writes(2 as Weight))
@@ -237,7 +237,7 @@ impl WeightInfo for () {
 			.saturating_add(RocksDbWeight::get().reads(2 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(2 as Weight))
 	}
-	fn burn() -> Weight {
+	fn slash() -> Weight {
 		(46_000_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(2 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(2 as Weight))
