@@ -50,19 +50,28 @@ pub(crate) fn initialize_transport(
 	let transport = transport.or_transport({
 		let inner = block_on(libp2p::dns::DnsConfig::system(libp2p::tcp::TcpConfig::new()))?;
 		libp2p::websocket::framed::WsConfig::new(inner).and_then(|connec, _| {
+			log::info!(target: "telemetry", "Setting up a connection");
 			let connec = connec
 				.with(|item| {
 					let item = libp2p::websocket::framed::OutgoingData::Binary(item);
 					future::ready(Ok::<_, io::Error>(item))
 				})
-				.try_filter(|item| future::ready(item.is_data()))
+				.try_filter(|incoming| {
+					log::info!(target: "telemetry", "Incoming data from libp2p: {:?}", incoming);
+					future::ready(incoming.is_close())
+				})
+				// The `wasm_ext::ExtTransport` only supports `Stream`s that
+				// yield `Vec<u8>`, so in order to support telemetry when
+				// running in a browser we have to pretend the
+				// `IncomingData::Closed` is bytes (which means we only use the
+				// reason code).
 				.map_ok(|data| data.into_bytes());
 			future::ready(Ok::<_, io::Error>(connec))
 		})
 	});
 
 	Ok(TransportTimeout::new(
-		transport.map(|out, _| {
+		transport.map(|out, _dialer| {
 			let out = out
 				.map_err(|err| io::Error::new(io::ErrorKind::Other, err))
 				.sink_map_err(|err| io::Error::new(io::ErrorKind::Other, err));
@@ -81,7 +90,7 @@ impl<T: ?Sized + Stream + Sink<I>, I> StreamAndSink<I> for T {}
 pub(crate) type WsTrans = libp2p::core::transport::Boxed<
 	Pin<
 		Box<
-			dyn StreamAndSink<Vec<u8>, Item = Result<Vec<u8>, io::Error>, Error = io::Error> + Send,
+			dyn StreamAndSink<Vec<u8>, Error = io::Error, Item = Result<Vec<u8>, io::Error>> + Send,
 		>,
 	>,
 >;
@@ -101,7 +110,7 @@ impl<T> From<T> for StreamSink<T> {
 }
 
 impl<T: AsyncRead> Stream for StreamSink<T> {
-	type Item = Result<Vec<u8>, io::Error>;
+type Item = Result<Vec<u8>, io::Error>;
 
 	fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
 		let this = self.project();
