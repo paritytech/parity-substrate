@@ -34,7 +34,8 @@ where
 		.build(from.as_ref())
 		.await
 		.map_err(|e| format!("`WsClientBuilder` failed to build do to {:?}", e))?;
-	client.request::<B::Header>("chain_getHeader", JsonRpcParams::Array(params))
+	client
+		.request::<B::Header>("chain_getHeader", JsonRpcParams::Array(params))
 		.await
 		.map_err(|e| format!("chain_getHeader request failed due to {:?}", e))
 }
@@ -47,7 +48,8 @@ pub async fn get_finalized_head<B: BlockT, S: AsRef<str>>(from: S) -> Result<B::
 		.build(from.as_ref())
 		.await
 		.map_err(|e| format!("`WsClientBuilder` failed to build do to {:?}", e))?;
-	client.request::<B::Hash>("chain_getFinalizedHead", JsonRpcParams::NoParams)
+	client
+		.request::<B::Hash>("chain_getFinalizedHead", JsonRpcParams::NoParams)
 		.await
 		.map_err(|e| format!("chain_getFinalizedHead request failed due to {:?}", e))
 }

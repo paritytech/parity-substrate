@@ -15,23 +15,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::Arc;
-use crate::BenchmarkCmd;
+use std::{fmt::Debug, sync::Arc};
+
 use codec::{Decode, Encode};
 use frame_benchmarking::{Analysis, BenchmarkBatch, BenchmarkSelector};
-use sc_cli::{SharedParams, CliConfiguration, ExecutionStrategy, Result};
+use sc_cli::{CliConfiguration, ExecutionStrategy, Result, SharedParams};
 use sc_client_db::BenchmarkingState;
 use sc_executor::NativeExecutor;
-use sp_state_machine::StateMachine;
-use sp_externalities::Extensions;
 use sc_service::{Configuration, NativeExecutionDispatch};
+use sp_core::offchain::{testing::TestOffchainExt, OffchainWorkerExt};
+use sp_externalities::Extensions;
+use sp_keystore::{testing::KeyStore, KeystoreExt, SyncCryptoStorePtr};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
-use sp_core::offchain::{OffchainWorkerExt, testing::TestOffchainExt};
-use sp_keystore::{
-	SyncCryptoStorePtr, KeystoreExt,
-	testing::KeyStore,
-};
-use std::fmt::Debug;
+use sp_state_machine::StateMachine;
+
+use crate::BenchmarkCmd;
 
 impl BenchmarkCmd {
 	/// Runs the command and benchmarks the chain.
@@ -44,16 +42,20 @@ impl BenchmarkCmd {
 	{
 		if let Some(output_path) = &self.output {
 			if !output_path.is_dir() && output_path.file_name().is_none() {
-				return Err("Output file or path is invalid!".into())
+				return Err("Output file or path is invalid!".into());
 			}
 		}
 
 		if let Some(header_file) = &self.header {
-			if !header_file.is_file() { return Err("Header file is invalid!".into()) };
+			if !header_file.is_file() {
+				return Err("Header file is invalid!".into());
+			};
 		}
 
 		if let Some(handlebars_template_file) = &self.template {
-			if !handlebars_template_file.is_file() { return Err("Handlebars template file is invalid!".into()) };
+			if !handlebars_template_file.is_file() {
+				return Err("Handlebars template file is invalid!".into());
+			};
 		}
 
 		let spec = config.chain_spec;
@@ -90,7 +92,8 @@ impl BenchmarkCmd {
 				self.repeat,
 				!self.no_verify,
 				self.extra,
-			).encode(),
+			)
+				.encode(),
 			extensions,
 			&sp_state_machine::backend::BackendRuntimeCode::new(&state).runtime_code()?,
 			sp_core::testing::TaskExecutor::new(),
@@ -98,8 +101,9 @@ impl BenchmarkCmd {
 		.execute(strategy.into())
 		.map_err(|e| format!("Error executing runtime benchmark: {:?}", e))?;
 
-		let results = <std::result::Result<Vec<BenchmarkBatch>, String> as Decode>::decode(&mut &result[..])
-			.map_err(|e| format!("Failed to decode benchmark results: {:?}", e))?;
+		let results =
+			<std::result::Result<Vec<BenchmarkBatch>, String> as Decode>::decode(&mut &result[..])
+				.map_err(|e| format!("Failed to decode benchmark results: {:?}", e))?;
 
 		match results {
 			Ok(batches) => {
@@ -120,11 +124,16 @@ impl BenchmarkCmd {
 					);
 
 					// Skip raw data + analysis if there are no results
-					if batch.results.is_empty() { continue }
+					if batch.results.is_empty() {
+						continue;
+					}
 
 					if self.raw_data {
 						// Print the table header
-						batch.results[0].components.iter().for_each(|param| print!("{:?},", param.0));
+						batch.results[0]
+							.components
+							.iter()
+							.for_each(|param| print!("{:?},", param.0));
 
 						print!("extrinsic_time_ns,storage_root_time_ns,reads,repeat_reads,writes,repeat_writes,proof_size_bytes\n");
 						// Print the values
@@ -132,7 +141,8 @@ impl BenchmarkCmd {
 							let parameters = &result.components;
 							parameters.iter().for_each(|param| print!("{:?},", param.1));
 							// Print extrinsic time and storage root time
-							print!("{:?},{:?},{:?},{:?},{:?},{:?},{:?}\n",
+							print!(
+								"{:?},{:?},{:?},{:?},{:?},{:?},{:?}\n",
 								result.extrinsic_time,
 								result.storage_root_time,
 								result.reads,
@@ -149,30 +159,44 @@ impl BenchmarkCmd {
 					// Conduct analysis.
 					if !self.no_median_slopes {
 						println!("Median Slopes Analysis\n========");
-						if let Some(analysis) = Analysis::median_slopes(&batch.results, BenchmarkSelector::ExtrinsicTime) {
+						if let Some(analysis) = Analysis::median_slopes(
+							&batch.results,
+							BenchmarkSelector::ExtrinsicTime,
+						) {
 							println!("-- Extrinsic Time --\n{}", analysis);
 						}
-						if let Some(analysis) = Analysis::median_slopes(&batch.results, BenchmarkSelector::Reads) {
+						if let Some(analysis) =
+							Analysis::median_slopes(&batch.results, BenchmarkSelector::Reads)
+						{
 							println!("Reads = {:?}", analysis);
 						}
-						if let Some(analysis) = Analysis::median_slopes(&batch.results, BenchmarkSelector::Writes) {
+						if let Some(analysis) =
+							Analysis::median_slopes(&batch.results, BenchmarkSelector::Writes)
+						{
 							println!("Writes = {:?}", analysis);
 						}
 					}
 					if !self.no_min_squares {
 						println!("Min Squares Analysis\n========");
-						if let Some(analysis) = Analysis::min_squares_iqr(&batch.results, BenchmarkSelector::ExtrinsicTime) {
+						if let Some(analysis) = Analysis::min_squares_iqr(
+							&batch.results,
+							BenchmarkSelector::ExtrinsicTime,
+						) {
 							println!("-- Extrinsic Time --\n{}", analysis);
 						}
-						if let Some(analysis) = Analysis::min_squares_iqr(&batch.results, BenchmarkSelector::Reads) {
+						if let Some(analysis) =
+							Analysis::min_squares_iqr(&batch.results, BenchmarkSelector::Reads)
+						{
 							println!("Reads = {:?}", analysis);
 						}
-						if let Some(analysis) = Analysis::min_squares_iqr(&batch.results, BenchmarkSelector::Writes) {
+						if let Some(analysis) =
+							Analysis::min_squares_iqr(&batch.results, BenchmarkSelector::Writes)
+						{
 							println!("Writes = {:?}", analysis);
 						}
 					}
 				}
-			},
+			}
 			Err(error) => eprintln!("Error: {}", error),
 		}
 

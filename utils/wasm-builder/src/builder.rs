@@ -15,7 +15,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{env, path::{PathBuf, Path}, process};
+use std::{
+	env,
+	path::{Path, PathBuf},
+	process,
+};
 
 /// Returns the manifest dir from the `CARGO_MANIFEST_DIR` env.
 fn get_manifest_dir() -> PathBuf {
@@ -50,10 +54,7 @@ impl WasmBuilderSelectProject {
 	/// Use the given `path` as project for building the WASM binary.
 	///
 	/// Returns an error if the given `path` does not points to a `Cargo.toml`.
-	pub fn with_project(
-		self,
-		path: impl Into<PathBuf>,
-	) -> Result<WasmBuilder, &'static str> {
+	pub fn with_project(self, path: impl Into<PathBuf>) -> Result<WasmBuilder, &'static str> {
 		let path = path.into();
 
 		if path.ends_with("Cargo.toml") && path.exists() {
@@ -97,9 +98,7 @@ pub struct WasmBuilder {
 impl WasmBuilder {
 	/// Create a new instance of the builder.
 	pub fn new() -> WasmBuilderSelectProject {
-		WasmBuilderSelectProject {
-			_ignore: (),
-		}
+		WasmBuilderSelectProject { _ignore: () }
 	}
 
 	/// Enable exporting `__heap_base` as global variable in the WASM binary.
@@ -147,9 +146,8 @@ impl WasmBuilder {
 	/// Build the WASM binary.
 	pub fn build(self) {
 		let out_dir = PathBuf::from(env::var("OUT_DIR").expect("`OUT_DIR` is set by cargo!"));
-		let file_path = out_dir.join(
-			self.file_name.clone().unwrap_or_else(|| "wasm_binary.rs".into()),
-		);
+		let file_path =
+			out_dir.join(self.file_name.clone().unwrap_or_else(|| "wasm_binary.rs".into()));
 
 		if check_skip_build() {
 			// If we skip the build, we still want to make sure to be called when an env variable
@@ -179,13 +177,17 @@ impl WasmBuilder {
 fn generate_crate_skip_build_env_name() -> String {
 	format!(
 		"SKIP_{}_WASM_BUILD",
-		env::var("CARGO_PKG_NAME").expect("Package name is set").to_uppercase().replace('-', "_"),
+		env::var("CARGO_PKG_NAME")
+			.expect("Package name is set")
+			.to_uppercase()
+			.replace('-', "_"),
 	)
 }
 
 /// Checks if the build of the WASM binary should be skipped.
 fn check_skip_build() -> bool {
-	env::var(crate::SKIP_BUILD_ENV).is_ok() || env::var(generate_crate_skip_build_env_name()).is_ok()
+	env::var(crate::SKIP_BUILD_ENV).is_ok() ||
+		env::var(generate_crate_skip_build_env_name()).is_ok()
 }
 
 /// Provide a dummy WASM binary if there doesn't exist one.
@@ -231,7 +233,7 @@ fn build_project(
 		Err(err_msg) => {
 			eprintln!("{}", err_msg);
 			process::exit(1);
-		},
+		}
 	};
 
 	let (wasm_binary, bloaty) = crate::wasm_project::create_and_compile(
@@ -243,15 +245,9 @@ fn build_project(
 	);
 
 	let (wasm_binary, wasm_binary_bloaty) = if let Some(wasm_binary) = wasm_binary {
-		(
-			wasm_binary.wasm_binary_path_escaped(),
-			bloaty.wasm_binary_bloaty_path_escaped(),
-		)
+		(wasm_binary.wasm_binary_path_escaped(), bloaty.wasm_binary_bloaty_path_escaped())
 	} else {
-		(
-			bloaty.wasm_binary_bloaty_path_escaped(),
-			bloaty.wasm_binary_bloaty_path_escaped(),
-		)
+		(bloaty.wasm_binary_bloaty_path_escaped(), bloaty.wasm_binary_bloaty_path_escaped())
 	};
 
 	crate::write_file_if_changed(

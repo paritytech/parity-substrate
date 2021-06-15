@@ -20,27 +20,21 @@
 use std::sync::Arc;
 
 use codec::{self, Codec, Decode, Encode};
-use sc_client_api::light::{future_header, RemoteBlockchain, Fetcher, RemoteCallRequest};
+pub use frame_system_rpc_runtime_api::AccountNonceApi;
+use futures::future::{ready, TryFutureExt};
 use jsonrpc_core::{
+	futures::future::{self as rpc_future, result, Future},
 	Error as RpcError, ErrorCode,
-	futures::future::{self as rpc_future,result, Future},
 };
 use jsonrpc_derive::rpc;
-use futures::future::{ready, TryFutureExt};
-use sp_blockchain::{
-	HeaderBackend,
-	Error as ClientError
-};
-use sp_runtime::{
-	generic::BlockId,
-	traits,
-};
-use sp_core::{hexdisplay::HexDisplay, Bytes};
-use sp_transaction_pool::{TransactionPool, InPoolTransaction};
-use sp_block_builder::BlockBuilder;
+use sc_client_api::light::{future_header, Fetcher, RemoteBlockchain, RemoteCallRequest};
 use sc_rpc_api::DenyUnsafe;
+use sp_block_builder::BlockBuilder;
+use sp_blockchain::{Error as ClientError, HeaderBackend};
+use sp_core::{hexdisplay::HexDisplay, Bytes};
+use sp_runtime::{generic::BlockId, traits};
+use sp_transaction_pool::{InPoolTransaction, TransactionPool};
 
-pub use frame_system_rpc_runtime_api::AccountNonceApi;
 pub use self::gen_client::Client as SystemClient;
 
 /// Future that resolves to account nonce.
@@ -89,13 +83,8 @@ pub struct FullSystem<P: TransactionPool, C, B> {
 
 impl<P: TransactionPool, C, B> FullSystem<P, C, B> {
 	/// Create new `FullSystem` given client and transaction pool.
-	pub fn new(client: Arc<C>, pool: Arc<P>, deny_unsafe: DenyUnsafe,) -> Self {
-		FullSystem {
-			client,
-			pool,
-			deny_unsafe,
-			_marker: Default::default(),
-		}
+	pub fn new(client: Arc<C>, pool: Arc<P>, deny_unsafe: DenyUnsafe) -> Self {
+		FullSystem { client, pool, deny_unsafe, _marker: Default::default() }
 	}
 }
 
@@ -130,7 +119,11 @@ where
 		Box::new(result(get_nonce()))
 	}
 
-	fn dry_run(&self, extrinsic: Bytes, at: Option<<Block as traits::Block>::Hash>) -> FutureResult<Bytes> {
+	fn dry_run(
+		&self,
+		extrinsic: Bytes,
+		at: Option<<Block as traits::Block>::Hash>,
+	) -> FutureResult<Bytes> {
 		if let Err(err) = self.deny_unsafe.check_if_safe() {
 			return Box::new(rpc_future::err(err.into()));
 		}
@@ -139,25 +132,23 @@ where
 			let api = self.client.runtime_api();
 			let at = BlockId::<Block>::hash(at.unwrap_or_else(||
 				// If the block hash is not supplied assume the best block.
-				self.client.info().best_hash
-			));
+				self.client.info().best_hash));
 
-			let uxt: <Block as traits::Block>::Extrinsic = Decode::decode(&mut &*extrinsic).map_err(|e| RpcError {
-				code: ErrorCode::ServerError(Error::DecodeError.into()),
-				message: "Unable to dry run extrinsic.".into(),
-				data: Some(format!("{:?}", e).into()),
-			})?;
-
-			let result = api.apply_extrinsic(&at, uxt)
+			let uxt: <Block as traits::Block>::Extrinsic = Decode::decode(&mut &*extrinsic)
 				.map_err(|e| RpcError {
-					code: ErrorCode::ServerError(Error::RuntimeError.into()),
+					code: ErrorCode::ServerError(Error::DecodeError.into()),
 					message: "Unable to dry run extrinsic.".into(),
 					data: Some(format!("{:?}", e).into()),
 				})?;
 
+			let result = api.apply_extrinsic(&at, uxt).map_err(|e| RpcError {
+				code: ErrorCode::ServerError(Error::RuntimeError.into()),
+				message: "Unable to dry run extrinsic.".into(),
+				data: Some(format!("{:?}", e).into()),
+			})?;
+
 			Ok(Encode::encode(&result).into())
 		};
-
 
 		Box::new(result(dry_run()))
 	}
@@ -179,12 +170,7 @@ impl<P: TransactionPool, C, F, Block> LightSystem<P, C, F, Block> {
 		fetcher: Arc<F>,
 		pool: Arc<P>,
 	) -> Self {
-		LightSystem {
-			client,
-			remote_blockchain,
-			fetcher,
-			pool,
-		}
+		LightSystem { client, remote_blockchain, fetcher, pool }
 	}
 }
 
@@ -205,21 +191,27 @@ where
 		let future_best_header = future_header(&*self.remote_blockchain, &*self.fetcher, best_id);
 		let fetcher = self.fetcher.clone();
 		let call_data = account.encode();
-		let future_best_header = future_best_header
-			.and_then(move |maybe_best_header| ready(
-				maybe_best_header.ok_or_else(|| { ClientError::UnknownBlock(format!("{}", best_hash)) })
-			));
-		let future_nonce = future_best_header.and_then(move |best_header|
-			fetcher.remote_call(RemoteCallRequest {
-				block: best_hash,
-				header: best_header,
-				method: "AccountNonceApi_account_nonce".into(),
-				call_data,
-				retry_count: None,
+		let future_best_header = future_best_header.and_then(move |maybe_best_header| {
+			ready(
+				maybe_best_header
+					.ok_or_else(|| ClientError::UnknownBlock(format!("{}", best_hash))),
+			)
+		});
+		let future_nonce = future_best_header
+			.and_then(move |best_header| {
+				fetcher.remote_call(RemoteCallRequest {
+					block: best_hash,
+					header: best_header,
+					method: "AccountNonceApi_account_nonce".into(),
+					call_data,
+					retry_count: None,
+				})
 			})
-		).compat();
-		let future_nonce = future_nonce.and_then(|nonce| Decode::decode(&mut &nonce[..])
-			.map_err(|e| ClientError::CallResultDecode("Cannot decode account nonce", e)));
+			.compat();
+		let future_nonce = future_nonce.and_then(|nonce| {
+			Decode::decode(&mut &nonce[..])
+				.map_err(|e| ClientError::CallResultDecode("Cannot decode account nonce", e))
+		});
 		let future_nonce = future_nonce.map_err(|e| RpcError {
 			code: ErrorCode::ServerError(Error::RuntimeError.into()),
 			message: "Unable to query nonce.".into(),
@@ -232,7 +224,11 @@ where
 		Box::new(future_nonce)
 	}
 
-	fn dry_run(&self, _extrinsic: Bytes, _at: Option<<Block as traits::Block>::Hash>) -> FutureResult<Bytes> {
+	fn dry_run(
+		&self,
+		_extrinsic: Bytes,
+		_at: Option<<Block as traits::Block>::Hash>,
+	) -> FutureResult<Bytes> {
 		Box::new(result(Err(RpcError {
 			code: ErrorCode::MethodNotFound,
 			message: "Unable to dry run extrinsic.".into(),
@@ -243,11 +239,8 @@ where
 
 /// Adjust account nonce from state, so that tx with the nonce will be
 /// placed after all ready txpool transactions.
-fn adjust_nonce<P, AccountId, Index>(
-	pool: &P,
-	account: AccountId,
-	nonce: Index,
-) -> Index where
+fn adjust_nonce<P, AccountId, Index>(pool: &P, account: AccountId, nonce: Index) -> Index
+where
 	P: TransactionPool,
 	AccountId: Clone + std::fmt::Display + Encode,
 	Index: Clone + std::fmt::Display + Encode + traits::AtLeast32Bit + 'static,
@@ -282,12 +275,15 @@ fn adjust_nonce<P, AccountId, Index>(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-
 	use futures::executor::block_on;
-	use substrate_test_runtime_client::{runtime::Transfer, AccountKeyring};
 	use sc_transaction_pool::BasicPool;
-	use sp_runtime::{ApplyExtrinsicResult, transaction_validity::{TransactionValidityError, InvalidTransaction}};
+	use sp_runtime::{
+		transaction_validity::{InvalidTransaction, TransactionValidityError},
+		ApplyExtrinsicResult,
+	};
+	use substrate_test_runtime_client::{runtime::Transfer, AccountKeyring};
+
+	use super::*;
 
 	#[test]
 	fn should_return_next_nonce_for_some_account() {
@@ -296,13 +292,8 @@ mod tests {
 		// given
 		let client = Arc::new(substrate_test_runtime_client::new());
 		let spawner = sp_core::testing::TaskExecutor::new();
-		let pool = BasicPool::new_full(
-			Default::default(),
-			true.into(),
-			None,
-			spawner,
-			client.clone(),
-		);
+		let pool =
+			BasicPool::new_full(Default::default(), true.into(), None, spawner, client.clone());
 
 		let source = sp_runtime::transaction_validity::TransactionSource::External;
 		let new_transaction = |nonce: u64| {
@@ -336,13 +327,8 @@ mod tests {
 		// given
 		let client = Arc::new(substrate_test_runtime_client::new());
 		let spawner = sp_core::testing::TaskExecutor::new();
-		let pool = BasicPool::new_full(
-			Default::default(),
-			true.into(),
-			None,
-			spawner,
-			client.clone(),
-		);
+		let pool =
+			BasicPool::new_full(Default::default(), true.into(), None, spawner, client.clone());
 
 		let accounts = FullSystem::new(client, pool, DenyUnsafe::Yes);
 
@@ -360,13 +346,8 @@ mod tests {
 		// given
 		let client = Arc::new(substrate_test_runtime_client::new());
 		let spawner = sp_core::testing::TaskExecutor::new();
-		let pool = BasicPool::new_full(
-			Default::default(),
-			true.into(),
-			None,
-			spawner,
-			client.clone(),
-		);
+		let pool =
+			BasicPool::new_full(Default::default(), true.into(), None, spawner, client.clone());
 
 		let accounts = FullSystem::new(client, pool, DenyUnsafe::No);
 
@@ -375,7 +356,8 @@ mod tests {
 			to: AccountKeyring::Bob.into(),
 			amount: 5,
 			nonce: 0,
-		}.into_signed_tx();
+		}
+		.into_signed_tx();
 
 		// when
 		let res = accounts.dry_run(tx.encode().into(), None);
@@ -393,13 +375,8 @@ mod tests {
 		// given
 		let client = Arc::new(substrate_test_runtime_client::new());
 		let spawner = sp_core::testing::TaskExecutor::new();
-		let pool = BasicPool::new_full(
-			Default::default(),
-			true.into(),
-			None,
-			spawner,
-			client.clone(),
-		);
+		let pool =
+			BasicPool::new_full(Default::default(), true.into(), None, spawner, client.clone());
 
 		let accounts = FullSystem::new(client, pool, DenyUnsafe::No);
 
@@ -408,7 +385,8 @@ mod tests {
 			to: AccountKeyring::Bob.into(),
 			amount: 5,
 			nonce: 100,
-		}.into_signed_tx();
+		}
+		.into_signed_tx();
 
 		// when
 		let res = accounts.dry_run(tx.encode().into(), None);

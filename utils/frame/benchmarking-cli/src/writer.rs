@@ -17,17 +17,17 @@
 
 // Outputs benchmark results to Rust files that can be ingested by the runtime.
 
-use std::collections::HashMap;
-use std::fs;
-use std::path::PathBuf;
 use core::convert::TryInto;
+use std::{collections::HashMap, fs, path::PathBuf};
 
-use serde::Serialize;
+use frame_benchmarking::{
+	Analysis, AnalysisChoice, BenchmarkBatch, BenchmarkSelector, RegressionModel,
+};
 use inflector::Inflector;
+use serde::Serialize;
+use sp_runtime::traits::Zero;
 
 use crate::BenchmarkCmd;
-use frame_benchmarking::{BenchmarkBatch, BenchmarkSelector, Analysis, AnalysisChoice, RegressionModel};
-use sp_runtime::traits::Zero;
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 const TEMPLATE: &str = include_str!("./template.hbs");
@@ -111,7 +111,9 @@ fn map_results(
 	analysis_choice: &AnalysisChoice,
 ) -> Result<HashMap<(String, String), Vec<BenchmarkData>>, std::io::Error> {
 	// Skip if batches is empty.
-	if batches.is_empty() { return Err(io_error("empty batches")) }
+	if batches.is_empty() {
+		return Err(io_error("empty batches"));
+	}
 
 	let mut all_benchmarks = HashMap::new();
 	let mut pallet_benchmarks = Vec::new();
@@ -119,7 +121,9 @@ fn map_results(
 	let mut batches_iter = batches.iter().peekable();
 	while let Some(batch) = batches_iter.next() {
 		// Skip if there are no results
-		if batch.results.is_empty() { continue }
+		if batch.results.is_empty() {
+			continue;
+		}
 
 		let pallet_string = String::from_utf8(batch.pallet.clone()).unwrap();
 		let instance_string = String::from_utf8(batch.instance.clone()).unwrap();
@@ -144,21 +148,16 @@ fn map_results(
 }
 
 // Get an iterator of errors from a model. If the model is `None` all errors are zero.
-fn extract_errors(model: &Option<RegressionModel>) -> impl Iterator<Item=u128> + '_ {
+fn extract_errors(model: &Option<RegressionModel>) -> impl Iterator<Item = u128> + '_ {
 	let mut errors = model.as_ref().map(|m| m.se.regressor_values.iter());
-	std::iter::from_fn(move || {
-		match &mut errors {
-			Some(model) => model.next().map(|val| *val as u128),
-			_ => Some(0),
-		}
+	std::iter::from_fn(move || match &mut errors {
+		Some(model) => model.next().map(|val| *val as u128),
+		_ => Some(0),
 	})
 }
 
 // Analyze and return the relevant results for a given benchmark.
-fn get_benchmark_data(
-	batch: &BenchmarkBatch,
-	analysis_choice: &AnalysisChoice,
-) -> BenchmarkData {
+fn get_benchmark_data(batch: &BenchmarkBatch, analysis_choice: &AnalysisChoice) -> BenchmarkData {
 	// Analyze benchmarks to get the linear regression.
 	let analysis_function = match analysis_choice {
 		AnalysisChoice::MinSquares => Analysis::min_squares_iqr,
@@ -179,12 +178,16 @@ fn get_benchmark_data(
 	let mut used_reads = Vec::new();
 	let mut used_writes = Vec::new();
 
-	extrinsic_time.slopes.into_iter()
+	extrinsic_time
+		.slopes
+		.into_iter()
 		.zip(extrinsic_time.names.iter())
 		.zip(extract_errors(&extrinsic_time.model))
 		.for_each(|((slope, name), error)| {
 			if !slope.is_zero() {
-				if !used_components.contains(&name) { used_components.push(name); }
+				if !used_components.contains(&name) {
+					used_components.push(name);
+				}
 				used_extrinsic_time.push(ComponentSlope {
 					name: name.clone(),
 					slope: slope.saturating_mul(1000),
@@ -192,35 +195,36 @@ fn get_benchmark_data(
 				});
 			}
 		});
-	reads.slopes.into_iter()
+	reads
+		.slopes
+		.into_iter()
 		.zip(reads.names.iter())
 		.zip(extract_errors(&reads.model))
 		.for_each(|((slope, name), error)| {
 			if !slope.is_zero() {
-				if !used_components.contains(&name) { used_components.push(name); }
-				used_reads.push(ComponentSlope {
-					name: name.clone(),
-					slope,
-					error,
-				});
+				if !used_components.contains(&name) {
+					used_components.push(name);
+				}
+				used_reads.push(ComponentSlope { name: name.clone(), slope, error });
 			}
 		});
-	writes.slopes.into_iter()
+	writes
+		.slopes
+		.into_iter()
 		.zip(writes.names.iter())
 		.zip(extract_errors(&writes.model))
 		.for_each(|((slope, name), error)| {
 			if !slope.is_zero() {
-				if !used_components.contains(&name) { used_components.push(name); }
-				used_writes.push(ComponentSlope {
-					name: name.clone(),
-					slope,
-					error,
-				});
+				if !used_components.contains(&name) {
+					used_components.push(name);
+				}
+				used_writes.push(ComponentSlope { name: name.clone(), slope, error });
 			}
 		});
 
 	// This puts a marker on any component which is entirely unused in the weight formula.
-	let components = batch.results[0].components
+	let components = batch.results[0]
+		.components
 		.iter()
 		.map(|(name, _)| -> Component {
 			let name_string = name.to_string();
@@ -249,12 +253,8 @@ pub fn write_results(
 ) -> Result<(), std::io::Error> {
 	// Use custom template if provided.
 	let template: String = match &cmd.template {
-		Some(template_file) => {
-			fs::read_to_string(template_file)?
-		},
-		None => {
-			TEMPLATE.to_string()
-		},
+		Some(template_file) => fs::read_to_string(template_file)?,
+		None => TEMPLATE.to_string(),
 	};
 
 	// Use header if provided
@@ -262,7 +262,7 @@ pub fn write_results(
 		Some(header_file) => {
 			let text = fs::read_to_string(header_file)?;
 			text
-		},
+		}
 		None => String::new(),
 	};
 
@@ -273,9 +273,8 @@ pub fn write_results(
 	let args = std::env::args().collect::<Vec<String>>();
 
 	// Which analysis function should be used when outputting benchmarks
-	let analysis_choice: AnalysisChoice = cmd.output_analysis.clone()
-		.try_into()
-		.map_err(|e| io_error(e))?;
+	let analysis_choice: AnalysisChoice =
+		cmd.output_analysis.clone().try_into().map_err(|e| io_error(e))?;
 
 	// Capture individual args
 	let cmd_data = CmdData {
@@ -326,7 +325,8 @@ pub fn write_results(
 		};
 
 		let mut output_file = fs::File::create(file_path)?;
-		handlebars.render_template_to_write(&template, &hbs_data, &mut output_file)
+		handlebars
+			.render_template_to_write(&template, &hbs_data, &mut output_file)
 			.map_err(|e| io_error(&e.to_string()))?;
 	}
 	Ok(())
@@ -334,7 +334,8 @@ pub fn write_results(
 
 // Add an underscore after every 3rd character, i.e. a separator for large numbers.
 fn underscore<Number>(i: Number) -> String
-	where Number: std::string::ToString
+where
+	Number: std::string::ToString,
 {
 	let mut s = String::new();
 	let i_str = i.to_string();
@@ -354,11 +355,12 @@ fn underscore<Number>(i: Number) -> String
 struct UnderscoreHelper;
 impl handlebars::HelperDef for UnderscoreHelper {
 	fn call<'reg: 'rc, 'rc>(
-		&self, h: &handlebars::Helper,
+		&self,
+		h: &handlebars::Helper,
 		_: &handlebars::Handlebars,
 		_: &handlebars::Context,
 		_rc: &mut handlebars::RenderContext,
-		out: &mut dyn handlebars::Output
+		out: &mut dyn handlebars::Output,
 	) -> handlebars::HelperResult {
 		use handlebars::JsonRender;
 		let param = h.param(0).unwrap();
@@ -373,17 +375,20 @@ impl handlebars::HelperDef for UnderscoreHelper {
 struct JoinHelper;
 impl handlebars::HelperDef for JoinHelper {
 	fn call<'reg: 'rc, 'rc>(
-		&self, h: &handlebars::Helper,
+		&self,
+		h: &handlebars::Helper,
 		_: &handlebars::Handlebars,
 		_: &handlebars::Context,
 		_rc: &mut handlebars::RenderContext,
-		out: &mut dyn handlebars::Output
+		out: &mut dyn handlebars::Output,
 	) -> handlebars::HelperResult {
 		use handlebars::JsonRender;
 		let param = h.param(0).unwrap();
 		let value = param.value();
 		let joined = if value.is_array() {
-			value.as_array().unwrap()
+			value
+				.as_array()
+				.unwrap()
 				.iter()
 				.map(|v| v.render())
 				.collect::<Vec<String>>()
@@ -399,31 +404,36 @@ impl handlebars::HelperDef for JoinHelper {
 // u128 does not serialize well into JSON for `handlebars`, so we represent it as a string.
 fn string_serialize<S>(x: &u128, s: S) -> Result<S::Ok, S::Error>
 where
-    S: serde::Serializer,
+	S: serde::Serializer,
 {
-    s.serialize_str(&x.to_string())
+	s.serialize_str(&x.to_string())
 }
 
 #[cfg(test)]
 mod test {
-	use super::*;
 	use frame_benchmarking::{BenchmarkBatch, BenchmarkParameter, BenchmarkResults};
 
-	fn test_data(pallet: &[u8], benchmark: &[u8], param: BenchmarkParameter, base: u32, slope: u32) -> BenchmarkBatch {
+	use super::*;
+
+	fn test_data(
+		pallet: &[u8],
+		benchmark: &[u8],
+		param: BenchmarkParameter,
+		base: u32,
+		slope: u32,
+	) -> BenchmarkBatch {
 		let mut results = Vec::new();
 		for i in 0 .. 5 {
-			results.push(
-				BenchmarkResults {
-					components: vec![(param, i), (BenchmarkParameter::z, 0)],
-					extrinsic_time: (base + slope * i).into(),
-					storage_root_time: (base + slope * i).into(),
-					reads: (base + slope * i).into(),
-					repeat_reads: 0,
-					writes: (base + slope * i).into(),
-					repeat_writes: 0,
-					proof_size: 0,
-				}
-			)
+			results.push(BenchmarkResults {
+				components: vec![(param, i), (BenchmarkParameter::z, 0)],
+				extrinsic_time: (base + slope * i).into(),
+				storage_root_time: (base + slope * i).into(),
+				reads: (base + slope * i).into(),
+				repeat_reads: 0,
+				writes: (base + slope * i).into(),
+				repeat_writes: 0,
+				proof_size: 0,
+			})
 		}
 
 		return BenchmarkBatch {
@@ -431,7 +441,7 @@ mod test {
 			instance: b"instance".to_vec(),
 			benchmark: [benchmark.to_vec(), b"_benchmark".to_vec()].concat(),
 			results,
-		}
+		};
 	}
 
 	fn check_data(benchmark: &BenchmarkData, component: &str, base: u128, slope: u128) {
@@ -439,63 +449,55 @@ mod test {
 			benchmark.components,
 			vec![
 				Component { name: component.to_string(), is_used: true },
-				Component { name: "z".to_string(), is_used: false},
+				Component { name: "z".to_string(), is_used: false },
 			],
 		);
 		// Weights multiplied by 1,000
 		assert_eq!(benchmark.base_weight, base * 1_000);
 		assert_eq!(
 			benchmark.component_weight,
-			vec![ComponentSlope {
-				name: component.to_string(),
-				slope: slope * 1_000,
-				error: 0,
-			}]
+			vec![ComponentSlope { name: component.to_string(), slope: slope * 1_000, error: 0 }]
 		);
 		// DB Reads/Writes are untouched
 		assert_eq!(benchmark.base_reads, base);
 		assert_eq!(
 			benchmark.component_reads,
-			vec![ComponentSlope {
-				name: component.to_string(),
-				slope,
-				error: 0,
-			}]
+			vec![ComponentSlope { name: component.to_string(), slope, error: 0 }]
 		);
 		assert_eq!(benchmark.base_writes, base);
 		assert_eq!(
 			benchmark.component_writes,
-			vec![ComponentSlope {
-				name: component.to_string(),
-				slope,
-				error: 0,
-			}]
+			vec![ComponentSlope { name: component.to_string(), slope, error: 0 }]
 		);
 	}
 
 	#[test]
 	fn map_results_works() {
-		let mapped_results = map_results(&[
-			test_data(b"first", b"first", BenchmarkParameter::a, 10, 3),
-			test_data(b"first", b"second", BenchmarkParameter::b, 9, 2),
-			test_data(b"second", b"first", BenchmarkParameter::c, 3, 4),
-		], &AnalysisChoice::default()).unwrap();
+		let mapped_results = map_results(
+			&[
+				test_data(b"first", b"first", BenchmarkParameter::a, 10, 3),
+				test_data(b"first", b"second", BenchmarkParameter::b, 9, 2),
+				test_data(b"second", b"first", BenchmarkParameter::c, 3, 4),
+			],
+			&AnalysisChoice::default(),
+		)
+		.unwrap();
 
-		let first_benchmark = &mapped_results.get(
-			&("first_pallet".to_string(), "instance".to_string())
-		).unwrap()[0];
+		let first_benchmark = &mapped_results
+			.get(&("first_pallet".to_string(), "instance".to_string()))
+			.unwrap()[0];
 		assert_eq!(first_benchmark.name, "first_benchmark");
 		check_data(first_benchmark, "a", 10, 3);
 
-		let second_benchmark = &mapped_results.get(
-			&("first_pallet".to_string(), "instance".to_string())
-		).unwrap()[1];
+		let second_benchmark = &mapped_results
+			.get(&("first_pallet".to_string(), "instance".to_string()))
+			.unwrap()[1];
 		assert_eq!(second_benchmark.name, "second_benchmark");
 		check_data(second_benchmark, "b", 9, 2);
 
-		let second_pallet_benchmark = &mapped_results.get(
-			&("second_pallet".to_string(), "instance".to_string())
-		).unwrap()[0];
+		let second_pallet_benchmark = &mapped_results
+			.get(&("second_pallet".to_string(), "instance".to_string()))
+			.unwrap()[0];
 		assert_eq!(second_pallet_benchmark.name, "first_benchmark");
 		check_data(second_pallet_benchmark, "c", 3, 4);
 	}

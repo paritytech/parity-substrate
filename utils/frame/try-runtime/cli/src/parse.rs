@@ -18,11 +18,8 @@
 //! Utils for parsing user input
 
 pub(crate) fn hash(block_hash: &str) -> Result<String, String> {
-	let (block_hash, offset) = if block_hash.starts_with("0x") {
-		(&block_hash[2..], 2)
-	} else {
-		(block_hash, 0)
-	};
+	let (block_hash, offset) =
+		if block_hash.starts_with("0x") { (&block_hash[2 ..], 2) } else { (block_hash, 0) };
 
 	if let Some(pos) = block_hash.chars().position(|c| !c.is_ascii_hexdigit()) {
 		Err(format!(

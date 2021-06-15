@@ -24,18 +24,17 @@ use std::{
 	fs,
 	path::{Path, PathBuf},
 };
+
+use codec::{Decode, Encode};
+use jsonrpsee_ws_client::{v2::params::JsonRpcParams, WsClient, WsClientBuilder};
 use log::*;
-use sp_core::hashing::twox_128;
-pub use sp_io::TestExternalities;
 use sp_core::{
+	hashing::twox_128,
 	hexdisplay::HexDisplay,
-	storage::{StorageKey, StorageData},
+	storage::{StorageData, StorageKey},
 };
-use codec::{Encode, Decode};
+pub use sp_io::TestExternalities;
 use sp_runtime::traits::Block as BlockT;
-use jsonrpsee_ws_client::{
-	WsClientBuilder, WsClient, v2::params::JsonRpcParams,
-};
 
 pub mod rpc_api;
 
@@ -120,7 +119,10 @@ pub struct OnlineConfig<B: BlockT> {
 impl<B: BlockT> OnlineConfig<B> {
 	/// Return rpc (ws) client.
 	fn rpc_client(&self) -> &WsClient {
-		self.transport.client.as_ref().expect("ws client must have been initialized by now; qed.")
+		self.transport
+			.client
+			.as_ref()
+			.expect("ws client must have been initialized by now; qed.")
 	}
 }
 
@@ -134,7 +136,6 @@ impl<B: BlockT> Default for OnlineConfig<B> {
 		}
 	}
 }
-
 
 /// Configuration of the state snapshot.
 #[derive(Clone)]
@@ -169,7 +170,11 @@ pub struct Builder<B: BlockT> {
 // that.
 impl<B: BlockT> Default for Builder<B> {
 	fn default() -> Self {
-		Self { inject: Default::default(), mode: Default::default(), hashed_prefixes: Default::default() }
+		Self {
+			inject: Default::default(),
+			mode: Default::default(),
+			hashed_prefixes: Default::default(),
+		}
 	}
 }
 
@@ -269,21 +274,22 @@ impl<B: BlockT> Builder<B> {
 				.map(|key| {
 					(
 						"state_getStorage",
-						JsonRpcParams::Array(
-							vec![
-								to_value(key).expect("json serialization will work; qed."),
-								to_value(at).expect("json serialization will work; qed."),
-							]
-						),
+						JsonRpcParams::Array(vec![
+							to_value(key).expect("json serialization will work; qed."),
+							to_value(at).expect("json serialization will work; qed."),
+						]),
 					)
 				})
 				.collect::<Vec<_>>();
-			let values = client.batch_request::<Option<StorageData>>(batch)
-				.await
-				.map_err(|e| {
-					log::error!(target: LOG_TARGET, "failed to execute batch {:?} due to {:?}", chunk_keys, e);
-					"batch failed."
-				})?;
+			let values = client.batch_request::<Option<StorageData>>(batch).await.map_err(|e| {
+				log::error!(
+					target: LOG_TARGET,
+					"failed to execute batch {:?} due to {:?}",
+					chunk_keys,
+					e
+				);
+				"batch failed."
+			})?;
 			assert_eq!(chunk_keys.len(), values.len());
 			for (idx, key) in chunk_keys.into_iter().enumerate() {
 				let maybe_value = values[idx].clone();
@@ -356,8 +362,13 @@ impl<B: BlockT> Builder<B> {
 		};
 
 		for prefix in &self.hashed_prefixes {
-			info!(target: LOG_TARGET, "adding data for hashed prefix: {:?}", HexDisplay::from(prefix));
-			let additional_key_values = self.rpc_get_pairs_paged(StorageKey(prefix.to_vec()), at).await?;
+			info!(
+				target: LOG_TARGET,
+				"adding data for hashed prefix: {:?}",
+				HexDisplay::from(prefix)
+			);
+			let additional_key_values =
+				self.rpc_get_pairs_paged(StorageKey(prefix.to_vec()), at).await?;
 			keys_and_values.extend(additional_key_values);
 		}
 
@@ -423,7 +434,7 @@ impl<B: BlockT> Builder<B> {
 		self
 	}
 
-	/// Inject a hashed prefix. This is treated as-is, and should be pre-hashed. 
+	/// Inject a hashed prefix. This is treated as-is, and should be pre-hashed.
 	pub fn inject_hashed_prefix(mut self, hashed: &[u8]) -> Self {
 		self.hashed_prefixes.push(hashed.to_vec());
 		self
@@ -453,8 +464,9 @@ impl<B: BlockT> Builder<B> {
 
 #[cfg(test)]
 mod test_prelude {
+	pub(crate) use sp_runtime::testing::{Block as RawBlock, ExtrinsicWrapper, H256 as Hash};
+
 	pub(crate) use super::*;
-	pub(crate) use sp_runtime::testing::{H256 as Hash, Block as RawBlock, ExtrinsicWrapper};
 
 	pub(crate) type Block = RawBlock<ExtrinsicWrapper<Hash>>;
 
@@ -508,7 +520,11 @@ mod remote_tests {
 		init_logger();
 		Builder::<Block>::new()
 			.mode(Mode::Online(OnlineConfig {
-				modules: vec!["Proxy".to_owned(), "Multisig".to_owned(), "PhragmenElection".to_owned()],
+				modules: vec![
+					"Proxy".to_owned(),
+					"Multisig".to_owned(),
+					"PhragmenElection".to_owned(),
+				],
 				..Default::default()
 			}))
 			.build()

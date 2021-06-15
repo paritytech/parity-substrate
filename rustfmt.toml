@@ -1,0 +1,18 @@
+# Basic
+hard_tabs = true
+max_width = 100
+use_small_heuristics = "Max"
+# Imports
+group_imports = "StdExternalCrate"
+imports_granularity = "Crate"
+reorder_imports = true
+# Consistency
+newline_style = "Unix"
+normalize_comments = true
+normalize_doc_attributes = true
+# Misc
+chain_width = 80
+spaces_around_ranges = true
+binop_separator = "Back"
+reorder_impl_items = true
+use_field_init_shorthand = true

@@ -20,8 +20,8 @@
 
 #![warn(missing_docs)]
 
-use std::cmp::Reverse;
-use std::fmt;
+use std::{cmp::Reverse, fmt};
+
 use codec::{Decode, Encode};
 
 /// Error occurred when iterating with the tree.
@@ -83,7 +83,8 @@ pub struct ForkTree<H, N, V> {
 	best_finalized_number: Option<N>,
 }
 
-impl<H, N, V> ForkTree<H, N, V> where
+impl<H, N, V> ForkTree<H, N, V>
+where
 	H: PartialEq + Clone,
 	N: Ord + Clone,
 	V: Clone,
@@ -102,17 +103,14 @@ impl<H, N, V> ForkTree<H, N, V> where
 		number: &N,
 		is_descendent_of: &F,
 		predicate: &P,
-	) -> Result<impl Iterator<Item=(H, N, V)>, Error<E>>
-		where E: std::error::Error,
-			  F: Fn(&H, &H) -> Result<bool, E>,
-			  P: Fn(&V) -> bool,
+	) -> Result<impl Iterator<Item = (H, N, V)>, Error<E>>
+	where
+		E: std::error::Error,
+		F: Fn(&H, &H) -> Result<bool, E>,
+		P: Fn(&V) -> bool,
 	{
-		let new_root_index = self.find_node_index_where(
-			hash,
-			number,
-			is_descendent_of,
-			predicate,
-		)?;
+		let new_root_index =
+			self.find_node_index_where(hash, number, is_descendent_of, predicate)?;
 
 		let removed = if let Some(mut root_index) = new_root_index {
 			let mut old_roots = std::mem::take(&mut self.roots);
@@ -130,9 +128,10 @@ impl<H, N, V> ForkTree<H, N, V> where
 				}
 			}
 
-			let mut root = root
-				.expect("find_node_index_where will return array with at least one index; \
-						 this results in at least one item in removed; qed");
+			let mut root = root.expect(
+				"find_node_index_where will return array with at least one index; \
+						 this results in at least one item in removed; qed",
+			);
 
 			let mut removed = old_roots;
 
@@ -144,7 +143,7 @@ impl<H, N, V> ForkTree<H, N, V> where
 			for child in root_children {
 				if is_first &&
 					(child.number == *number && child.hash == *hash ||
-					 child.number < *number && is_descendent_of(&child.hash, hash)?)
+						child.number < *number && is_descendent_of(&child.hash, hash)?)
 				{
 					root.children.push(child);
 					// assuming that the tree is well formed only one child should pass this requirement
@@ -168,16 +167,14 @@ impl<H, N, V> ForkTree<H, N, V> where
 	}
 }
 
-impl<H, N, V> ForkTree<H, N, V> where
+impl<H, N, V> ForkTree<H, N, V>
+where
 	H: PartialEq,
 	N: Ord,
 {
 	/// Create a new empty tree.
 	pub fn new() -> ForkTree<H, N, V> {
-		ForkTree {
-			roots: Vec::new(),
-			best_finalized_number: None,
-		}
+		ForkTree { roots: Vec::new(), best_finalized_number: None }
 	}
 
 	/// Rebalance the tree, i.e. sort child nodes by max branch depth
@@ -209,8 +206,9 @@ impl<H, N, V> ForkTree<H, N, V> where
 		mut data: V,
 		is_descendent_of: &F,
 	) -> Result<bool, Error<E>>
-		where E: std::error::Error,
-			  F: Fn(&H, &H) -> Result<bool, E>,
+	where
+		E: std::error::Error,
+		F: Fn(&H, &H) -> Result<bool, E>,
 	{
 		if let Some(ref best_finalized_number) = self.best_finalized_number {
 			if number <= *best_finalized_number {
@@ -228,20 +226,15 @@ impl<H, N, V> ForkTree<H, N, V> where
 					hash = h;
 					number = n;
 					data = d;
-				},
+				}
 				None => {
 					self.rebalance();
 					return Ok(false);
-				},
+				}
 			}
 		}
 
-		self.roots.push(Node {
-			data,
-			hash: hash,
-			number: number,
-			children: Vec::new(),
-		});
+		self.roots.push(Node { data, hash, number, children: Vec::new() });
 
 		self.rebalance();
 
@@ -249,18 +242,18 @@ impl<H, N, V> ForkTree<H, N, V> where
 	}
 
 	/// Iterates over the existing roots in the tree.
-	pub fn roots(&self) -> impl Iterator<Item=(&H, &N, &V)> {
+	pub fn roots(&self) -> impl Iterator<Item = (&H, &N, &V)> {
 		self.roots.iter().map(|node| (&node.hash, &node.number, &node.data))
 	}
 
-	fn node_iter(&self) -> impl Iterator<Item=&Node<H, N, V>> {
+	fn node_iter(&self) -> impl Iterator<Item = &Node<H, N, V>> {
 		// we need to reverse the order of roots to maintain the expected
 		// ordering since the iterator uses a stack to track state.
 		ForkTreeIterator { stack: self.roots.iter().rev().collect() }
 	}
 
 	/// Iterates the nodes in the tree in pre-order.
-	pub fn iter(&self) -> impl Iterator<Item=(&H, &N, &V)> {
+	pub fn iter(&self) -> impl Iterator<Item = (&H, &N, &V)> {
 		self.node_iter().map(|node| (&node.hash, &node.number, &node.data))
 	}
 
@@ -274,7 +267,8 @@ impl<H, N, V> ForkTree<H, N, V> where
 		number: &N,
 		is_descendent_of: &F,
 		predicate: &P,
-	) -> Result<Option<&Node<H, N, V>>, Error<E>> where
+	) -> Result<Option<&Node<H, N, V>>, Error<E>>
+	where
 		E: std::error::Error,
 		F: Fn(&H, &H) -> Result<bool, E>,
 		P: Fn(&V) -> bool,
@@ -293,23 +287,13 @@ impl<H, N, V> ForkTree<H, N, V> where
 	}
 
 	/// Map fork tree into values of new types.
-	pub fn map<VT, F>(
-		self,
-		f: &mut F,
-	) -> ForkTree<H, N, VT> where
+	pub fn map<VT, F>(self, f: &mut F) -> ForkTree<H, N, VT>
+	where
 		F: FnMut(&H, &N, V) -> VT,
 	{
-		let roots = self.roots
-			.into_iter()
-			.map(|root| {
-				root.map(f)
-			})
-			.collect();
+		let roots = self.roots.into_iter().map(|root| root.map(f)).collect();
 
-		ForkTree {
-			roots,
-			best_finalized_number: self.best_finalized_number,
-		}
+		ForkTree { roots, best_finalized_number: self.best_finalized_number }
 	}
 
 	/// Same as [`find_node_where`](ForkTree::find_node_where), but returns mutable reference.
@@ -319,7 +303,8 @@ impl<H, N, V> ForkTree<H, N, V> where
 		number: &N,
 		is_descendent_of: &F,
 		predicate: &P,
-	) -> Result<Option<&mut Node<H, N, V>>, Error<E>> where
+	) -> Result<Option<&mut Node<H, N, V>>, Error<E>>
+	where
 		E: std::error::Error,
 		F: Fn(&H, &H) -> Result<bool, E>,
 		P: Fn(&V) -> bool,
@@ -344,7 +329,8 @@ impl<H, N, V> ForkTree<H, N, V> where
 		number: &N,
 		is_descendent_of: &F,
 		predicate: &P,
-	) -> Result<Option<Vec<usize>>, Error<E>> where
+	) -> Result<Option<Vec<usize>>, Error<E>>
+	where
 		E: std::error::Error,
 		F: Fn(&H, &H) -> Result<bool, E>,
 		P: Fn(&V) -> bool,
@@ -367,7 +353,9 @@ impl<H, N, V> ForkTree<H, N, V> where
 	/// with the given hash exists. All other roots are pruned, and the children
 	/// of the finalized node become the new roots.
 	pub fn finalize_root(&mut self, hash: &H) -> Option<V> {
-		self.roots.iter().position(|node| node.hash == *hash)
+		self.roots
+			.iter()
+			.position(|node| node.hash == *hash)
 			.map(|position| self.finalize_root_at(position))
 	}
 
@@ -390,8 +378,9 @@ impl<H, N, V> ForkTree<H, N, V> where
 		number: N,
 		is_descendent_of: &F,
 	) -> Result<FinalizationResult<V>, Error<E>>
-		where E: std::error::Error,
-			  F: Fn(&H, &H) -> Result<bool, E>
+	where
+		E: std::error::Error,
+		F: Fn(&H, &H) -> Result<bool, E>,
 	{
 		if let Some(ref best_finalized_number) = self.best_finalized_number {
 			if number <= *best_finalized_number {
@@ -443,8 +432,9 @@ impl<H, N, V> ForkTree<H, N, V> where
 		number: N,
 		is_descendent_of: &F,
 	) -> Result<FinalizationResult<V>, Error<E>>
-		where E: std::error::Error,
-				F: Fn(&H, &H) -> Result<bool, E>
+	where
+		E: std::error::Error,
+		F: Fn(&H, &H) -> Result<bool, E>,
 	{
 		if let Some(ref best_finalized_number) = self.best_finalized_number {
 			if number <= *best_finalized_number {
@@ -469,17 +459,15 @@ impl<H, N, V> ForkTree<H, N, V> where
 				let is_finalized = root.hash == *hash;
 				let is_descendant =
 					!is_finalized && root.number > number && is_descendent_of(hash, &root.hash)?;
-				let is_ancestor = !is_finalized
-					&& !is_descendant && root.number < number
-					&& is_descendent_of(&root.hash, hash)?;
+				let is_ancestor = !is_finalized &&
+					!is_descendant && root.number < number &&
+					is_descendent_of(&root.hash, hash)?;
 				(is_finalized, is_descendant, is_ancestor)
 			};
 
 			// if we have met finalized root - open it and return
 			if is_finalized {
-				return Ok(FinalizationResult::Changed(Some(
-					self.finalize_root_at(idx),
-				)));
+				return Ok(FinalizationResult::Changed(Some(self.finalize_root_at(idx))));
 			}
 
 			// if node is descendant of finalized block - just leave it as is
@@ -526,9 +514,10 @@ impl<H, N, V> ForkTree<H, N, V> where
 		is_descendent_of: &F,
 		predicate: P,
 	) -> Result<Option<bool>, Error<E>>
-		where E: std::error::Error,
-			  F: Fn(&H, &H) -> Result<bool, E>,
-			  P: Fn(&V) -> bool,
+	where
+		E: std::error::Error,
+		F: Fn(&H, &H) -> Result<bool, E>,
+		P: Fn(&V) -> bool,
 	{
 		if let Some(ref best_finalized_number) = self.best_finalized_number {
 			if number <= *best_finalized_number {
@@ -570,9 +559,10 @@ impl<H, N, V> ForkTree<H, N, V> where
 		is_descendent_of: &F,
 		predicate: P,
 	) -> Result<FinalizationResult<V>, Error<E>>
-		where E: std::error::Error,
-			  F: Fn(&H, &H) -> Result<bool, E>,
-			  P: Fn(&V) -> bool,
+	where
+		E: std::error::Error,
+		F: Fn(&H, &H) -> Result<bool, E>,
+		P: Fn(&V) -> bool,
 	{
 		if let Some(ref best_finalized_number) = self.best_finalized_number {
 			if number <= *best_finalized_number {
@@ -616,9 +606,9 @@ impl<H, N, V> ForkTree<H, N, V> where
 		let roots = std::mem::take(&mut self.roots);
 
 		for root in roots {
-			let retain = root.number > number && is_descendent_of(hash, &root.hash)?
-				|| root.number == number && root.hash == *hash
-				|| is_descendent_of(&root.hash, hash)?;
+			let retain = root.number > number && is_descendent_of(hash, &root.hash)? ||
+				root.number == number && root.hash == *hash ||
+				is_descendent_of(&root.hash, hash)?;
 
 			if retain {
 				self.roots.push(root);
@@ -681,26 +671,14 @@ mod node_implementation {
 		}
 
 		/// Map node data into values of new types.
-		pub fn map<VT, F>(
-			self,
-			f: &mut F,
-		) -> Node<H, N, VT> where
+		pub fn map<VT, F>(self, f: &mut F) -> Node<H, N, VT>
+		where
 			F: FnMut(&H, &N, V) -> VT,
 		{
-			let children = self.children
-				.into_iter()
-				.map(|node| {
-					node.map(f)
-				})
-				.collect();
+			let children = self.children.into_iter().map(|node| node.map(f)).collect();
 
 			let vt = f(&self.hash, &self.number, self.data);
-			Node {
-				hash: self.hash,
-				number: self.number,
-				data: vt,
-				children,
-			}
+			Node { hash: self.hash, number: self.number, data: vt, children }
 		}
 
 		pub fn import<F, E: std::error::Error>(
@@ -710,14 +688,17 @@ mod node_implementation {
 			mut data: V,
 			is_descendent_of: &F,
 		) -> Result<Option<(H, N, V)>, Error<E>>
-			where E: fmt::Debug,
-				  F: Fn(&H, &H) -> Result<bool, E>,
+		where
+			E: fmt::Debug,
+			F: Fn(&H, &H) -> Result<bool, E>,
 		{
 			if self.hash == hash {
 				return Err(Error::Duplicate);
 			};
 
-			if number <= self.number { return Ok(Some((hash, number, data))); }
+			if number <= self.number {
+				return Ok(Some((hash, number, data)));
+			}
 
 			for node in self.children.iter_mut() {
 				match node.import(hash, number, data, is_descendent_of)? {
@@ -725,18 +706,13 @@ mod node_implementation {
 						hash = h;
 						number = n;
 						data = d;
-					},
+					}
 					None => return Ok(None),
 				}
 			}
 
 			if is_descendent_of(&self.hash, &hash)? {
-				self.children.push(Node {
-					data,
-					hash: hash,
-					number: number,
-					children: Vec::new(),
-				});
+				self.children.push(Node { data, hash, number, children: Vec::new() });
 
 				Ok(None)
 			} else {
@@ -760,9 +736,10 @@ mod node_implementation {
 			is_descendent_of: &F,
 			predicate: &P,
 		) -> Result<FindOutcome<Vec<usize>>, Error<E>>
-			where E: std::error::Error,
-				  F: Fn(&H, &H) -> Result<bool, E>,
-				  P: Fn(&V) -> bool,
+		where
+			E: std::error::Error,
+			F: Fn(&H, &H) -> Result<bool, E>,
+			P: Fn(&V) -> bool,
 		{
 			// stop searching this branch
 			if *number < self.number {
@@ -778,16 +755,16 @@ mod node_implementation {
 					FindOutcome::Abort => return Ok(FindOutcome::Abort),
 					FindOutcome::Found(mut x) => {
 						x.push(i);
-						return Ok(FindOutcome::Found(x))
-					},
+						return Ok(FindOutcome::Found(x));
+					}
 					FindOutcome::Failure(true) => {
 						// if the block was a descendent of this child,
 						// then it cannot be a descendent of any others,
 						// so we don't search them.
 						known_descendent_of = true;
 						break;
-					},
-					FindOutcome::Failure(false) => {},
+					}
+					FindOutcome::Failure(false) => {}
 				}
 			}
 
@@ -820,9 +797,10 @@ mod node_implementation {
 			is_descendent_of: &F,
 			predicate: &P,
 		) -> Result<FindOutcome<&Node<H, N, V>>, Error<E>>
-			where E: std::error::Error,
-				  F: Fn(&H, &H) -> Result<bool, E>,
-				  P: Fn(&V) -> bool,
+		where
+			E: std::error::Error,
+			F: Fn(&H, &H) -> Result<bool, E>,
+			P: Fn(&V) -> bool,
 		{
 			let outcome = self.find_node_index_where(hash, number, is_descendent_of, predicate)?;
 
@@ -836,7 +814,7 @@ mod node_implementation {
 						cur = &cur.children[i];
 					}
 					Ok(FindOutcome::Found(cur))
-				},
+				}
 			}
 		}
 
@@ -852,9 +830,10 @@ mod node_implementation {
 			is_descendent_of: &F,
 			predicate: &P,
 		) -> Result<FindOutcome<&mut Node<H, N, V>>, Error<E>>
-			where E: std::error::Error,
-				  F: Fn(&H, &H) -> Result<bool, E>,
-				  P: Fn(&V) -> bool,
+		where
+			E: std::error::Error,
+			F: Fn(&H, &H) -> Result<bool, E>,
+			P: Fn(&V) -> bool,
 		{
 			let outcome = self.find_node_index_where(hash, number, is_descendent_of, predicate)?;
 
@@ -868,14 +847,14 @@ mod node_implementation {
 						cur = &mut cur.children[i];
 					}
 					Ok(FindOutcome::Found(cur))
-				},
+				}
 			}
 		}
 	}
 }
 
 // Workaround for: https://github.com/rust-lang/rust/issues/34537
-use node_implementation::{Node, FindOutcome};
+use node_implementation::{FindOutcome, Node};
 
 struct ForkTreeIterator<'a, H, N, V> {
 	stack: Vec<&'a Node<H, N, V>>,
@@ -917,7 +896,7 @@ impl<H, N, V> Iterator for RemovedIterator<H, N, V> {
 
 #[cfg(test)]
 mod test {
-	use super::{FinalizationResult, ForkTree, Error};
+	use super::{Error, FinalizationResult, ForkTree};
 
 	#[derive(Debug, PartialEq)]
 	struct TestError;
@@ -930,10 +909,10 @@ mod test {
 
 	impl std::error::Error for TestError {}
 
-	fn test_fork_tree<'a>() -> (ForkTree<&'a str, u64, ()>, impl Fn(&&str, &&str) -> Result<bool, TestError>)  {
+	fn test_fork_tree<'a>(
+	) -> (ForkTree<&'a str, u64, ()>, impl Fn(&&str, &&str) -> Result<bool, TestError>) {
 		let mut tree = ForkTree::new();
 
-		//
 		//     - B - C - D - E
 		//    /
 		//   /   - G
@@ -959,7 +938,9 @@ mod test {
 				("C", b) => Ok(b == "D" || b == "E"),
 				("D", b) => Ok(b == "E"),
 				("E", _) => Ok(false),
-				("F", b) => Ok(b == "G" || b == "H" || b == "I" || b == "L" || b == "M" || b == "O"),
+				("F", b) => {
+					Ok(b == "G" || b == "H" || b == "I" || b == "L" || b == "M" || b == "O")
+				}
 				("G", _) => Ok(false),
 				("H", b) => Ok(b == "I" || b == "L" || b == "M" || b == "O"),
 				("I", _) => Ok(false),
@@ -1001,40 +982,22 @@ mod test {
 
 		tree.finalize_root(&"A");
 
-		assert_eq!(
-			tree.best_finalized_number,
-			Some(1),
-		);
+		assert_eq!(tree.best_finalized_number, Some(1),);
 
-		assert_eq!(
-			tree.import("A", 1, (), &is_descendent_of),
-			Err(Error::Revert),
-		);
+		assert_eq!(tree.import("A", 1, (), &is_descendent_of), Err(Error::Revert),);
 	}
 
 	#[test]
 	fn import_doesnt_add_duplicates() {
 		let (mut tree, is_descendent_of) = test_fork_tree();
 
-		assert_eq!(
-			tree.import("A", 1, (), &is_descendent_of),
-			Err(Error::Duplicate),
-		);
+		assert_eq!(tree.import("A", 1, (), &is_descendent_of), Err(Error::Duplicate),);
 
-		assert_eq!(
-			tree.import("I", 4, (), &is_descendent_of),
-			Err(Error::Duplicate),
-		);
+		assert_eq!(tree.import("I", 4, (), &is_descendent_of), Err(Error::Duplicate),);
 
-		assert_eq!(
-			tree.import("G", 3, (), &is_descendent_of),
-			Err(Error::Duplicate),
-		);
+		assert_eq!(tree.import("G", 3, (), &is_descendent_of), Err(Error::Duplicate),);
 
-		assert_eq!(
-			tree.import("K", 3, (), &is_descendent_of),
-			Err(Error::Duplicate),
-		);
+		assert_eq!(tree.import("K", 3, (), &is_descendent_of), Err(Error::Duplicate),);
 	}
 
 	#[test]
@@ -1096,10 +1059,7 @@ mod test {
 		let original_roots = tree.roots.clone();
 
 		// finalizing a block prior to any in the node doesn't change the tree
-		assert_eq!(
-			tree.finalize(&"0", 0, &is_descendent_of),
-			Ok(FinalizationResult::Unchanged),
-		);
+		assert_eq!(tree.finalize(&"0", 0, &is_descendent_of), Ok(FinalizationResult::Unchanged),);
 
 		assert_eq!(tree.roots, original_roots);
 
@@ -1115,21 +1075,12 @@ mod test {
 		);
 
 		// finalizing anything lower than what we observed will fail
-		assert_eq!(
-			tree.best_finalized_number,
-			Some(1),
-		);
+		assert_eq!(tree.best_finalized_number, Some(1),);
 
-		assert_eq!(
-			tree.finalize(&"Z", 1, &is_descendent_of),
-			Err(Error::Revert),
-		);
+		assert_eq!(tree.finalize(&"Z", 1, &is_descendent_of), Err(Error::Revert),);
 
 		// trying to finalize a node without finalizing its ancestors first will fail
-		assert_eq!(
-			tree.finalize(&"H", 3, &is_descendent_of),
-			Err(Error::UnfinalizedAncestor),
-		);
+		assert_eq!(tree.finalize(&"H", 3, &is_descendent_of), Err(Error::UnfinalizedAncestor),);
 
 		// after finalizing "F" we can finalize "H"
 		assert_eq!(
@@ -1195,10 +1146,7 @@ mod test {
 			vec![("L", 4), ("I", 4)],
 		);
 
-		assert_eq!(
-			tree.best_finalized_number,
-			Some(3),
-		);
+		assert_eq!(tree.best_finalized_number, Some(3),);
 
 		// finalizing N (which is not a part of the tree):
 		// 1) removes roots that are not ancestors/descendants of N (I)
@@ -1215,23 +1163,20 @@ mod test {
 			vec![],
 		);
 
-		assert_eq!(
-			tree.best_finalized_number,
-			Some(6),
-		);
+		assert_eq!(tree.best_finalized_number, Some(6),);
 	}
 
 	#[test]
 	fn finalize_with_descendent_works() {
 		#[derive(Debug, PartialEq)]
-		struct Change { effective: u64 }
+		struct Change {
+			effective: u64,
+		}
 
 		let (mut tree, is_descendent_of) = {
 			let mut tree = ForkTree::new();
 
 			let is_descendent_of = |base: &&str, block: &&str| -> Result<bool, TestError> {
-
-				//
 				// A0 #1 - (B #2) - (C #5) - D #10 - E #15 - (F #100)
 				//                            \
 				//                             - (G #100)
@@ -1270,24 +1215,15 @@ mod test {
 		// finalizing "D" will finalize a block from the tree, but it can't be applied yet
 		// since it is not a root change
 		assert_eq!(
-			tree.finalizes_any_with_descendent_if(
-				&"D",
-				10,
-				&is_descendent_of,
-				|c| c.effective == 10,
-			),
+			tree.finalizes_any_with_descendent_if(&"D", 10, &is_descendent_of, |c| c.effective ==
+				10,),
 			Ok(Some(false)),
 		);
 
 		// finalizing "B" doesn't finalize "A0" since the predicate doesn't pass,
 		// although it will clear out "A1" from the tree
 		assert_eq!(
-			tree.finalize_with_descendent_if(
-				&"B",
-				2,
-				&is_descendent_of,
-				|c| c.effective <= 2,
-			),
+			tree.finalize_with_descendent_if(&"B", 2, &is_descendent_of, |c| c.effective <= 2,),
 			Ok(FinalizationResult::Changed(None)),
 		);
 
@@ -1308,12 +1244,7 @@ mod test {
 		);
 
 		assert_eq!(
-			tree.finalize_with_descendent_if(
-				&"C",
-				5,
-				&is_descendent_of,
-				|c| c.effective <= 5,
-			),
+			tree.finalize_with_descendent_if(&"C", 5, &is_descendent_of, |c| c.effective <= 5,),
 			Ok(FinalizationResult::Changed(Some(Change { effective: 5 }))),
 		);
 
@@ -1324,33 +1255,20 @@ mod test {
 
 		// finalizing "F" will fail since it would finalize past "E" without finalizing "D" first
 		assert_eq!(
-			tree.finalizes_any_with_descendent_if(
-				&"F",
-				100,
-				&is_descendent_of,
-				|c| c.effective <= 100,
-			),
+			tree.finalizes_any_with_descendent_if(&"F", 100, &is_descendent_of, |c| c.effective <=
+				100,),
 			Err(Error::UnfinalizedAncestor),
 		);
 
 		// it will work with "G" though since it is not in the same branch as "E"
 		assert_eq!(
-			tree.finalizes_any_with_descendent_if(
-				&"G",
-				100,
-				&is_descendent_of,
-				|c| c.effective <= 100,
-			),
+			tree.finalizes_any_with_descendent_if(&"G", 100, &is_descendent_of, |c| c.effective <=
+				100,),
 			Ok(Some(true)),
 		);
 
 		assert_eq!(
-			tree.finalize_with_descendent_if(
-				&"G",
-				100,
-				&is_descendent_of,
-				|c| c.effective <= 100,
-			),
+			tree.finalize_with_descendent_if(&"G", 100, &is_descendent_of, |c| c.effective <= 100,),
 			Ok(FinalizationResult::Changed(Some(Change { effective: 10 }))),
 		);
 
@@ -1365,12 +1283,19 @@ mod test {
 			tree.iter().map(|(h, n, _)| (h.clone(), n.clone())).collect::<Vec<_>>(),
 			vec![
 				("A", 1),
-				("B", 2), ("C", 3), ("D", 4), ("E", 5),
-				("F", 2), ("H", 3), ("L", 4), ("M", 5),
+				("B", 2),
+				("C", 3),
+				("D", 4),
+				("E", 5),
+				("F", 2),
+				("H", 3),
+				("L", 4),
+				("M", 5),
 				("O", 5),
 				("I", 4),
 				("G", 3),
-				("J", 2), ("K", 3),
+				("J", 2),
+				("K", 3),
 			],
 		);
 	}
@@ -1400,19 +1325,11 @@ mod test {
 			// "L" is a descendent of "K", but the predicate will only pass for "K",
 			// therefore only one call to `is_descendent_of` should be made
 			assert_eq!(
-				tree.finalizes_any_with_descendent_if(
-					&"L",
-					11,
-					&is_descendent_of,
-					|i| *i == 10,
-				),
+				tree.finalizes_any_with_descendent_if(&"L", 11, &is_descendent_of, |i| *i == 10,),
 				Ok(Some(false)),
 			);
 
-			assert_eq!(
-				n_is_descendent_of_calls.load(Ordering::SeqCst),
-				1,
-			);
+			assert_eq!(n_is_descendent_of_calls.load(Ordering::SeqCst), 1,);
 		}
 
 		n_is_descendent_of_calls.store(0, Ordering::SeqCst);
@@ -1431,19 +1348,11 @@ mod test {
 			// "L" is a descendent of "K", but the predicate will only pass for "K",
 			// therefore only one call to `is_descendent_of` should be made
 			assert_eq!(
-				tree.finalize_with_descendent_if(
-					&"L",
-					11,
-					&is_descendent_of,
-					|i| *i == 10,
-				),
+				tree.finalize_with_descendent_if(&"L", 11, &is_descendent_of, |i| *i == 10,),
 				Ok(FinalizationResult::Changed(Some(10))),
 			);
 
-			assert_eq!(
-				n_is_descendent_of_calls.load(Ordering::SeqCst),
-				1,
-			);
+			assert_eq!(n_is_descendent_of_calls.load(Ordering::SeqCst), 1,);
 		}
 	}
 
@@ -1451,12 +1360,7 @@ mod test {
 	fn find_node_works() {
 		let (tree, is_descendent_of) = test_fork_tree();
 
-		let node = tree.find_node_where(
-			&"D",
-			&4,
-			&is_descendent_of,
-			&|_| true,
-		).unwrap().unwrap();
+		let node = tree.find_node_where(&"D", &4, &is_descendent_of, &|_| true).unwrap().unwrap();
 
 		assert_eq!(node.hash, "C");
 		assert_eq!(node.number, 3);
@@ -1473,17 +1377,9 @@ mod test {
 	fn prune_works() {
 		let (mut tree, is_descendent_of) = test_fork_tree();
 
-		let removed = tree.prune(
-			&"C",
-			&3,
-			&is_descendent_of,
-			&|_| true,
-		).unwrap();
+		let removed = tree.prune(&"C", &3, &is_descendent_of, &|_| true).unwrap();
 
-		assert_eq!(
-			tree.roots.iter().map(|node| node.hash).collect::<Vec<_>>(),
-			vec!["B"],
-		);
+		assert_eq!(tree.roots.iter().map(|node| node.hash).collect::<Vec<_>>(), vec!["B"],);
 
 		assert_eq!(
 			tree.iter().map(|(hash, _, _)| *hash).collect::<Vec<_>>(),
@@ -1495,34 +1391,19 @@ mod test {
 			vec!["A", "F", "H", "L", "M", "O", "I", "G", "J", "K"]
 		);
 
-		let removed = tree.prune(
-			&"E",
-			&5,
-			&is_descendent_of,
-			&|_| true,
-		).unwrap();
+		let removed = tree.prune(&"E", &5, &is_descendent_of, &|_| true).unwrap();
 
-		assert_eq!(
-			tree.roots.iter().map(|node| node.hash).collect::<Vec<_>>(),
-			vec!["D"],
-		);
+		assert_eq!(tree.roots.iter().map(|node| node.hash).collect::<Vec<_>>(), vec!["D"],);
 
-		assert_eq!(
-			tree.iter().map(|(hash, _, _)| *hash).collect::<Vec<_>>(),
-			vec!["D", "E"],
-		);
+		assert_eq!(tree.iter().map(|(hash, _, _)| *hash).collect::<Vec<_>>(), vec!["D", "E"],);
 
-		assert_eq!(
-			removed.map(|(hash, _, _)| hash).collect::<Vec<_>>(),
-			vec!["B", "C"]
-		);
+		assert_eq!(removed.map(|(hash, _, _)| hash).collect::<Vec<_>>(), vec!["B", "C"]);
 	}
 
 	#[test]
 	fn find_node_backtracks_after_finding_highest_descending_node() {
 		let mut tree = ForkTree::new();
 
-		//
 		// A - B
 		//  \
 		//   — C
@@ -1543,12 +1424,7 @@ mod test {
 		// when searching the tree we reach node `C`, but the
 		// predicate doesn't pass. we should backtrack to `B`, but not to `A`,
 		// since "B" fulfills the predicate.
-		let node = tree.find_node_where(
-			&"D",
-			&3,
-			&is_descendent_of,
-			&|data| *data < 3,
-		).unwrap();
+		let node = tree.find_node_where(&"D", &3, &is_descendent_of, &|data| *data < 3).unwrap();
 
 		assert_eq!(node.unwrap().hash, "B");
 	}

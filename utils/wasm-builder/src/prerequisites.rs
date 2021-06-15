@@ -15,12 +15,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{CargoCommandVersioned, CargoCommand, write_file_if_changed};
-
 use std::{fs, path::Path};
 
-use tempfile::tempdir;
 use ansi_term::Color;
+use tempfile::tempdir;
+
+use crate::{write_file_if_changed, CargoCommand, CargoCommandVersioned};
 
 /// Print an error message.
 fn print_error_message(message: &str) -> String {
@@ -38,7 +38,7 @@ pub(crate) fn check() -> Result<CargoCommandVersioned, String> {
 	let cargo_command = crate::get_nightly_cargo();
 
 	if !cargo_command.is_nightly() {
-		return Err(print_error_message("Rust nightly not installed, please install it!"))
+		return Err(print_error_message("Rust nightly not installed, please install it!"));
 	}
 
 	check_wasm_toolchain_installed(cargo_command)
@@ -95,7 +95,7 @@ fn create_check_toolchain_project(project_dir: &Path) {
 					rustc_version.unwrap_or_else(|| "unknown rustc version".into()),
 				);
 			}
-		"#
+		"#,
 	);
 	// Just prints the `RURSTC_VERSION` environment variable that is being created by the
 	// `build.rs` script.
@@ -105,7 +105,7 @@ fn create_check_toolchain_project(project_dir: &Path) {
 			fn main() {
 				println!("{}", env!("RUSTC_VERSION"));
 			}
-		"#
+		"#,
 	);
 }
 
@@ -120,7 +120,12 @@ fn check_wasm_toolchain_installed(
 	let manifest_path = temp.path().join("Cargo.toml").display().to_string();
 
 	let mut build_cmd = cargo_command.command();
-	build_cmd.args(&["build", "--target=wasm32-unknown-unknown", "--manifest-path", &manifest_path]);
+	build_cmd.args(&[
+		"build",
+		"--target=wasm32-unknown-unknown",
+		"--manifest-path",
+		&manifest_path,
+	]);
 
 	if super::color_output_enabled() {
 		build_cmd.arg("--color=always");
@@ -129,33 +134,28 @@ fn check_wasm_toolchain_installed(
 	let mut run_cmd = cargo_command.command();
 	run_cmd.args(&["run", "--manifest-path", &manifest_path]);
 
-	build_cmd
-		.output()
-		.map_err(|_| err_msg.clone())
-		.and_then(|s|
-			if s.status.success() {
-				let version = run_cmd.output().ok().and_then(|o| String::from_utf8(o.stdout).ok());
-				Ok(CargoCommandVersioned::new(
-					cargo_command,
-					version.unwrap_or_else(|| "unknown rustc version".into()),
-				))
-			} else {
-				match String::from_utf8(s.stderr) {
-					Ok(ref err) if err.contains("linker `rust-lld` not found") => {
-						Err(print_error_message("`rust-lld` not found, please install it!"))
-					},
-					Ok(ref err) => Err(
-						format!(
-							"{}\n\n{}\n{}\n{}{}\n",
-							err_msg,
-							Color::Yellow.bold().paint("Further error information:"),
-							Color::Yellow.bold().paint("-".repeat(60)),
-							err,
-							Color::Yellow.bold().paint("-".repeat(60)),
-						)
-					),
-					Err(_) => Err(err_msg),
+	build_cmd.output().map_err(|_| err_msg.clone()).and_then(|s| {
+		if s.status.success() {
+			let version = run_cmd.output().ok().and_then(|o| String::from_utf8(o.stdout).ok());
+			Ok(CargoCommandVersioned::new(
+				cargo_command,
+				version.unwrap_or_else(|| "unknown rustc version".into()),
+			))
+		} else {
+			match String::from_utf8(s.stderr) {
+				Ok(ref err) if err.contains("linker `rust-lld` not found") => {
+					Err(print_error_message("`rust-lld` not found, please install it!"))
 				}
+				Ok(ref err) => Err(format!(
+					"{}\n\n{}\n{}\n{}{}\n",
+					err_msg,
+					Color::Yellow.bold().paint("Further error information:"),
+					Color::Yellow.bold().paint("-".repeat(60)),
+					err,
+					Color::Yellow.bold().paint("-".repeat(60)),
+				)),
+				Err(_) => Err(err_msg),
 			}
-		)
+		}
+	})
 }

@@ -21,15 +21,14 @@
 #![warn(missing_docs)]
 
 use core::marker::PhantomData;
+
+use codec::{DecodeAll, FullCodec, FullEncode};
+use frame_support::storage::generator::{StorageDoubleMap, StorageMap, StorageValue};
 use futures::compat::Future01CompatExt;
 use jsonrpc_client_transports::RpcError;
-use codec::{DecodeAll, FullCodec, FullEncode};
-use serde::{de::DeserializeOwned, Serialize};
-use frame_support::storage::generator::{
-	StorageDoubleMap, StorageMap, StorageValue
-};
-use sp_storage::{StorageData, StorageKey};
 use sc_rpc_api::state::StateClient;
+use serde::{de::DeserializeOwned, Serialize};
+use sp_storage::{StorageData, StorageKey};
 
 /// A typed query on chain state usable from an RPC client.
 ///
@@ -54,7 +53,7 @@ use sc_rpc_api::state::StateClient;
 /// # struct TestRuntime;
 /// #
 /// # decl_module! {
-///	#     pub struct Module<T: Config> for enum Call where origin: T::Origin {}
+/// 	#     pub struct Module<T: Config> for enum Call where origin: T::Origin {}
 /// # }
 /// #
 /// pub type Loc = (i64, i64, i64);
@@ -98,18 +97,12 @@ pub struct StorageQuery<V> {
 impl<V: FullCodec> StorageQuery<V> {
 	/// Create a storage query for a StorageValue.
 	pub fn value<St: StorageValue<V>>() -> Self {
-		Self {
-			key: StorageKey(St::storage_value_final_key().to_vec()),
-			_spook: PhantomData,
-		}
+		Self { key: StorageKey(St::storage_value_final_key().to_vec()), _spook: PhantomData }
 	}
 
 	/// Create a storage query for a value in a StorageMap.
 	pub fn map<St: StorageMap<K, V>, K: FullEncode>(key: K) -> Self {
-		Self {
-			key: StorageKey(St::storage_map_final_key(key)),
-			_spook: PhantomData,
-		}
+		Self { key: StorageKey(St::storage_map_final_key(key)), _spook: PhantomData }
 	}
 
 	/// Create a storage query for a value in a StorageDoubleMap.
@@ -117,10 +110,7 @@ impl<V: FullCodec> StorageQuery<V> {
 		key1: K1,
 		key2: K2,
 	) -> Self {
-		Self {
-			key: StorageKey(St::storage_double_map_final_key(key1, key2)),
-			_spook: PhantomData,
-		}
+		Self { key: StorageKey(St::storage_double_map_final_key(key1, key2)), _spook: PhantomData }
 	}
 
 	/// Send this query over RPC, await the typed result.
