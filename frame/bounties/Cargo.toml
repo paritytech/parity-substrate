@@ -19,7 +19,7 @@ sp-runtime = { version = "3.0.0", default-features = false, path = "../../primit
 frame-support = { version = "3.0.0", default-features = false, path = "../support" }
 frame-system = { version = "3.0.0", default-features = false, path = "../system" }
 pallet-treasury = { version = "3.0.0", default-features = false, path = "../treasury" }
-
+log = { version = "0.4.14", default-features = false }
 frame-benchmarking = { version = "3.1.0", default-features = false, path = "../benchmarking", optional = true }
 
 [dev-dependencies]

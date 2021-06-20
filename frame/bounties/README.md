@@ -21,9 +21,12 @@ payout is pending, resulting in the slash of the curator's deposit.
 
 - **Bounty spending proposal:** A proposal to reward a predefined body of work upon completion by
   the Treasury.
+- **SubBounty:** A large chunk of bounty proposal can be subdivided into small chunks as
+  independent subbounties, for parallel execution, minimise the workload on council governance
+  & tracking spended funds.
 - **Proposer:** An account proposing a bounty spending.
-- **Curator:** An account managing the bounty and assigning a payout address receiving the reward
-  for the completion of work.
+- **Curator or Master Curator or Sub Curator:** An account managing the bounty or subbounty
+  and assigning a payout address receiving the reward for the completion of work.
 - **Deposit:** The amount held on deposit for placing a bounty proposal plus the amount held on
   deposit per byte within the bounty description.
 - **Curator deposit:** The payment from a candidate willing to curate an approved bounty. The
@@ -50,3 +53,14 @@ Bounty protocol:
 - `claim_bounty` - Claim a specific bounty amount from the Payout Address.
 - `unassign_curator` - Unassign an accepted curator from a specific earmark.
 - `close_bounty` - Cancel the earmark for a specific treasury amount and close the bounty.
+- `add_subbounty` - Master curator may split or delegate the execution of bounty,
+   by adding a new subbounty, with an amount which can be deducted from the parent bounty.
+- `propose_subcurator` - Master curator may assign an account to a subbouty
+   as candidate subcurator.
+- `accept_subcurator` - Accept a subbounty assignment from the Master curator,
+   setting a subcurator deposit.
+- `unassign_subcurator` - Unassign an accepted subcurator from a specific earmark.
+- `award_subbounty` - Close and specify the subbouty payout beneficiary address.
+- `claim_subbounty` - Claim a payout amount & subcurator fee for specific subbounty.
+- `close_subbounty` - Cancel the earmark for a specific treasury amount and close the subbounty.
+- `extend_subbounty_bounty_expiry` - Extend the expiry time of an bounty of active subbounty.
