@@ -322,7 +322,7 @@ pub mod tests {
 		fn into(self) -> ClientError {
 			ClientError::Application(Box::new(self))
 		}
-	}	
+	}
 	
 	pub type OkCallFetcher = Mutex<Vec<u8>>;
 

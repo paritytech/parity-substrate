@@ -63,6 +63,11 @@ impl<'a> HashDB<Hasher, DBValue> for SimpleTrie<'a> {
 		self.overlay.insert(key, Some(value));
 	}
 
+	fn emplace_ref(&mut self, key: &Hash, prefix: Prefix, value: &[u8]) {
+		let key = sp_trie::prefixed_key::<Hasher>(key, prefix);
+		self.overlay.insert(key, Some(value.into()));
+	}
+
 	fn remove(&mut self, key: &Hash, prefix: Prefix) {
 		let key = sp_trie::prefixed_key::<Hasher>(key, prefix);
 		self.overlay.insert(key, None);

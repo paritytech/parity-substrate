@@ -766,7 +766,7 @@ mod tests {
 
 	#[test]
 	fn authorities_call_works() {
-		let client = substrate_test_runtime_client::new();
+		let client = substrate_test_runtime_client::new(true);
 
 		assert_eq!(client.chain_info().best_number, 0);
 		assert_eq!(authorities(&client, &BlockId::Number(0)).unwrap(), vec![

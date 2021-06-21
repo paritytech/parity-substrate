@@ -51,7 +51,7 @@ use sp_consensus::{
 	BlockStatus, BlockImportParams, ForkChoiceStrategy,
 };
 use sp_storage::StorageKey;
-use sp_trie::{TrieConfiguration, trie_types::Layout};
+use sp_trie::{TrieConfiguration, Layout};
 use sp_runtime::{generic::BlockId, DigestItem, Justifications};
 use hex_literal::hex;
 use futures::executor::block_on;
@@ -156,7 +156,7 @@ fn construct_block(
 	let transactions = txs.into_iter().map(|tx| tx.into_signed_tx()).collect::<Vec<_>>();
 
 	let iter = transactions.iter().map(Encode::encode);
-	let extrinsics_root = Layout::<BlakeTwo256>::ordered_trie_root(iter).into();
+	let extrinsics_root = Layout::<BlakeTwo256>::default().ordered_trie_root(iter).into();
 
 	let mut header = Header {
 		parent_hash,
@@ -339,7 +339,11 @@ fn construct_genesis_with_bad_transaction_should_panic() {
 
 #[test]
 fn client_initializes_from_genesis_ok() {
-	let client = substrate_test_runtime_client::new();
+	client_initializes_from_genesis_ok_inner(false);
+	client_initializes_from_genesis_ok_inner(true);
+}
+fn client_initializes_from_genesis_ok_inner(hashed_value: bool) {
+	let client = substrate_test_runtime_client::new(hashed_value);
 
 	assert_eq!(
 		client.runtime_api().balance_of(
@@ -359,7 +363,7 @@ fn client_initializes_from_genesis_ok() {
 
 #[test]
 fn block_builder_works_with_no_transactions() {
-	let mut client = substrate_test_runtime_client::new();
+	let mut client = substrate_test_runtime_client::new(true);
 
 	let block = client.new_block(Default::default()).unwrap().build().unwrap().block;
 
@@ -370,7 +374,11 @@ fn block_builder_works_with_no_transactions() {
 
 #[test]
 fn block_builder_works_with_transactions() {
-	let mut client = substrate_test_runtime_client::new();
+	block_builder_works_with_transactions_inner(true);
+	block_builder_works_with_transactions_inner(false);
+}
+fn block_builder_works_with_transactions_inner(hashed_value: bool) {
+	let mut client = substrate_test_runtime_client::new(hashed_value);
 
 	let mut builder = client.new_block(Default::default()).unwrap();
 
@@ -407,7 +415,7 @@ fn block_builder_works_with_transactions() {
 
 #[test]
 fn block_builder_does_not_include_invalid() {
-	let mut client = substrate_test_runtime_client::new();
+	let mut client = substrate_test_runtime_client::new(true);
 
 	let mut builder = client.new_block(Default::default()).unwrap();
 
@@ -480,7 +488,7 @@ fn best_containing_with_hash_not_found() {
 fn uncles_with_only_ancestors() {
 	// block tree:
 	// G -> A1 -> A2
-	let mut client = substrate_test_runtime_client::new();
+	let mut client = substrate_test_runtime_client::new(true);
 
 	// G -> A1
 	let a1 = client.new_block(Default::default()).unwrap().build().unwrap().block;
@@ -500,7 +508,7 @@ fn uncles_with_multiple_forks() {
 	//      A1 -> B2 -> B3 -> B4
 	//	          B2 -> C3
 	//	    A1 -> D2
-	let mut client = substrate_test_runtime_client::new();
+	let mut client = substrate_test_runtime_client::new(true);
 
 	// G -> A1
 	let a1 = client.new_block(Default::default()).unwrap().build().unwrap().block;
@@ -1270,7 +1278,7 @@ fn key_changes_works() {
 
 #[test]
 fn import_with_justification() {
-	let mut client = substrate_test_runtime_client::new();
+	let mut client = substrate_test_runtime_client::new(true);
 
 	// G -> A1
 	let a1 = client.new_block(Default::default()).unwrap().build().unwrap().block;
@@ -1316,7 +1324,7 @@ fn import_with_justification() {
 
 #[test]
 fn importing_diverged_finalized_block_should_trigger_reorg() {
-	let mut client = substrate_test_runtime_client::new();
+	let mut client = substrate_test_runtime_client::new(true);
 
 	// G -> A1 -> A2
 	//   \
@@ -1373,7 +1381,9 @@ fn importing_diverged_finalized_block_should_trigger_reorg() {
 
 #[test]
 fn finalizing_diverged_block_should_trigger_reorg() {
-	let (mut client, select_chain) = TestClientBuilder::new().build_with_longest_chain();
+	let (mut client, select_chain) = TestClientBuilder::new()
+		.state_hashed_value()
+		.build_with_longest_chain();
 
 	// G -> A1 -> A2
 	//   \
@@ -1460,7 +1470,7 @@ fn finalizing_diverged_block_should_trigger_reorg() {
 
 #[test]
 fn get_header_by_block_number_doesnt_panic() {
-	let client = substrate_test_runtime_client::new();
+	let client = substrate_test_runtime_client::new(true);
 
 	// backend uses u32 for block numbers, make sure we don't panic when
 	// trying to convert
@@ -1471,7 +1481,7 @@ fn get_header_by_block_number_doesnt_panic() {
 #[test]
 fn state_reverted_on_reorg() {
 	sp_tracing::try_init_simple();
-	let mut client = substrate_test_runtime_client::new();
+	let mut client = substrate_test_runtime_client::new(true);
 
 	let current_balance = |client: &substrate_test_runtime_client::TestClient|
 		client.runtime_api().balance_of(
@@ -1999,7 +2009,7 @@ fn imports_blocks_with_changes_tries_config_change() {
 
 #[test]
 fn storage_keys_iter_prefix_and_start_key_works() {
-	let client = substrate_test_runtime_client::new();
+	let client = substrate_test_runtime_client::new(false);
 
 	let prefix = StorageKey(hex!("3a").to_vec());
 
@@ -2024,7 +2034,11 @@ fn storage_keys_iter_prefix_and_start_key_works() {
 
 #[test]
 fn storage_keys_iter_works() {
-	let client = substrate_test_runtime_client::new();
+	storage_keys_iter_works_inner(true);
+	storage_keys_iter_works_inner(false);
+}
+fn storage_keys_iter_works_inner(hashed_value: bool) {
+	let client = substrate_test_runtime_client::new(hashed_value);
 
 	let prefix = StorageKey(hex!("").to_vec());
 
@@ -2040,11 +2054,19 @@ fn storage_keys_iter_works() {
 		.take(3)
 		.map(|x| x.0)
 		.collect();
-	assert_eq!(res, [
-		hex!("3a686561707061676573").to_vec(),
-		hex!("6644b9b8bc315888ac8e41a7968dc2b4141a5403c58acdf70b7e8f7e07bf5081").to_vec(),
-		hex!("79c07e2b1d2e2abfd4855b936617eeff5e0621c4869aa60c02be9adcc98a0d1d").to_vec(),
-	]);
+	if hashed_value {
+		assert_eq!(res, [
+			hex!("3a686561707061676573").to_vec(),
+			sp_core::storage::well_known_keys::TRIE_HASHING_CONFIG.to_vec(),
+			hex!("6644b9b8bc315888ac8e41a7968dc2b4141a5403c58acdf70b7e8f7e07bf5081").to_vec(),
+		]);
+	} else {
+		assert_eq!(res, [
+			hex!("3a686561707061676573").to_vec(),
+			hex!("6644b9b8bc315888ac8e41a7968dc2b4141a5403c58acdf70b7e8f7e07bf5081").to_vec(),
+			hex!("79c07e2b1d2e2abfd4855b936617eeff5e0621c4869aa60c02be9adcc98a0d1d").to_vec(),
+		]);
+	}
 
 	let res: Vec<_> = client.storage_keys_iter(&BlockId::Number(0), Some(&prefix), Some(&StorageKey(hex!("79c07e2b1d2e2abfd4855b936617eeff5e0621c4869aa60c02be9adcc98a0d1d").to_vec())))
 		.unwrap()

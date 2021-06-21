@@ -17,16 +17,16 @@
 
 //! Proving state machine backend.
 
-use std::{sync::Arc, collections::{HashMap, hash_map::Entry}};
+use std::{sync::Arc, collections::HashMap};
 use parking_lot::RwLock;
 use codec::{Decode, Codec, Encode};
 use log::debug;
 use hash_db::{Hasher, HashDB, EMPTY_PREFIX, Prefix};
 use sp_trie::{
 	MemoryDB, empty_child_trie_root, read_trie_value_with, read_child_trie_value_with,
-	record_all_keys, StorageProof,
+	record_all_keys, StorageProof, Meta, Layout, Recorder,
 };
-pub use sp_trie::{Recorder, trie_types::{Layout, TrieError}};
+pub use sp_trie::trie_types::TrieError;
 use crate::trie_backend::TrieBackend;
 use crate::trie_backend_essence::{Ephemeral, TrieBackendEssence, TrieBackendStorage};
 use crate::{Error, ExecutionError, Backend, DBValue};
@@ -112,7 +112,7 @@ impl<'a, S, H> ProvingBackendRecorder<'a, S, H>
 #[derive(Default)]
 struct ProofRecorderInner<Hash> {
 	/// All the records that we have stored so far.
-	records: HashMap<Hash, Option<DBValue>>,
+	records: HashMap<Hash, Option<(DBValue, Meta, bool)>>,
 	/// The encoded size of all recorded values.
 	encoded_size: usize,
 }
@@ -123,25 +123,44 @@ pub struct ProofRecorder<Hash> {
 	inner: Arc<RwLock<ProofRecorderInner<Hash>>>,
 }
 
-impl<Hash: std::hash::Hash + Eq> ProofRecorder<Hash> {
+impl<Hash: std::hash::Hash + Eq + Clone> ProofRecorder<Hash> {
 	/// Record the given `key` => `val` combination.
-	pub fn record(&self, key: Hash, val: Option<DBValue>) {
+	pub fn record<H: Hasher>(&self, key: Hash, val: Option<DBValue>) {
 		let mut inner = self.inner.write();
-		let encoded_size = if let Entry::Vacant(entry) = inner.records.entry(key) {
-			let encoded_size = val.as_ref().map(Encode::encoded_size).unwrap_or(0);
 
-			entry.insert(val);
-			encoded_size
-		} else {
-			0
-		};
+		let ProofRecorderInner { encoded_size, records } = &mut *inner;
+		records.entry(key).or_insert_with(|| {
+			val.map(|val| {
+				let mut val = (val, Meta::default(), false);
+				sp_trie::resolve_encoded_meta::<H>(&mut val);
+				*encoded_size += sp_trie::estimate_entry_size(&val, H::LENGTH);
+				val
+			})
+		});
+	}
 
-		inner.encoded_size += encoded_size;
+	/// Record actual trie level value access.
+	pub fn access_from(&self, key: &Hash, hash_len: usize) {
+		let mut inner = self.inner.write();
+		let ProofRecorderInner { encoded_size, records, .. } = &mut *inner;
+		records.entry(key.clone())
+			.and_modify(|entry| {
+				if let Some(entry) = entry.as_mut() {
+					if !entry.2 {
+						let old_size = sp_trie::estimate_entry_size(entry, hash_len);
+						entry.2 = true;
+						let new_size = sp_trie::estimate_entry_size(entry, hash_len);
+						*encoded_size += new_size;
+						*encoded_size -= old_size;
+					}
+				}
+			});
 	}
 
 	/// Returns the value at the given `key`.
 	pub fn get(&self, key: &Hash) -> Option<Option<DBValue>> {
-		self.inner.read().records.get(key).cloned()
+		self.inner.read().records.get(key).as_ref()
+			.map(|v| v.as_ref().map(|v| v.0.clone()))
 	}
 
 	/// Returns the estimated encoded size of the proof.
@@ -155,11 +174,20 @@ impl<Hash: std::hash::Hash + Eq> ProofRecorder<Hash> {
 	}
 
 	/// Convert into a [`StorageProof`].
-	pub fn to_storage_proof(&self) -> StorageProof {
+	pub fn to_storage_proof<H: Hasher>(&self) -> StorageProof {
 		let trie_nodes = self.inner.read()
 			.records
 			.iter()
-			.filter_map(|(_k, v)| v.as_ref().map(|v| v.to_vec()))
+			.filter_map(|(_k, v)| v.as_ref().map(|v| {
+				let mut meta = v.1.clone();
+				if let Some(hashed) = sp_trie::to_hashed_variant::<H>(
+					v.0.as_slice(), &mut meta, v.2,
+				) {
+					hashed
+				} else {
+					v.0.clone()
+				}
+			}))
 			.collect();
 
 		StorageProof::new(trie_nodes)
@@ -210,7 +238,7 @@ impl<'a, S: 'a + TrieBackendStorage<H>, H: 'a + Hasher> ProvingBackend<'a, S, H>
 
 	/// Extracting the gathered unordered proof.
 	pub fn extract_proof(&self) -> StorageProof {
-		self.0.essence().backend_storage().proof_recorder.to_storage_proof()
+		self.0.essence().backend_storage().proof_recorder.to_storage_proof::<H>()
 	}
 }
 
@@ -219,14 +247,22 @@ impl<'a, S: 'a + TrieBackendStorage<H>, H: 'a + Hasher> TrieBackendStorage<H>
 {
 	type Overlay = S::Overlay;
 
-	fn get(&self, key: &H::Out, prefix: Prefix) -> Result<Option<DBValue>, String> {
+	fn get(
+		&self,
+		key: &H::Out,
+		prefix: Prefix,
+	) -> Result<Option<DBValue>, String> {
 		if let Some(v) = self.proof_recorder.get(key) {
 			return Ok(v);
 		}
 
 		let backend_value = self.backend.get(key, prefix)?;
-		self.proof_recorder.record(key.clone(), backend_value.clone());
+		self.proof_recorder.record::<H>(key.clone(), backend_value.clone());
 		Ok(backend_value)
+	}
+
+	fn access_from(&self, key: &H::Out) {
+		self.proof_recorder.access_from(key, H::LENGTH);
 	}
 }
 
@@ -371,13 +407,21 @@ mod tests {
 
 	#[test]
 	fn proof_is_empty_until_value_is_read() {
-		let trie_backend = test_trie();
+		proof_is_empty_until_value_is_read_inner(false);
+		proof_is_empty_until_value_is_read_inner(true);
+	}
+	fn proof_is_empty_until_value_is_read_inner(flagged: bool) {
+		let trie_backend = test_trie(flagged);
 		assert!(test_proving(&trie_backend).extract_proof().is_empty());
 	}
 
 	#[test]
 	fn proof_is_non_empty_after_value_is_read() {
-		let trie_backend = test_trie();
+		proof_is_non_empty_after_value_is_read_inner(false);
+		proof_is_non_empty_after_value_is_read_inner(true);
+	}
+	fn proof_is_non_empty_after_value_is_read_inner(flagged: bool) {
+		let trie_backend = test_trie(flagged);
 		let backend = test_proving(&trie_backend);
 		assert_eq!(backend.storage(b"key").unwrap(), Some(b"value".to_vec()));
 		assert!(!backend.extract_proof().is_empty());
@@ -395,7 +439,11 @@ mod tests {
 
 	#[test]
 	fn passes_through_backend_calls() {
-		let trie_backend = test_trie();
+		passes_through_backend_calls_inner(false);
+		passes_through_backend_calls_inner(true);
+	}
+	fn passes_through_backend_calls_inner(flagged: bool) {
+		let trie_backend = test_trie(flagged);
 		let proving_backend = test_proving(&trie_backend);
 		assert_eq!(trie_backend.storage(b"key").unwrap(), proving_backend.storage(b"key").unwrap());
 		assert_eq!(trie_backend.pairs(), proving_backend.pairs());
@@ -407,46 +455,75 @@ mod tests {
 	}
 
 	#[test]
-	fn proof_recorded_and_checked() {
-		let contents = (0..64).map(|i| (vec![i], Some(vec![i]))).collect::<Vec<_>>();
-		let in_memory = InMemoryBackend::<BlakeTwo256>::default();
+	fn proof_recorded_and_checked_top() {
+		proof_recorded_and_checked_inner(true);
+		proof_recorded_and_checked_inner(false);
+	}
+	fn proof_recorded_and_checked_inner(flagged: bool) {
+		let size_content = 34; // above hashable value treshold.
+		let value_range = 0..64;
+		let contents = value_range.clone()
+			.map(|i| (vec![i], Some(vec![i; size_content]))).collect::<Vec<_>>();
+		let mut in_memory = InMemoryBackend::<BlakeTwo256>::default();
+		if flagged {
+			in_memory = in_memory.update(vec![(None, vec![(
+				sp_core::storage::well_known_keys::TRIE_HASHING_CONFIG.to_vec(),
+				Some(sp_core::storage::trie_threshold_encode(
+					sp_core::storage::TEST_DEFAULT_ALT_HASH_THRESHOLD,
+				)),
+			)])]);
+		}
 		let mut in_memory = in_memory.update(vec![(None, contents)]);
-		let in_memory_root = in_memory.storage_root(::std::iter::empty()).0;
-		(0..64).for_each(|i| assert_eq!(in_memory.storage(&[i]).unwrap().unwrap(), vec![i]));
+		let in_memory_root = in_memory.storage_root(std::iter::empty()).0;
+		value_range.clone()
+			.for_each(|i| assert_eq!(in_memory.storage(&[i]).unwrap().unwrap(), vec![i; size_content]));
 
 		let trie = in_memory.as_trie_backend().unwrap();
-		let trie_root = trie.storage_root(::std::iter::empty()).0;
+		let trie_root = trie.storage_root(std::iter::empty()).0;
 		assert_eq!(in_memory_root, trie_root);
-		(0..64).for_each(|i| assert_eq!(trie.storage(&[i]).unwrap().unwrap(), vec![i]));
+		value_range.clone()
+			.for_each(|i| assert_eq!(trie.storage(&[i]).unwrap().unwrap(), vec![i; size_content]));
 
 		let proving = ProvingBackend::new(trie);
-		assert_eq!(proving.storage(&[42]).unwrap().unwrap(), vec![42]);
+		assert_eq!(proving.storage(&[42]).unwrap().unwrap(), vec![42; size_content]);
 
 		let proof = proving.extract_proof();
 
 		let proof_check = create_proof_check_backend::<BlakeTwo256>(in_memory_root.into(), proof).unwrap();
-		assert_eq!(proof_check.storage(&[42]).unwrap().unwrap(), vec![42]);
+		assert_eq!(proof_check.storage(&[42]).unwrap().unwrap(), vec![42; size_content]);
 	}
 
 	#[test]
 	fn proof_recorded_and_checked_with_child() {
+		proof_recorded_and_checked_with_child_inner(false);
+		proof_recorded_and_checked_with_child_inner(true);
+	}
+	fn proof_recorded_and_checked_with_child_inner(flagged: bool) {
 		let child_info_1 = ChildInfo::new_default(b"sub1");
 		let child_info_2 = ChildInfo::new_default(b"sub2");
 		let child_info_1 = &child_info_1;
 		let child_info_2 = &child_info_2;
 		let contents = vec![
-			(None, (0..64).map(|i| (vec![i], Some(vec![i]))).collect()),
+			(None, (0..64).map(|i| (vec![i], Some(vec![i]))).collect::<Vec<_>>()),
 			(Some(child_info_1.clone()),
 				(28..65).map(|i| (vec![i], Some(vec![i]))).collect()),
 			(Some(child_info_2.clone()),
 				(10..15).map(|i| (vec![i], Some(vec![i]))).collect()),
 		];
-		let in_memory = InMemoryBackend::<BlakeTwo256>::default();
-		let mut in_memory = in_memory.update(contents);
+		let mut in_memory = InMemoryBackend::<BlakeTwo256>::default();
+		if flagged {
+			in_memory = in_memory.update(vec![(None, vec![(
+				sp_core::storage::well_known_keys::TRIE_HASHING_CONFIG.to_vec(),
+				Some(sp_core::storage::trie_threshold_encode(
+					sp_core::storage::TEST_DEFAULT_ALT_HASH_THRESHOLD,
+				)),
+			)])]);
+		}
+		in_memory = in_memory.update(contents);
 		let child_storage_keys = vec![child_info_1.to_owned(), child_info_2.to_owned()];
 		let in_memory_root = in_memory.full_storage_root(
 			std::iter::empty(),
-			child_storage_keys.iter().map(|k|(k, std::iter::empty()))
+			child_storage_keys.iter().map(|k|(k, std::iter::empty())),
 		).0;
 		(0..64).for_each(|i| assert_eq!(
 			in_memory.storage(&[i]).unwrap().unwrap(),
@@ -500,7 +577,11 @@ mod tests {
 
 	#[test]
 	fn storage_proof_encoded_size_estimation_works() {
-		let trie_backend = test_trie();
+		storage_proof_encoded_size_estimation_works_inner(false);
+		storage_proof_encoded_size_estimation_works_inner(true);
+	}
+	fn storage_proof_encoded_size_estimation_works_inner(flagged: bool) {
+		let trie_backend = test_trie(flagged);
 		let backend = test_proving(&trie_backend);
 
 		let check_estimation = |backend: &ProvingBackend<'_, PrefixedMemoryDB<BlakeTwo256>, BlakeTwo256>| {

@@ -276,3 +276,10 @@ zeroize = { opt-level = 3 }
 [profile.release]
 # Substrate runtime requires unwinding.
 panic = "unwind"
+
+[patch.crates-io]
+hash-db = { git = "https://github.com/cheme/trie.git", branch = "hashed-value-simple4" }
+memory-db = { git = "https://github.com/cheme/trie.git", branch = "hashed-value-simple4" }
+trie-db = { git = "https://github.com/cheme/trie.git", branch = "hashed-value-simple4" }
+trie-root = { git = "https://github.com/cheme/trie.git", branch = "hashed-value-simple4" }
+trie-bench = { git = "https://github.com/cheme/trie.git", branch = "hashed-value-simple4" }

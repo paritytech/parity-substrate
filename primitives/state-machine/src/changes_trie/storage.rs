@@ -190,7 +190,7 @@ impl<H: Hasher, Number: BlockNumber> Storage<H, Number> for InMemoryStorage<H, N
 	}
 
 	fn get(&self, key: &H::Out, prefix: Prefix) -> Result<Option<DBValue>, String> {
-		MemoryDB::<H>::get(&self.data.read().mdb, key, prefix)
+		Ok(<MemoryDB::<H> as hash_db::HashDBRef<H, _>>::get(&self.data.read().mdb, key, prefix))
 	}
 }
 
@@ -210,4 +210,6 @@ impl<'a, H, Number> TrieBackendStorage<H> for TrieBackendAdapter<'a, H, Number>
 	fn get(&self, key: &H::Out, prefix: Prefix) -> Result<Option<DBValue>, String> {
 		self.storage.get(key, prefix)
 	}
+
+	fn access_from(&self, _key: &H::Out) { }
 }

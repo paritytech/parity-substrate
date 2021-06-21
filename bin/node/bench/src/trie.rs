@@ -145,6 +145,7 @@ impl core::BenchmarkDescription for TrieReadBenchmarkDescription {
 		let root = generate_trie(
 			database.open(self.database_type),
 			key_values,
+			Some(sp_core::storage::TEST_DEFAULT_ALT_HASH_THRESHOLD),
 		);
 
 		Box::new(TrieReadBenchmark {
@@ -172,6 +173,9 @@ impl sp_state_machine::Storage<sp_core::Blake2Hasher> for Storage {
 	fn get(&self, key: &Hash, prefix: Prefix) -> Result<Option<Vec<u8>>, String> {
 		let key = sp_trie::prefixed_key::<sp_core::Blake2Hasher>(key, prefix);
 		self.0.get(0, &key).map_err(|e| format!("Database backend error: {:?}", e))
+	}
+
+	fn access_from(&self, _key: &Hash) {
 	}
 }
 
@@ -256,6 +260,7 @@ impl core::BenchmarkDescription for TrieWriteBenchmarkDescription {
 		let root = generate_trie(
 			database.open(self.database_type),
 			key_values,
+			Some(sp_core::storage::TEST_DEFAULT_ALT_HASH_THRESHOLD),
 		);
 
 		Box::new(TrieWriteBenchmark {

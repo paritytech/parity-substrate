@@ -374,6 +374,7 @@ mod tests {
 			Sr25519Keyring::Bob.to_raw_public(),
 			Sr25519Keyring::Charlie.to_raw_public()
 		];
+
 		TestExternalities::new_with_code(
 			wasm_binary_unwrap(),
 			sp_core::storage::Storage {
@@ -382,7 +383,11 @@ mod tests {
 					twox_128(b"sys:auth").to_vec() => authorities.encode(),
 					blake2_256(&AccountKeyring::Alice.to_raw_public().to_keyed_vec(b"balance:")).to_vec() => {
 						vec![111u8, 0, 0, 0, 0, 0, 0, 0]
-					}
+					},
+					sp_core::storage::well_known_keys::TRIE_HASHING_CONFIG.to_vec() =>
+						sp_core::storage::trie_threshold_encode(
+							sp_core::storage::TEST_DEFAULT_ALT_HASH_THRESHOLD,
+						),
 				],
 				children_default: map![],
 			},

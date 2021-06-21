@@ -57,11 +57,17 @@ impl<Block: BlockT> sp_state_machine::Storage<HashFor<Block>> for StorageDb<Bloc
 			}
 			let backend_value = self.db.get(0, &prefixed_key)
 				.map_err(|e| format!("Database backend error: {:?}", e))?;
-			recorder.record(key.clone(), backend_value.clone());
+			recorder.record::<HashFor<Block>>(key.clone(), backend_value.clone());
 			Ok(backend_value)
 		} else {
 			self.db.get(0, &prefixed_key)
 				.map_err(|e| format!("Database backend error: {:?}", e))
+		}
+	}
+
+	fn access_from(&self, key: &Block::Hash) {
+		if let Some(recorder) = &self.proof_recorder {
+			recorder.access_from(key, HashFor::<Block>::LENGTH);
 		}
 	}
 }
@@ -524,7 +530,7 @@ impl<B: BlockT> StateBackend<HashFor<B>> for BenchmarkingState<B> {
 	fn proof_size(&self) -> Option<u32> {
 		self.proof_recorder.as_ref().map(|recorder| {
 			let proof_size = recorder.estimate_encoded_size() as u32;
-			let proof = recorder.to_storage_proof();
+			let proof = recorder.to_storage_proof::<HashFor<B>>();
 			let proof_recorder_root = self.proof_recorder_root.get();
 			if proof_recorder_root == Default::default() || proof_size == 1 {
 				// empty trie

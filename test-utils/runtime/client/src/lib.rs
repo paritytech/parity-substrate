@@ -353,12 +353,16 @@ impl Fetcher<substrate_test_runtime::Block> for LightFetcher {
 }
 
 /// Creates new client instance used for tests.
-pub fn new() -> Client<Backend> {
-	TestClientBuilder::new().build()
+pub fn new(hashed_state: bool) -> Client<Backend> {
+	let mut builder = TestClientBuilder::new();
+	if hashed_state {
+		builder = builder.state_hashed_value();
+	}
+	builder.build()
 }
 
 /// Creates new light client instance used for tests.
-pub fn new_light() -> (
+pub fn new_light(hashed_state: bool) -> (
 	client::Client<LightBackend, LightExecutor, substrate_test_runtime::Block, substrate_test_runtime::RuntimeApi>,
 	Arc<LightBackend>,
 ) {
@@ -378,10 +382,12 @@ pub fn new_light() -> (
 		local_call_executor,
 	);
 
+	let mut builder = TestClientBuilder::with_backend(backend.clone());
+	if hashed_state {
+		builder = builder.state_hashed_value();
+	}
 	(
-		TestClientBuilder::with_backend(backend.clone())
-			.build_with_executor(call_executor)
-			.0,
+		builder.build_with_executor(call_executor).0,
 		backend,
 	)
 }

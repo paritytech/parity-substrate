@@ -182,8 +182,8 @@ mod tests {
 	type Block =
 		sp_runtime::generic::Block<Header<u64, BlakeTwo256>, substrate_test_runtime::Extrinsic>;
 
-	fn send_receive(request: sender::Request<Block>, pool: &LocalPool) {
-		let client = Arc::new(substrate_test_runtime_client::new());
+	fn send_receive(request: sender::Request<Block>, pool: &LocalPool, hashed_value: bool) {
+		let client = Arc::new(substrate_test_runtime_client::new(hashed_value));
 		let (handler, protocol_config) = handler::LightClientRequestHandler::new(&protocol_id(), client);
 		pool.spawner().spawn_obj(handler.run().boxed().into()).unwrap();
 
@@ -215,6 +215,10 @@ mod tests {
 
 	#[test]
 	fn send_receive_call() {
+		send_receive_call_inner(true);
+		send_receive_call_inner(false);
+	}
+	fn send_receive_call_inner(hashed_value: bool) {
 		let chan = oneshot::channel();
 		let request = light::RemoteCallRequest {
 			block: Default::default(),
@@ -228,13 +232,17 @@ mod tests {
 		send_receive(sender::Request::Call {
 			request,
 			sender: chan.0,
-		}, &pool);
+		}, &pool, hashed_value);
 		assert_eq!(vec![42], pool.run_until(chan.1).unwrap().unwrap());
 		//              ^--- from `DummyFetchChecker::check_execution_proof`
 	}
 
 	#[test]
 	fn send_receive_read() {
+		send_receive_read_inner(true);
+		send_receive_read_inner(false);
+	}
+	fn send_receive_read_inner(hashed_value: bool) {
 		let chan = oneshot::channel();
 		let request = light::RemoteReadRequest {
 			header: dummy_header(),
@@ -246,7 +254,7 @@ mod tests {
 		send_receive(sender::Request::Read {
 			request,
 			sender: chan.0,
-		}, &pool);
+		}, &pool, hashed_value);
 		assert_eq!(
 			Some(vec![42]),
 			pool.run_until(chan.1)
@@ -260,6 +268,10 @@ mod tests {
 
 	#[test]
 	fn send_receive_read_child() {
+		send_receive_read_child_inner(true);
+		send_receive_read_child_inner(false);
+	}
+	fn send_receive_read_child_inner(hashed_value: bool) {
 		let chan = oneshot::channel();
 		let child_info = ChildInfo::new_default(&b":child_storage:default:sub"[..]);
 		let request = light::RemoteReadChildRequest {
@@ -273,7 +285,7 @@ mod tests {
 		send_receive(sender::Request::ReadChild {
 			request,
 			sender: chan.0,
-		}, &pool);
+		}, &pool, hashed_value);
 		assert_eq!(
 			Some(vec![42]),
 			pool.run_until(chan.1)
@@ -298,7 +310,7 @@ mod tests {
 		send_receive(sender::Request::Header {
 			request,
 			sender: chan.0,
-		}, &pool);
+		}, &pool, true);
 		// The remote does not know block 1:
 		assert_matches!(
 			pool.run_until(chan.1).unwrap(),
@@ -327,7 +339,7 @@ mod tests {
 		send_receive(sender::Request::Changes {
 			request,
 			sender: chan.0,
-		}, &pool);
+		}, &pool, true);
 		assert_eq!(vec![(100, 2)], pool.run_until(chan.1).unwrap().unwrap());
 		//              ^--- from `DummyFetchChecker::check_changes_proof`
 	}

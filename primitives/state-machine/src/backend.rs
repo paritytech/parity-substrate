@@ -124,6 +124,8 @@ pub trait Backend<H: Hasher>: sp_std::fmt::Debug {
 
 	/// Calculate the storage root, with given delta over what is already stored in
 	/// the backend, and produce a "transaction" that can be used to commit.
+	/// `alt_hashing` indicate if trie state should apply alternate hashing
+	/// scheme (inner value hashed).
 	/// Does not include child storage updates.
 	fn storage_root<'a>(
 		&self,
@@ -164,7 +166,6 @@ pub trait Backend<H: Hasher>: sp_std::fmt::Debug {
 	fn as_trie_backend(&mut self) -> Option<&TrieBackend<Self::TrieBackendStorage, H>> {
 		None
 	}
-
 	/// Calculate the storage root, with given delta over what is already stored
 	/// in the backend, and produce a "transaction" that can be used to commit.
 	/// Does include child storage updates.
@@ -180,8 +181,10 @@ pub trait Backend<H: Hasher>: sp_std::fmt::Debug {
 		let mut child_roots: Vec<_> = Default::default();
 		// child first
 		for (child_info, child_delta) in child_deltas {
-			let (child_root, empty, child_txs) =
-				self.child_storage_root(&child_info, child_delta);
+			let (child_root, empty, child_txs) = self.child_storage_root(
+				&child_info,
+				child_delta,
+			);
 			let prefixed_storage_key = child_info.prefixed_storage_key();
 			txs.consolidate(child_txs);
 			if empty {
@@ -196,7 +199,7 @@ pub trait Backend<H: Hasher>: sp_std::fmt::Debug {
 				child_roots
 					.iter()
 					.map(|(k, v)| (&k[..], v.as_ref().map(|v| &v[..])))
-			)
+			),
 		);
 		txs.consolidate(parent_txs);
 		(root, txs)
@@ -251,6 +254,13 @@ pub trait Backend<H: Hasher>: sp_std::fmt::Debug {
 	fn proof_size(&self) -> Option<u32> {
 		unimplemented!()
 	}
+
+	/// Read current trie hashing threshold.
+	/// Please do not change default implementation when implementing this trait.
+	fn get_trie_alt_hashing_threshold(&self) -> Option<u32> {
+		self.storage(sp_core::storage::well_known_keys::TRIE_HASHING_CONFIG).ok().flatten()
+			.and_then(|encoded| sp_core::storage::trie_threshold_decode(&mut encoded.as_slice()))
+	}
 }
 
 /// Trait that allows consolidate two transactions together.
@@ -274,7 +284,11 @@ impl Consolidate for Vec<(
 	}
 }
 
-impl<H: Hasher, KF: sp_trie::KeyFunction<H>> Consolidate for sp_trie::GenericMemoryDB<H, KF> {
+impl<H, KF> Consolidate for sp_trie::GenericMemoryDB<H, KF>
+	where
+		H: Hasher,
+		KF: sp_trie::KeyFunction<H>,
+{
 	fn consolidate(&mut self, other: Self) {
 		sp_trie::GenericMemoryDB::consolidate(self, other)
 	}

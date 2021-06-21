@@ -19,8 +19,9 @@
 
 use crate::{warn, debug};
 use hash_db::Hasher;
-use sp_trie::{Trie, delta_trie_root, empty_child_trie_root, child_delta_trie_root};
-use sp_trie::trie_types::{TrieDB, TrieError, Layout};
+use sp_trie::{Trie, delta_trie_root, empty_child_trie_root, child_delta_trie_root,
+	Layout};
+use sp_trie::trie_types::{TrieDB, TrieError};
 use sp_core::storage::{ChildInfo, ChildType};
 use codec::{Codec, Decode};
 use crate::{
@@ -32,6 +33,10 @@ use sp_std::{boxed::Box, vec::Vec};
 /// Patricia trie-based backend. Transaction type is an overlay of changes to commit.
 pub struct TrieBackend<S: TrieBackendStorage<H>, H: Hasher> {
 	pub (crate) essence: TrieBackendEssence<S, H>,
+	// Allows setting alt hashing at start for testing only
+	// (mainly for in_memory_backend when it cannot read it from
+	// state).
+	pub (crate) force_alt_hashing: Option<Option<u32>>,
 }
 
 impl<S: TrieBackendStorage<H>, H: Hasher> TrieBackend<S, H> where H::Out: Codec {
@@ -39,6 +44,7 @@ impl<S: TrieBackendStorage<H>, H: Hasher> TrieBackend<S, H> where H::Out: Codec 
 	pub fn new(storage: S, root: H::Out) -> Self {
 		TrieBackend {
 			essence: TrieBackendEssence::new(storage, root),
+			force_alt_hashing: None,
 		}
 	}
 
@@ -173,6 +179,11 @@ impl<S: TrieBackendStorage<H>, H: Hasher> Backend<H> for TrieBackend<S, H> where
 		&self,
 		delta: impl Iterator<Item=(&'a [u8], Option<&'a [u8]>)>,
 	) -> (H::Out, Self::Transaction) where H::Out: Ord {
+		let use_inner_hash_value = if let Some(force) = self.force_alt_hashing.as_ref() {
+			force.clone()
+		} else {
+			self.get_trie_alt_hashing_threshold()
+		};
 		let mut write_overlay = S::Overlay::default();
 		let mut root = *self.essence.root();
 
@@ -181,8 +192,16 @@ impl<S: TrieBackendStorage<H>, H: Hasher> Backend<H> for TrieBackend<S, H> where
 				self.essence.backend_storage(),
 				&mut write_overlay,
 			);
+			let res = || {
+				let layout = if let Some(threshold) = use_inner_hash_value {
+					sp_trie::Layout::with_alt_hashing(threshold)
+				} else {
+					sp_trie::Layout::default()
+				};
+				delta_trie_root::<Layout<H>, _, _, _, _, _>(&mut eph, root, delta, layout)
+			};
 
-			match delta_trie_root::<Layout<H>, _, _, _, _, _>(&mut eph, root, delta) {
+			match res() {
 				Ok(ret) => root = ret,
 				Err(e) => warn!(target: "trie", "Failed to write to trie: {}", e),
 			}
@@ -196,8 +215,19 @@ impl<S: TrieBackendStorage<H>, H: Hasher> Backend<H> for TrieBackend<S, H> where
 		child_info: &ChildInfo,
 		delta: impl Iterator<Item=(&'a [u8], Option<&'a [u8]>)>,
 	) -> (H::Out, bool, Self::Transaction) where H::Out: Ord {
+		let use_inner_hash_value = if let Some(force) = self.force_alt_hashing.as_ref() {
+			force.clone()
+		} else {
+			self.get_trie_alt_hashing_threshold()
+		};
+
 		let default_root = match child_info.child_type() {
 			ChildType::ParentKeyId => empty_child_trie_root::<Layout<H>>()
+		};
+		let layout = if let Some(threshold) = use_inner_hash_value {
+			sp_trie::Layout::with_alt_hashing(threshold)
+		} else {
+			sp_trie::Layout::default()
 		};
 
 		let mut write_overlay = S::Overlay::default();
@@ -222,6 +252,7 @@ impl<S: TrieBackendStorage<H>, H: Hasher> Backend<H> for TrieBackend<S, H> where
 				&mut eph,
 				root,
 				delta,
+				layout,
 			) {
 				Ok(ret) => root = ret,
 				Err(e) => warn!(target: "trie", "Failed to write to trie: {}", e),
@@ -252,6 +283,7 @@ impl<S: TrieBackendStorage<H>, H: Hasher> Backend<H> for TrieBackend<S, H> where
 pub mod tests {
 	use std::{collections::HashSet, iter};
 	use sp_core::H256;
+	use sp_core::storage::TEST_DEFAULT_ALT_HASH_THRESHOLD as TRESHOLD;
 	use codec::Encode;
 	use sp_trie::{TrieMut, PrefixedMemoryDB, trie_types::TrieDBMut, KeySpacedDBMut};
 	use sp_runtime::traits::BlakeTwo256;
@@ -259,7 +291,7 @@ pub mod tests {
 
 	const CHILD_KEY_1: &[u8] = b"sub1";
 
-	fn test_db() -> (PrefixedMemoryDB<BlakeTwo256>, H256) {
+	pub(crate) fn test_db(hashed_value: bool) -> (PrefixedMemoryDB<BlakeTwo256>, H256) {
 		let child_info = ChildInfo::new_default(CHILD_KEY_1);
 		let mut root = H256::default();
 		let mut mdb = PrefixedMemoryDB::<BlakeTwo256>::default();
@@ -273,13 +305,25 @@ pub mod tests {
 		{
 			let mut sub_root = Vec::new();
 			root.encode_to(&mut sub_root);
-			let mut trie = TrieDBMut::new(&mut mdb, &mut root);
+			let mut trie = if hashed_value {
+				let layout = Layout::with_alt_hashing(TRESHOLD);
+				TrieDBMut::new_with_layout(&mut mdb, &mut root, layout)
+			} else {
+				TrieDBMut::new(&mut mdb, &mut root)
+			};
+
 			trie.insert(child_info.prefixed_storage_key().as_slice(), &sub_root[..])
 				.expect("insert failed");
 			trie.insert(b"key", b"value").expect("insert failed");
 			trie.insert(b"value1", &[42]).expect("insert failed");
 			trie.insert(b"value2", &[24]).expect("insert failed");
 			trie.insert(b":code", b"return 42").expect("insert failed");
+			if hashed_value {
+				trie.insert(
+					sp_core::storage::well_known_keys::TRIE_HASHING_CONFIG,
+					sp_core::storage::trie_threshold_encode(TRESHOLD).as_slice(),
+				).unwrap();
+			}
 			for i in 128u8..255u8 {
 				trie.insert(&[i], &[i]).unwrap();
 			}
@@ -287,19 +331,29 @@ pub mod tests {
 		(mdb, root)
 	}
 
-	pub(crate) fn test_trie() -> TrieBackend<PrefixedMemoryDB<BlakeTwo256>, BlakeTwo256> {
-		let (mdb, root) = test_db();
+	pub(crate) fn test_trie(
+		hashed_value: bool,
+	) -> TrieBackend<PrefixedMemoryDB<BlakeTwo256>, BlakeTwo256> {
+		let (mdb, root) = test_db(hashed_value);
 		TrieBackend::new(mdb, root)
 	}
 
 	#[test]
 	fn read_from_storage_returns_some() {
-		assert_eq!(test_trie().storage(b"key").unwrap(), Some(b"value".to_vec()));
+		read_from_storage_returns_some_inner(false);
+		read_from_storage_returns_some_inner(true);
+	}
+	fn read_from_storage_returns_some_inner(flagged: bool) {
+		assert_eq!(test_trie(flagged).storage(b"key").unwrap(), Some(b"value".to_vec()));
 	}
 
 	#[test]
 	fn read_from_child_storage_returns_some() {
-		let test_trie = test_trie();
+		read_from_child_storage_returns_some_inner(false);
+		read_from_child_storage_returns_some_inner(true);
+	}
+	fn read_from_child_storage_returns_some_inner(flagged: bool) {
+		let test_trie = test_trie(flagged);
 		assert_eq!(
 			test_trie.child_storage(&ChildInfo::new_default(CHILD_KEY_1), b"value3").unwrap(),
 			Some(vec![142u8]),
@@ -308,12 +362,20 @@ pub mod tests {
 
 	#[test]
 	fn read_from_storage_returns_none() {
-		assert_eq!(test_trie().storage(b"non-existing-key").unwrap(), None);
+		read_from_storage_returns_none_inner(false);
+		read_from_storage_returns_none_inner(true);
+	}
+	fn read_from_storage_returns_none_inner(flagged: bool) {
+		assert_eq!(test_trie(flagged).storage(b"non-existing-key").unwrap(), None);
 	}
 
 	#[test]
 	fn pairs_are_not_empty_on_non_empty_storage() {
-		assert!(!test_trie().pairs().is_empty());
+		pairs_are_not_empty_on_non_empty_storage_inner(false);
+		pairs_are_not_empty_on_non_empty_storage_inner(true);
+	}
+	fn pairs_are_not_empty_on_non_empty_storage_inner(flagged: bool) {
+		assert!(!test_trie(flagged).pairs().is_empty());
 	}
 
 	#[test]
@@ -326,26 +388,33 @@ pub mod tests {
 
 	#[test]
 	fn storage_root_is_non_default() {
-		assert!(test_trie().storage_root(iter::empty()).0 != H256::repeat_byte(0));
+		storage_root_is_non_default_inner(false);
+		storage_root_is_non_default_inner(true);
 	}
-
-	#[test]
-	fn storage_root_transaction_is_empty() {
-		assert!(test_trie().storage_root(iter::empty()).1.drain().is_empty());
+	fn storage_root_is_non_default_inner(flagged: bool) {
+		assert!(test_trie(flagged).storage_root(iter::empty()).0 != H256::repeat_byte(0));
 	}
 
 	#[test]
 	fn storage_root_transaction_is_non_empty() {
-		let (new_root, mut tx) = test_trie().storage_root(
+		storage_root_transaction_is_non_empty_inner(false);
+		storage_root_transaction_is_non_empty_inner(true);
+	}
+	fn storage_root_transaction_is_non_empty_inner(flagged: bool) {
+		let (new_root, mut tx) = test_trie(flagged).storage_root(
 			iter::once((&b"new-key"[..], Some(&b"new-value"[..]))),
 		);
 		assert!(!tx.drain().is_empty());
-		assert!(new_root != test_trie().storage_root(iter::empty()).0);
+		assert!(new_root != test_trie(false).storage_root(iter::empty()).0);
 	}
 
 	#[test]
 	fn prefix_walking_works() {
-		let trie = test_trie();
+		prefix_walking_works_inner(false);
+		prefix_walking_works_inner(true);
+	}
+	fn prefix_walking_works_inner(flagged: bool) {
+		let trie = test_trie(flagged);
 
 		let mut seen = HashSet::new();
 		trie.for_keys_with_prefix(b"value", |key| {

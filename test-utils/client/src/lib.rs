@@ -80,6 +80,7 @@ pub struct TestClientBuilder<Block: BlockT, Executor, Backend, G: GenesisInit> {
 	fork_blocks: ForkBlocks<Block>,
 	bad_blocks: BadBlocks<Block>,
 	enable_offchain_indexing_api: bool,
+	state_hashed_value: bool,
 }
 
 impl<Block: BlockT, Executor, G: GenesisInit> Default
@@ -116,6 +117,7 @@ impl<Block: BlockT, Executor, Backend, G: GenesisInit> TestClientBuilder<Block, 
 			fork_blocks: None,
 			bad_blocks: None,
 			enable_offchain_indexing_api: false,
+			state_hashed_value: false,
 		}
 	}
 
@@ -183,6 +185,12 @@ impl<Block: BlockT, Executor, Backend, G: GenesisInit> TestClientBuilder<Block, 
 		self
 	}
 
+	/// Enable the internal value hash of state.
+	pub fn state_hashed_value(mut self) -> Self {
+		self.state_hashed_value = true;
+		self
+	}
+
 	/// Build the test client with the given native executor.
 	pub fn build_with_executor<RuntimeApi>(
 		self,
@@ -202,6 +210,11 @@ impl<Block: BlockT, Executor, Backend, G: GenesisInit> TestClientBuilder<Block, 
 	{
 		let storage = {
 			let mut storage = self.genesis_init.genesis_storage();
+			if self.state_hashed_value {
+				storage.modify_trie_alt_hashing_threshold(
+					Some(sp_core::storage::TEST_DEFAULT_ALT_HASH_THRESHOLD),
+				);
+			}
 
 			// Add some child storage keys.
 			for (key, child_content) in self.child_storage_extension {

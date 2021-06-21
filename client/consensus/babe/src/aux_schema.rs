@@ -157,7 +157,7 @@ mod test {
 			epoch_index: 1,
 			duration: 100,
 		};
-		let client = substrate_test_runtime_client::new();
+		let client = substrate_test_runtime_client::new(true);
 		let mut v0_tree = ForkTree::<H256, NumberFor<TestBlock>, _>::new();
 		v0_tree.import::<_, ConsensusError>(
 			Default::default(),

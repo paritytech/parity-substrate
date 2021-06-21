@@ -87,6 +87,11 @@ where
 	pub fn eq(&self, other: &Self) -> bool {
 		self.root() == other.root()
 	}
+
+	/// Setting a alternate hashing threshold at start.
+	pub fn force_alt_hashing(&mut self, threshold: Option<u32>) {
+		self.force_alt_hashing = Some(threshold);
+	}
 }
 
 impl<H: Hasher> Clone for TrieBackend<MemoryDB<H>, H>

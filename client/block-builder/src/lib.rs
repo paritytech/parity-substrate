@@ -301,7 +301,7 @@ mod tests {
 
 	#[test]
 	fn block_building_storage_proof_does_not_include_runtime_by_default() {
-		let builder = substrate_test_runtime_client::TestClientBuilder::new();
+		let builder = substrate_test_runtime_client::TestClientBuilder::new().state_hashed_value();
 		let backend = builder.backend();
 		let client = builder.build();
 

@@ -143,7 +143,8 @@ mod changes_trie {
 
 #[cfg(feature = "std")]
 mod std_reexport {
-	pub use sp_trie::{trie_types::{Layout, TrieDBMut}, StorageProof, TrieMut, DBValue, MemoryDB};
+	pub use sp_trie::{trie_types::TrieDBMut, Layout, StorageProof, TrieMut,
+		DBValue, MemoryDB};
 	pub use crate::testing::TestExternalities;
 	pub use crate::basic::BasicExternalities;
 	pub use crate::read_only::{ReadOnlyExternalities, InspectState};
@@ -843,6 +844,19 @@ mod execution {
 		H: Hasher,
 		H::Out: Ord + Codec,
 	{
+		read_proof_check_on_proving_backend_generic(proving_backend, key)
+	}
+
+	/// Check storage read proof on pre-created proving backend.
+	pub fn read_proof_check_on_proving_backend_generic<H, KF>(
+		proving_backend: &TrieBackend<sp_trie::GenericMemoryDB<H, KF>, H>,
+		key: &[u8],
+	) -> Result<Option<Vec<u8>>, Box<dyn Error>>
+	where
+		H: Hasher,
+		H::Out: Ord + Codec,
+		KF: sp_trie::KeyFunction<H> + Send + Sync,
+	{
 		proving_backend.storage(key).map_err(|e| Box::new(e) as Box<dyn Error>)
 	}
 
@@ -879,7 +893,7 @@ mod tests {
 		traits::CodeExecutor,
 	};
 	use crate::execution::CallResult;
-
+	use sp_core::storage::TEST_DEFAULT_ALT_HASH_THRESHOLD as TRESHOLD;
 
 	#[derive(Clone)]
 	struct DummyCodeExecutor {
@@ -955,7 +969,11 @@ mod tests {
 
 	#[test]
 	fn execute_works() {
-		let backend = trie_backend::tests::test_trie();
+		execute_works_inner(false);
+		execute_works_inner(true);
+	}
+	fn execute_works_inner(hashed: bool) {
+		let backend = trie_backend::tests::test_trie(hashed);
 		let mut overlayed_changes = Default::default();
 		let wasm_code = RuntimeCode::empty();
 
@@ -982,10 +1000,13 @@ mod tests {
 		);
 	}
 
-
 	#[test]
 	fn execute_works_with_native_else_wasm() {
-		let backend = trie_backend::tests::test_trie();
+		execute_works_with_native_else_wasm_inner(false);
+		execute_works_with_native_else_wasm_inner(true);
+	}
+	fn execute_works_with_native_else_wasm_inner(hashed: bool) {
+		let backend = trie_backend::tests::test_trie(hashed);
 		let mut overlayed_changes = Default::default();
 		let wasm_code = RuntimeCode::empty();
 
@@ -1011,8 +1032,12 @@ mod tests {
 
 	#[test]
 	fn dual_execution_strategy_detects_consensus_failure() {
+		dual_execution_strategy_detects_consensus_failure_inner(false);
+		dual_execution_strategy_detects_consensus_failure_inner(true);
+	}
+	fn dual_execution_strategy_detects_consensus_failure_inner(hashed: bool) {
 		let mut consensus_failed = false;
-		let backend = trie_backend::tests::test_trie();
+		let backend = trie_backend::tests::test_trie(hashed);
 		let mut overlayed_changes = Default::default();
 		let wasm_code = RuntimeCode::empty();
 
@@ -1047,6 +1072,10 @@ mod tests {
 
 	#[test]
 	fn prove_execution_and_proof_check_works() {
+		prove_execution_and_proof_check_works_inner(true);
+		prove_execution_and_proof_check_works_inner(false);
+	}
+	fn prove_execution_and_proof_check_works_inner(flagged: bool) {
 		let executor = DummyCodeExecutor {
 			change_changes_trie_config: false,
 			native_available: true,
@@ -1055,7 +1084,7 @@ mod tests {
 		};
 
 		// fetch execution proof from 'remote' full node
-		let remote_backend = trie_backend::tests::test_trie();
+		let remote_backend = trie_backend::tests::test_trie(flagged);
 		let remote_root = remote_backend.storage_root(std::iter::empty()).0;
 		let (remote_result, remote_proof) = prove_execution::<_, _, u64, _, _>(
 			remote_backend,
@@ -1439,10 +1468,14 @@ mod tests {
 
 	#[test]
 	fn prove_read_and_proof_check_works() {
+		prove_read_and_proof_check_works_inner(false);
+		prove_read_and_proof_check_works_inner(true);
+	}
+	fn prove_read_and_proof_check_works_inner(flagged: bool) {
 		let child_info = ChildInfo::new_default(b"sub1");
 		let child_info = &child_info;
 		// fetch read proof from 'remote' full node
-		let remote_backend = trie_backend::tests::test_trie();
+		let remote_backend = trie_backend::tests::test_trie(flagged);
 		let remote_root = remote_backend.storage_root(std::iter::empty()).0;
 		let remote_proof = prove_read(remote_backend, &[b"value2"]).unwrap();
 		let remote_proof = test_compact(remote_proof, &remote_root);
@@ -1464,7 +1497,7 @@ mod tests {
 		);
 		assert_eq!(local_result2, false);
 		// on child trie
-		let remote_backend = trie_backend::tests::test_trie();
+		let remote_backend = trie_backend::tests::test_trie(flagged);
 		let remote_root = remote_backend.storage_root(std::iter::empty()).0;
 		let remote_proof = prove_child_read(
 			remote_backend,
@@ -1495,19 +1528,113 @@ mod tests {
 	}
 
 	#[test]
+	fn inner_state_hashing_switch_proofs() {
+
+		let mut layout = Layout::default();
+		let (mut mdb, mut root) = trie_backend::tests::test_db(false);
+		{
+			let mut trie = TrieDBMut::from_existing_with_layout(
+				&mut mdb,
+				&mut root,
+				layout.clone(),
+			).unwrap();
+			trie.insert(b"foo", vec![1u8; 1_000].as_slice()) // big inner hash
+				.expect("insert failed");
+			trie.insert(b"foo2", vec![3u8; 16].as_slice()) // no inner hash
+				.expect("insert failed");
+			trie.insert(b"foo222", vec![5u8; 100].as_slice()) // inner hash
+				.expect("insert failed");
+		}
+		
+		let check_proof = |mdb, root| -> StorageProof {
+			let remote_backend = TrieBackend::new(mdb, root);
+			let remote_root = remote_backend.storage_root(::std::iter::empty()).0;
+			let remote_proof = prove_read(remote_backend, &[b"foo222"]).unwrap();
+			// check proof locally
+			let local_result1 = read_proof_check::<BlakeTwo256, _>(
+				remote_root,
+				remote_proof.clone(),
+				&[b"foo222"],
+			).unwrap();
+			// check that results are correct
+			assert_eq!(
+				local_result1.into_iter().collect::<Vec<_>>(),
+				vec![(b"foo222".to_vec(), Some(vec![5u8; 100]))],
+			);
+			remote_proof
+		};
+
+		let remote_proof = check_proof(mdb.clone(), root.clone());
+		// check full values in proof
+		assert!(remote_proof.encode().len() > 1_100);
+		assert!(remote_proof.encoded_size() > 1_100);
+		let root1 = root.clone();
+
+
+		// do switch
+		layout = Layout::with_alt_hashing(TRESHOLD);
+		// update with same value do not change
+		{
+			let mut trie = TrieDBMut::from_existing_with_layout(
+				&mut mdb,
+				&mut root,
+				layout.clone(),
+			).unwrap();
+			trie.insert(b"foo222", vec![5u8; 100].as_slice()) // inner hash
+				.expect("insert failed");
+		}
+		let root3 = root.clone();
+		assert!(root1 == root3);
+		// different value then same is enough to update
+		// from triedbmut persipective (do not
+		// work with state machine as only changes do makes
+		// it to payload (would require a special host function).
+		{
+			let mut trie = TrieDBMut::from_existing_with_layout(
+				&mut mdb,
+				&mut root,
+				layout.clone(),
+			).unwrap();
+			trie.insert(b"foo222", vec![4u8].as_slice()) // inner hash
+				.expect("insert failed");
+			trie.insert(b"foo222", vec![5u8; 100].as_slice()) // inner hash
+				.expect("insert failed");
+		}
+		let root3 = root.clone();
+		assert!(root1 != root3);
+		let remote_proof = check_proof(mdb.clone(), root.clone());
+		// nodes foo is replaced by its hashed value form.
+		assert!(remote_proof.encode().len() < 1000);
+		assert!(remote_proof.encoded_size() < 1000);
+		assert_eq!(remote_proof.encode().len(),
+			remote_proof.encoded_size());
+	}
+
+	#[test]
 	fn compact_multiple_child_trie() {
+		let size_inner_hash = compact_multiple_child_trie_inner(true);
+		let size_no_inner_hash = compact_multiple_child_trie_inner(false);
+		assert!(size_inner_hash < size_no_inner_hash);
+	}
+	fn compact_multiple_child_trie_inner(flagged: bool) -> usize {
 		// this root will be queried
 		let child_info1 = ChildInfo::new_default(b"sub1");
 		// this root will not be include in proof
 		let child_info2 = ChildInfo::new_default(b"sub2");
 		// this root will be include in proof
 		let child_info3 = ChildInfo::new_default(b"sub");
-		let mut remote_backend = trie_backend::tests::test_trie();
+		let mut remote_backend = trie_backend::tests::test_trie(flagged);
+		let long_vec: Vec<u8> = (0..1024usize).map(|_| 8u8).collect();
 		let (remote_root, transaction) = remote_backend.full_storage_root(
 			std::iter::empty(),
 			vec![
 				(&child_info1, vec![
-					(&b"key1"[..], Some(&b"val2"[..])),
+					// a inner hashable node 
+					(&b"k"[..], Some(&long_vec[..])),
+					// need to ensure this is not an inline node
+					// otherwhise we do not know what is accessed when
+					// storing proof.
+					(&b"key1"[..], Some(&vec![5u8; 32][..])),
 					(&b"key2"[..], Some(&b"val3"[..])),
 				].into_iter()),
 				(&child_info2, vec![
@@ -1527,6 +1654,7 @@ mod tests {
 			&child_info1,
 			&[b"key1"],
 		).unwrap();
+		let size = remote_proof.encoded_size();
 		let remote_proof = test_compact(remote_proof, &remote_root);
 		let local_result1 = read_child_proof_check::<BlakeTwo256, _>(
 			remote_root,
@@ -1535,7 +1663,8 @@ mod tests {
 			&[b"key1"],
 		).unwrap();
 		assert_eq!(local_result1.len(), 1);
-		assert_eq!(local_result1.get(&b"key1"[..]), Some(&Some(b"val2".to_vec())));
+		assert_eq!(local_result1.get(&b"key1"[..]), Some(&Some(vec![5u8; 32])));
+		size
 	}
 
 	#[test]
@@ -1548,7 +1677,7 @@ mod tests {
 		let mut overlay = OverlayedChanges::default();
 
 		let mut transaction = {
-			let backend = test_trie();
+			let backend = test_trie(false);
 			let mut cache = StorageTransactionCache::default();
 			let mut ext = Ext::new(
 				&mut overlay,
@@ -1616,7 +1745,7 @@ mod tests {
 			struct DummyExt(u32);
 		}
 
-		let backend = trie_backend::tests::test_trie();
+		let backend = trie_backend::tests::test_trie(false);
 		let mut overlayed_changes = Default::default();
 		let wasm_code = RuntimeCode::empty();
 

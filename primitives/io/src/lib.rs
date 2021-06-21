@@ -54,7 +54,7 @@ use sp_core::{
 };
 
 #[cfg(feature = "std")]
-use sp_trie::{TrieConfiguration, trie_types::Layout};
+use sp_trie::{TrieConfiguration, Layout};
 
 use sp_runtime_interface::{runtime_interface, Pointer};
 use sp_runtime_interface::pass_by::{PassBy, PassByCodec};
@@ -426,22 +426,22 @@ pub trait DefaultChildStorage {
 pub trait Trie {
 	/// A trie root formed from the iterated items.
 	fn blake2_256_root(input: Vec<(Vec<u8>, Vec<u8>)>) -> H256 {
-		Layout::<sp_core::Blake2Hasher>::trie_root(input)
+		Layout::<sp_core::Blake2Hasher>::default().trie_root(input)
 	}
 
 	/// A trie root formed from the enumerated items.
 	fn blake2_256_ordered_root(input: Vec<Vec<u8>>) -> H256 {
-		Layout::<sp_core::Blake2Hasher>::ordered_trie_root(input)
+		Layout::<sp_core::Blake2Hasher>::default().ordered_trie_root(input)
 	}
 
 	/// A trie root formed from the iterated items.
 	fn keccak_256_root(input: Vec<(Vec<u8>, Vec<u8>)>) -> H256 {
-		Layout::<sp_core::KeccakHasher>::trie_root(input)
+		Layout::<sp_core::KeccakHasher>::default().trie_root(input)
 	}
 
 	/// A trie root formed from the enumerated items.
 	fn keccak_256_ordered_root(input: Vec<Vec<u8>>) -> H256 {
-		Layout::<sp_core::KeccakHasher>::ordered_trie_root(input)
+		Layout::<sp_core::KeccakHasher>::default().ordered_trie_root(input)
 	}
 
 	/// Verify trie proof
@@ -1511,6 +1511,21 @@ mod tests {
 		t.execute_with(|| {
 			assert_eq!(storage::get(b"hello"), None);
 			assert_eq!(storage::get(b"foo"), Some(b"bar".to_vec()));
+		});
+
+		let value = vec![7u8; 35];
+		let mut storage = Storage {
+			top: map![b"foo00".to_vec() => value.clone()],
+			children_default: map![],
+		};
+		storage.modify_trie_alt_hashing_threshold(Some(
+			sp_core::storage::TEST_DEFAULT_ALT_HASH_THRESHOLD
+		));
+		t = BasicExternalities::new(storage);
+
+		t.execute_with(|| {
+			assert_eq!(storage::get(b"hello"), None);
+			assert_eq!(storage::get(b"foo00"), Some(value.clone()));
 		});
 	}
 

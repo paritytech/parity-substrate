@@ -159,7 +159,7 @@ mod test {
 
 	#[test]
 	fn check_equivocation_works() {
-		let client = substrate_test_runtime_client::new();
+		let client = substrate_test_runtime_client::new(true);
 		let (pair, _seed) = sr25519::Pair::generate();
 		let public = pair.public();
 

@@ -276,7 +276,7 @@ fn generate_runtime_api_base_structures() -> Result<TokenStream> {
 			fn extract_proof(&mut self) -> Option<#crate_::StorageProof> {
 				self.recorder
 					.take()
-					.map(|recorder| recorder.to_storage_proof())
+					.map(|recorder| recorder.to_storage_proof::<#crate_::HashFor<Block>>())
 			}
 
 			fn into_storage_changes(

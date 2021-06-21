@@ -700,8 +700,8 @@ pub trait TestNetFactory: Sized where <Self::BlockImport as BlockImport<Block>>:
 	/// Add a full peer.
 	fn add_full_peer_with_config(&mut self, config: FullPeerConfig) {
 		let test_client_builder = match config.keep_blocks {
-			Some(keep_blocks) => TestClientBuilder::with_pruning_window(keep_blocks),
-			None => TestClientBuilder::with_default_backend(),
+			Some(keep_blocks) => TestClientBuilder::with_pruning_window(keep_blocks).state_hashed_value(),
+			None => TestClientBuilder::with_default_backend().state_hashed_value(),
 		};
 		let backend = test_client_builder.backend();
 		let (c, longest_chain) = test_client_builder.build_with_longest_chain();
@@ -822,7 +822,7 @@ pub trait TestNetFactory: Sized where <Self::BlockImport as BlockImport<Block>>:
 
 	/// Add a light peer.
 	fn add_light_peer(&mut self) {
-		let (c, backend) = substrate_test_runtime_client::new_light();
+		let (c, backend) = substrate_test_runtime_client::new_light(true);
 		let client = Arc::new(c);
 		let (
 			block_import,

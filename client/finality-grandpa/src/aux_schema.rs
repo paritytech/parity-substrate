@@ -561,7 +561,7 @@ mod test {
 
 	#[test]
 	fn load_decode_from_v0_migrates_data_format() {
-		let client = substrate_test_runtime_client::new();
+		let client = substrate_test_runtime_client::new(true);
 
 		let authorities = vec![(AuthorityId::default(), 100)];
 		let set_id = 3;
@@ -654,7 +654,7 @@ mod test {
 
 	#[test]
 	fn load_decode_from_v1_migrates_data_format() {
-		let client = substrate_test_runtime_client::new();
+		let client = substrate_test_runtime_client::new(true);
 
 		let authorities = vec![(AuthorityId::default(), 100)];
 		let set_id = 3;
@@ -750,7 +750,7 @@ mod test {
 
 	#[test]
 	fn load_decode_from_v2_migrates_data_format() {
-		let client = substrate_test_runtime_client::new();
+		let client = substrate_test_runtime_client::new(true);
 
 		let authorities = vec![(AuthorityId::default(), 100)];
 		let set_id = 3;
@@ -823,7 +823,7 @@ mod test {
 
 	#[test]
 	fn write_read_concluded_rounds() {
-		let client = substrate_test_runtime_client::new();
+		let client = substrate_test_runtime_client::new(true);
 		let hash = H256::random();
 		let round_state = RoundState::genesis((hash, 0));
 
