@@ -506,6 +506,15 @@
 			"website": "https://manta.network"
 		},
 		{
+			"prefix": 99,
+			"network": "nuchain",
+			"displayName": "Nuchain: Mainnet",
+			"symbols": ["ARA"],
+			"decimals": [10],
+			"standardAccount": "*25519",
+			"website": "https://nuchain.network"
+		},
+		{
 			"prefix": 252,
 			"network": "social-network",
 			"displayName": "Social Network",

@@ -584,6 +584,8 @@ ss58_address_format!(
 		(77, "manta", "Manta Network, standard account (*25519).")
 	CalamariAccount =>
 		(78, "calamari", "Manta Canary Network, standard account (*25519).")
+	NuchainAccount =>
+		(99, "nuchain", "Nusantara Chain mainnet, standard account (*25519).")
 	SocialAccount =>
 		(252, "social-network", "Social Network, standard account (*25519).")
 	Moonbeam =>
