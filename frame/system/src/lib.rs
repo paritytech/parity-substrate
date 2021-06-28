@@ -85,7 +85,7 @@ use sp_runtime::{
 
 use sp_core::{ChangesTrieConfiguration, storage::well_known_keys};
 use frame_support::{
-	Parameter, storage,
+	Parameter, storage, WeakBoundedVec,
 	traits::{
 		SortedMembers, Get, PalletInfo, OnNewAccount, OnKilledAccount, HandleLifetime,
 		StoredMap, EnsureOrigin, OriginTrait, Filter, MaxEncodedLen,
@@ -188,7 +188,7 @@ pub mod pallet {
 		/// with a sender account.
 		type Index:
 			Parameter + Member + MaybeSerializeDeserialize + Debug + Default + MaybeDisplay + AtLeast32Bit
-			+ Copy;
+			+ Copy + MaxEncodedLen;
 
 		/// The block number type used by the runtime.
 		type BlockNumber:
@@ -224,7 +224,8 @@ pub mod pallet {
 		>;
 
 		/// The aggregated event type of the runtime.
-		type Event: Parameter + Member + From<Event<Self>> + Debug + IsType<<Self as frame_system::Config>::Event>;
+		type Event: Parameter + Member + From<Event<Self>> + Debug + MaxEncodedLen
+			+ IsType<<Self as frame_system::Config>::Event>;
 
 		/// Maximum number of block number to block hash mappings to keep (oldest pruned first).
 		#[pallet::constant]
@@ -248,7 +249,7 @@ pub mod pallet {
 
 		/// Data to be associated with an account (other than nonce/transaction counter, which this
 		/// pallet does regardless).
-		type AccountData: Member + FullCodec + Clone + Default;
+		type AccountData: Member + FullCodec + Clone + Default + MaxEncodedLen;
 
 		/// Handler for when a new account has just been created.
 		type OnNewAccount: OnNewAccount<Self::AccountId>;
@@ -275,6 +276,7 @@ pub mod pallet {
 
 	#[pallet::pallet]
 	#[pallet::generate_store(pub (super) trait Store)]
+	#[pallet::generate_storage_info]
 	pub struct Pallet<T>(_);
 
 	#[pallet::hooks]
@@ -561,7 +563,7 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn extrinsic_data)]
 	pub(super) type ExtrinsicData<T: Config> =
-		StorageMap<_, Twox64Concat, u32, Vec<u8>, ValueQuery>;
+		StorageMap<_, Twox64Concat, u32, WeakBoundedVec<u8, ConstU32<100_000>>, ValueQuery>;
 
 	/// The current block number being processed. Set by `execute_block`.
 	#[pallet::storage]
@@ -582,7 +584,7 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn events)]
 	pub(super) type Events<T: Config> =
-		StorageValue<_, Vec<EventRecord<T::Event, T::Hash>>, ValueQuery>;
+		StorageValue<_, WeakBoundedVec<EventRecord<T::Event, T::Hash>, ConstU32<100_000>>, ValueQuery>;
 
 	/// The number of events in the `Events<T>` list.
 	#[pallet::storage]
@@ -601,8 +603,13 @@ pub mod pallet {
 	/// no notification will be triggered thus the event might be lost.
 	#[pallet::storage]
 	#[pallet::getter(fn event_topics)]
-	pub(super) type EventTopics<T: Config> =
-		StorageMap<_, Blake2_128Concat, T::Hash, Vec<(T::BlockNumber, EventIndex)>, ValueQuery>;
+	pub(super) type EventTopics<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		T::Hash,
+		WeakBoundedVec<(T::BlockNumber, EventIndex), ConstU32<100_000>>,
+		ValueQuery,
+	>;
 
 	/// Stores the `spec_version` and `spec_name` of when the last runtime upgrade happened.
 	#[pallet::storage]
@@ -715,7 +722,7 @@ pub type Key = Vec<u8>;
 pub type KeyValue = (Vec<u8>, Vec<u8>);
 
 /// A phase of a block's execution.
-#[derive(Encode, Decode, RuntimeDebug)]
+#[derive(Encode, Decode, RuntimeDebug, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, PartialEq, Eq, Clone))]
 pub enum Phase {
 	/// Applying an extrinsic.
@@ -733,7 +740,7 @@ impl Default for Phase {
 }
 
 /// Record of an event happening.
-#[derive(Encode, Decode, RuntimeDebug)]
+#[derive(Encode, Decode, RuntimeDebug, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, PartialEq, Eq, Clone))]
 pub struct EventRecord<E: Parameter + Member, T> {
 	/// The phase of the block it happened in.
@@ -785,7 +792,7 @@ type EventIndex = u32;
 pub type RefCount = u32;
 
 /// Information of an account.
-#[derive(Clone, Eq, PartialEq, Default, RuntimeDebug, Encode, Decode)]
+#[derive(Clone, Eq, PartialEq, Default, RuntimeDebug, Encode, Decode, MaxEncodedLen)]
 pub struct AccountInfo<Index, AccountData> {
 	/// The number of transactions this account has sent.
 	pub nonce: Index,
@@ -1359,7 +1366,7 @@ impl<T: Config> Pallet<T> {
 		let mut digest = <Digest<T>>::get();
 
 		let extrinsics = (0..ExtrinsicCount::<T>::take().unwrap_or_default())
-			.map(ExtrinsicData::<T>::take)
+			.map(|i| ExtrinsicData::<T>::take(i).into())
 			.collect();
 		let extrinsics_root = extrinsics_data_root::<T::Hashing>(extrinsics);
 

@@ -1919,6 +1919,7 @@ dependencies = [
  "frame-support",
  "impl-trait-for-tuples",
  "log",
+ "max-encoded-len",
  "parity-scale-codec",
  "serde",
  "sp-core",

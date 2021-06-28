@@ -136,6 +136,7 @@ use crate::dispatch::{DispatchErrorWithPostInfo, DispatchResultWithPostInfo, Dis
 use sp_runtime::traits::SaturatedConversion;
 use sp_arithmetic::{Perbill, traits::{BaseArithmetic, Saturating, Unsigned}};
 use smallvec::{smallvec, SmallVec};
+use max_encoded_len::MaxEncodedLen;
 
 /// Re-export priority as type
 pub use sp_runtime::transaction_validity::TransactionPriority;
@@ -730,7 +731,7 @@ impl<T> WeightToFeePolynomial for IdentityFee<T> where
 }
 
 /// A struct holding value for each `DispatchClass`.
-#[derive(Clone, Eq, PartialEq, Default, RuntimeDebug, Encode, Decode)]
+#[derive(Clone, Eq, PartialEq, Default, RuntimeDebug, Encode, Decode, MaxEncodedLen)]
 pub struct PerDispatchClass<T> {
 	/// Value for `Normal` extrinsics.
 	normal: T,

@@ -195,6 +195,12 @@ impl<T, S: Get<u32>> TryFrom<Vec<T>> for WeakBoundedVec<T, S> {
 	}
 }
 
+impl<T, S> From<WeakBoundedVec<T, S>> for Vec<T> {
+	fn from(t: WeakBoundedVec<T, S>) -> Self {
+		t.0
+	}
+}
+
 // It is okay to give a non-mutable reference of the inner vec to anyone.
 impl<T, S> AsRef<Vec<T>> for WeakBoundedVec<T, S> {
 	fn as_ref(&self) -> &Vec<T> {

@@ -23,6 +23,7 @@ sp-version = { version = "3.0.0", default-features = false, path = "../../primit
 frame-support = { version = "3.0.0", default-features = false, path = "../support" }
 impl-trait-for-tuples = "0.2.1"
 log = { version = "0.4.14", default-features = false }
+max-encoded-len = { version = "3.0.0", default-features = false, path = "../../max-encoded-len", features = [ "derive" ] }
 
 [dev-dependencies]
 criterion = "0.3.3"
