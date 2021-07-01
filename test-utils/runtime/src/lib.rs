@@ -815,8 +815,12 @@ cfg_if! {
 			}
 
 			impl sp_offchain::OffchainWorkerApi<Block> for Runtime {
-				fn offchain_worker(header: &<Block as BlockT>::Header) {
-					let ex = Extrinsic::IncludeData(header.number.encode());
+				fn offchain_worker(header: &<Block as BlockT>::Header, is_final: bool) {
+					let ex = Extrinsic::IncludeData(if is_final {
+						("final", header.number).encode()
+					} else {
+						header.number.encode()
+					});
 					sp_io::offchain::submit_transaction(ex.encode()).unwrap();
 				}
 			}
@@ -1072,8 +1076,12 @@ cfg_if! {
 			}
 
 			impl sp_offchain::OffchainWorkerApi<Block> for Runtime {
-				fn offchain_worker(header: &<Block as BlockT>::Header) {
-					let ex = Extrinsic::IncludeData(header.number.encode());
+				fn offchain_worker(header: &<Block as BlockT>::Header, is_final: bool) {
+					let ex = Extrinsic::IncludeData(if is_final {
+						("final", header.number).encode()
+					} else {
+						header.number.encode()
+					});
 					sp_io::offchain::submit_transaction(ex.encode()).unwrap()
 				}
 			}

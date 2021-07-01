@@ -282,6 +282,12 @@ pub trait OffchainWorker<BlockNumber> {
 	/// with results to trigger any on-chain changes.
 	/// Any state alterations are lost and are not persisted.
 	fn offchain_worker(_n: BlockNumber) {}
+
+	/// This function is being called after previously imported block is finalized.
+	///
+	/// Alike regular `offchain_worker` calls, you have access to
+	/// `Offchain` set of `sp_io` APIs.
+	fn finality_offchain_worker(_n: BlockNumber) {}
 }
 
 /// Some amount of backing from a group. The precise defintion of what it means to "back" something

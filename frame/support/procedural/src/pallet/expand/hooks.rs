@@ -184,6 +184,14 @@ pub fn expand_hooks(def: &mut Def) -> proc_macro2::TokenStream {
 					>
 				>::offchain_worker(n)
 			}
+
+			fn finality_offchain_worker(n: <T as #frame_system::Config>::BlockNumber) {
+				<
+					Self as #frame_support::traits::Hooks<
+						<T as #frame_system::Config>::BlockNumber
+					>
+				>::finality_offchain_worker(n)
+			}
 		}
 
 		impl<#type_impl_gen>

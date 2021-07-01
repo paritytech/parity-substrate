@@ -171,10 +171,12 @@ impl KeystoreConfig {
 /// Configuration of the database of the client.
 #[derive(Debug, Clone, Default)]
 pub struct OffchainWorkerConfig {
-	/// If this is allowed.
-	pub enabled: bool,
-	/// allow writes from the runtime to the offchain worker database.
+	/// Allow writes from the runtime to the offchain worker database (Runtime Indexing API)
 	pub indexing_enabled: bool,
+	/// Enable running regular offchain workers (on block import)
+	pub ocw_enabled: bool,
+	/// Enable running finality offchain workers (on block finality)
+	pub finality_ocw_enabled: bool,
 }
 
 /// Configuration of the Prometheus endpoint.

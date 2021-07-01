@@ -188,6 +188,19 @@ pub mod pallet {
 				log::error!("Error: {}", e);
 			}
 		}
+
+		/// Finality Offchain Worker entry point.
+		///
+		/// This method is very similar to [`offchain_worker`], however it is triggered only if
+		/// given block was recently finalized.
+		/// Note that it is still not guaranteed to run on EVERY block - during major sync, we don't
+		/// run any workers, but when the node is in-sync in the network, these workers should run
+		/// for all finalized blocks.
+		/// Since the blocks are finalized this method does not need to handle potential forks.
+		/// Be aware that multiple `finality_offchain_workers` can be run in parallel though.
+		fn finality_offchain_worker(n: T::BlockNumber) {
+			log::info!("Hello world from finality offchain worker at {:?}", n);
+		}
 	}
 
 	/// A public part of the pallet.

@@ -21,7 +21,7 @@ use crate::{
 	start_rpc_servers, build_network_future, TransactionPoolAdapter, TaskManager, SpawnTaskHandle,
 	metrics::MetricsService,
 	client::{light, Client, ClientConfig},
-	config::{Configuration, KeystoreConfig, PrometheusConfig},
+	config::{Configuration, KeystoreConfig, PrometheusConfig, OffchainWorkerConfig},
 };
 use sc_client_api::{
 	light::RemoteBlockchain, ForkBlocks, BadBlocks, UsageProvider, ExecutorProvider,
@@ -375,7 +375,6 @@ pub fn new_full_parts<TBl, TRtApi, TExecDisp>(
 			config.prometheus_config.as_ref().map(|config| config.registry.clone()),
 			telemetry,
 			ClientConfig {
-				offchain_worker_enabled : config.offchain_worker.enabled,
 				offchain_indexing_api: config.offchain_worker.indexing_enabled,
 				wasm_runtime_overrides: config.wasm_runtime_overrides.clone(),
 				no_genesis: matches!(config.network.sync_mode, sc_network::config::SyncMode::Fast {..}),
@@ -539,23 +538,28 @@ pub fn build_offchain_workers<TBl, TCl>(
 		TCl: Send + Sync + ProvideRuntimeApi<TBl> + BlockchainEvents<TBl> + 'static,
 		<TCl as ProvideRuntimeApi<TBl>>::Api: sc_offchain::OffchainWorkerApi<TBl>,
 {
-	let offchain_workers = Some(Arc::new(sc_offchain::OffchainWorkers::new(client.clone())));
-
-	// Inform the offchain worker about new imported blocks
-	if let Some(offchain) = offchain_workers.clone() {
-		spawn_handle.spawn(
-			"offchain-notifications",
-			sc_offchain::notification_future(
-				config.role.is_authority(),
-				client.clone(),
-				offchain,
-				Clone::clone(&spawn_handle),
-				network.clone(),
-			)
-		);
+	let OffchainWorkerConfig { ocw_enabled, finality_ocw_enabled, .. } = config.offchain_worker;
+	if !ocw_enabled && !finality_ocw_enabled {
+		return None;
 	}
 
-	offchain_workers
+	let offchain_workers = Arc::new(sc_offchain::OffchainWorkers::new(client.clone()));
+
+	// Inform the offchain worker about new imported blocks
+	spawn_handle.spawn(
+		"offchain-notifications",
+		sc_offchain::notification_future(
+			config.role.is_authority(),
+			config.offchain_worker.ocw_enabled,
+			config.offchain_worker.finality_ocw_enabled,
+			client.clone(),
+			offchain_workers.clone(),
+			Clone::clone(&spawn_handle),
+			network.clone(),
+		)
+	);
+
+	Some(offchain_workers)
 }
 
 /// Spawn the tasks that are required to run a node.

@@ -499,7 +499,7 @@ where
 	}
 
 	/// Start an offchain worker and generate extrinsics.
-	pub fn offchain_worker(header: &System::Header) {
+	pub fn offchain_worker(header: &System::Header, is_final: bool) {
 		sp_io::init_tracing();
 		// We need to keep events available for offchain workers,
 		// hence we initialize the block manually.
@@ -518,7 +518,13 @@ where
 		// as well.
 		frame_system::BlockHash::<System>::insert(header.number(), header.hash());
 
-		<AllPallets as OffchainWorker<System::BlockNumber>>::offchain_worker(*header.number())
+		if is_final {
+			<AllPallets as OffchainWorker<System::BlockNumber>>::finality_offchain_worker(
+				*header.number(),
+			)
+		} else {
+			<AllPallets as OffchainWorker<System::BlockNumber>>::offchain_worker(*header.number())
+		}
 	}
 }
 
@@ -608,6 +614,7 @@ mod tests {
 				}
 
 				fn offchain_worker(n: T::BlockNumber) {
+					sp_io::storage::set(super::TEST_KEY, "offchain_worker".as_bytes());
 					assert_eq!(T::BlockNumber::from(1u32), n);
 				}
 
@@ -1232,11 +1239,38 @@ mod tests {
 				digest.clone(),
 			);
 
-			Executive::offchain_worker(&header);
+			Executive::offchain_worker(&header, false);
 
 			assert_eq!(digest, System::digest());
 			assert_eq!(parent_hash, System::block_hash(0));
 			assert_eq!(header.hash(), System::block_hash(1));
+			assert_eq!(&sp_io::storage::get(TEST_KEY).unwrap()[..], *b"offchain_worker");
+		});
+	}
+
+	#[test]
+	fn finality_offchain_worker_works_as_expected() {
+		new_test_ext(1).execute_with(|| {
+			let parent_hash = sp_core::H256::from([69u8; 32]);
+			let mut digest = Digest::default();
+			digest.push(DigestItem::Seal([1, 2, 3, 4], vec![5, 6, 7, 8]));
+
+			let header = Header::new(
+				1,
+				H256::default(),
+				H256::default(),
+				parent_hash,
+				digest.clone(),
+			);
+
+			Executive::offchain_worker(&header, true);
+
+			assert_eq!(digest, System::digest());
+			assert_eq!(parent_hash, System::block_hash(0));
+			assert_eq!(header.hash(), System::block_hash(1));
+			// `decl_module` macro DOES NOT support `finality_offchain_workers`,
+			// so we just test here that the regular OCW is not being run.
+			assert_eq!(sp_io::storage::get(TEST_KEY), None);
 		});
 	}
 

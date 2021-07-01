@@ -24,8 +24,8 @@
 pub use sp_core::offchain::STORAGE_PREFIX;
 
 sp_api::decl_runtime_apis! {
-	/// The offchain worker api.
-	#[api_version(2)]
+	/// The off-chain worker api.
+	#[api_version(3)]
 	pub trait OffchainWorkerApi {
 		/// Starts the off-chain task for given block number.
 		#[skip_initialize_block]
@@ -34,6 +34,14 @@ sp_api::decl_runtime_apis! {
 
 		/// Starts the off-chain task for given block header.
 		#[skip_initialize_block]
+		#[changed_in(3)]
 		fn offchain_worker(header: &Block::Header);
+
+		/// Starts the off-chain worker for given block header.
+		///
+		/// The `is_final` flag indicates if this run is triggered because of block finality
+		/// or block import.
+		#[skip_initialize_block]
+		fn offchain_worker(header: &Block::Header, is_final: bool);
 	}
 }

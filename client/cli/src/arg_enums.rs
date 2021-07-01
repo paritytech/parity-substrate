@@ -224,7 +224,7 @@ impl Database {
 arg_enum! {
 	/// Whether off-chain workers are enabled.
 	#[allow(missing_docs)]
-	#[derive(Debug, Clone)]
+	#[derive(Debug, Clone, Copy)]
 	pub enum OffchainWorkerEnabled {
 		Always,
 		Never,

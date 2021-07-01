@@ -33,7 +33,7 @@ use crate::OffchainWorkerEnabled;
 /// Offchain worker related parameters.
 #[derive(Debug, StructOpt, Clone)]
 pub struct OffchainWorkerParams {
-	/// Should execute offchain workers on every block.
+	/// Configures offchain workers execution after block import.
 	///
 	/// By default it's only enabled for nodes that are authoring new blocks.
 	#[structopt(
@@ -50,25 +50,46 @@ pub struct OffchainWorkerParams {
 	/// Enables a runtime to write directly to a offchain workers
 	/// DB during block import.
 	#[structopt(
-		long = "enable-offchain-indexing",
-		value_name = "ENABLE_OFFCHAIN_INDEXING"
+		long = "offchain-indexing",
+		value_name = "ENABLED",
+		alias = "enable-offchain-indexing"
 	)]
 	pub indexing_enabled: bool,
+
+	/// Configures offchain workers execution at block finality.
+	///
+	/// Note that this setting does not change behavior or regular offchain workers,
+	/// but instead runs "Finality Offchain Workers", which require a different Runtime
+	/// API to be implemented.
+	/// If this setting is enabled it is recommended to run without pruning enabled (archive node).
+	/// By default it's only enabled for nodes that are authoring new blocks.
+	#[structopt(
+		long = "finality-offchain-worker",
+		value_name = "ENABLED",
+		possible_values = &OffchainWorkerEnabled::variants(),
+		case_insensitive = true,
+		default_value = "WhenValidating"
+	)]
+	pub finality_ocw_enabled: OffchainWorkerEnabled,
 }
 
 impl OffchainWorkerParams {
 	/// Load spec to `Configuration` from `OffchainWorkerParams` and spec factory.
 	pub fn offchain_worker(&self, role: &Role) -> error::Result<OffchainWorkerConfig> {
-		let enabled = match (&self.enabled, role) {
+		let is_enabled = |config| match (config, role) {
 			(OffchainWorkerEnabled::WhenValidating, Role::Authority { .. }) => true,
 			(OffchainWorkerEnabled::Always, _) => true,
 			(OffchainWorkerEnabled::Never, _) => false,
 			(OffchainWorkerEnabled::WhenValidating, _) => false,
 		};
 
+		let ocw_enabled = is_enabled(self.enabled);
+		let finality_ocw_enabled = is_enabled(self.finality_ocw_enabled);
 		let indexing_enabled = self.indexing_enabled;
+
 		Ok(OffchainWorkerConfig {
-			enabled,
+			ocw_enabled,
+			finality_ocw_enabled,
 			indexing_enabled,
 		})
 	}
