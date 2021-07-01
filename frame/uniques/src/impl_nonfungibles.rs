@@ -18,7 +18,7 @@
 //! Implementations for `nonfungibles` traits.
 
 use super::*;
-use sp_std::convert::TryFrom;
+use sp_std::convert::{TryFrom, TryInto};
 use frame_support::traits::tokens::nonfungibles::{Inspect, Mutate, Transfer};
 use frame_support::BoundedSlice;
 use sp_runtime::DispatchResult;
@@ -95,6 +95,43 @@ impl<T: Config<I>, I: 'static> Mutate<<T as SystemConfig>::AccountId> for Pallet
 	fn burn_from(class: &Self::ClassId, instance: &Self::InstanceId) -> DispatchResult {
 		Self::do_burn(class.clone(), instance.clone(), |_, _| Ok(()))
 	}
+
+    fn set_attribute(
+        class: &Self::ClassId,
+        instance: &Self::InstanceId,
+        key: &[u8],
+        value: &[u8],
+    ) -> DispatchResult {
+        let bounded_key = key.to_vec().try_into().map_err(|_| Error::<T, I>::KeyUpperBoundExceeded)?;
+        let bounded_value = value.to_vec().try_into().map_err(|_| Error::<T, I>::ValueUpperBoundExceeded)?;
+
+        Self::do_set_attribute(
+            class.clone(),
+            Some(instance.clone()),
+            &None,
+            bounded_key,
+            bounded_value,
+            |_| Ok(()),
+        )
+    }
+
+ fn set_class_attribute(
+        class: &Self::ClassId,
+        key: &[u8],
+        value: &[u8],
+    ) -> DispatchResult {
+        let bounded_key = key.to_vec().try_into().map_err(|_| Error::<T, I>::KeyUpperBoundExceeded)?;
+        let bounded_value = value.to_vec().try_into().map_err(|_| Error::<T, I>::ValueUpperBoundExceeded)?;
+
+        Self::do_set_attribute(
+            class.clone(),
+            None,
+            &None,
+            bounded_key,
+            bounded_value,
+            |_| Ok(()),
+        )
+    }
 }
 
 impl<T: Config<I>, I: 'static> Transfer<T::AccountId> for Pallet<T, I> {

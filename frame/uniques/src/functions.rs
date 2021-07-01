@@ -18,7 +18,7 @@
 //! Various pieces of common functionality.
 
 use super::*;
-use frame_support::{ensure, traits::Get};
+use frame_support::{ensure, traits::Get, BoundedVec};
 use sp_runtime::{DispatchResult, DispatchError};
 
 impl<T: Config<I>, I: 'static> Pallet<T, I> {
@@ -112,4 +112,47 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 		Self::deposit_event(Event::Burned(class, instance, owner));
 		Ok(())
 	}
+
+	pub(super) fn do_set_attribute(
+        class: T::ClassId,
+        maybe_instance: Option<T::InstanceId>,
+        maybe_check_owner: &Option<T::AccountId>,
+        key: BoundedVec<u8, T::KeyLimit>,
+        value: BoundedVec<u8, T::ValueLimit>,
+        with_details: impl FnOnce(&ClassDetailsFor<T, I>) -> DispatchResult,
+    ) -> DispatchResult {
+        let mut class_details = Class::<T, I>::get(&class).ok_or(Error::<T, I>::Unknown)?;
+        with_details(&class_details)?;
+
+        let maybe_is_frozen = match maybe_instance {
+            None => ClassMetadataOf::<T, I>::get(class).map(|v| v.is_frozen),
+            Some(instance) => InstanceMetadataOf::<T, I>::get(class, instance).map(|v| v.is_frozen),
+        };
+        ensure!(!maybe_is_frozen.unwrap_or(false), Error::<T, I>::Frozen);
+
+        let attribute = Attribute::<T, I>::get((class, maybe_instance, &key));
+        if attribute.is_none() {
+            class_details.attributes.saturating_inc();
+        }
+        let old_deposit = attribute.map_or(Zero::zero(), |m| m.1);
+        class_details.total_deposit.saturating_reduce(old_deposit);
+        let mut deposit = Zero::zero();
+        if !class_details.free_holding && maybe_check_owner.is_some() {
+            deposit = T::DepositPerByte::get()
+                .saturating_mul(((key.len() + value.len()) as u32).into())
+                .saturating_add(T::AttributeDepositBase::get());
+        }
+        class_details.total_deposit.saturating_accrue(deposit);
+        if deposit > old_deposit {
+            T::Currency::reserve(&class_details.owner, deposit - old_deposit)?;
+        } else if deposit < old_deposit {
+            T::Currency::unreserve(&class_details.owner, old_deposit - deposit);
+        }
+
+        Attribute::<T, I>::insert((&class, maybe_instance, &key), (&value, deposit));
+        Class::<T, I>::insert(class, &class_details);
+
+        Self::deposit_event(Event::AttributeSet(class, maybe_instance, key, value));
+        Ok(())
+    }
 }

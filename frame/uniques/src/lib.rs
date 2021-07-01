@@ -266,6 +266,10 @@ pub mod pallet {
 		NoDelegate,
 		/// No approval exists that would allow the transfer.
 		Unapproved,
+		/// Attribute key upper bound exceeded.
+		KeyUpperBoundExceeded,
+		/// Attribute value upper bound exceeded.
+		ValueUpperBoundExceeded,
 	}
 
 	#[pallet::hooks]
@@ -927,52 +931,34 @@ pub mod pallet {
 		///
 		/// Weight: `O(1)`
 		#[pallet::weight(T::WeightInfo::set_attribute())]
-		pub fn set_attribute(
-			origin: OriginFor<T>,
-			#[pallet::compact] class: T::ClassId,
-			maybe_instance: Option<T::InstanceId>,
-			key: BoundedVec<u8, T::KeyLimit>,
-			value: BoundedVec<u8, T::ValueLimit>,
-		) -> DispatchResult {
-			let maybe_check_owner = T::ForceOrigin::try_origin(origin)
-				.map(|_| None)
-				.or_else(|origin| ensure_signed(origin).map(Some))?;
+        pub fn set_attribute(
+            origin: OriginFor<T>,
+            #[pallet::compact] class: T::ClassId,
+            maybe_instance: Option<T::InstanceId>,
+            key: BoundedVec<u8, T::KeyLimit>,
+            value: BoundedVec<u8, T::ValueLimit>,
+        ) -> DispatchResult {
+            let maybe_check_owner = T::ForceOrigin::try_origin(origin)
+                .map(|_| None)
+                .or_else(|origin| ensure_signed(origin).map(Some))?;
 
-			let mut class_details = Class::<T, I>::get(&class).ok_or(Error::<T, I>::Unknown)?;
-			if let Some(check_owner) = &maybe_check_owner {
-				ensure!(check_owner == &class_details.owner, Error::<T, I>::NoPermission);
-			}
-			let maybe_is_frozen = match maybe_instance {
-				None => ClassMetadataOf::<T, I>::get(class).map(|v| v.is_frozen),
-				Some(instance) =>
-					InstanceMetadataOf::<T, I>::get(class, instance).map(|v| v.is_frozen),
-			};
-			ensure!(!maybe_is_frozen.unwrap_or(false), Error::<T, I>::Frozen);
-
-			let attribute = Attribute::<T, I>::get((class, maybe_instance, &key));
-			if attribute.is_none() {
-				class_details.attributes.saturating_inc();
-			}
-			let old_deposit = attribute.map_or(Zero::zero(), |m| m.1);
-			class_details.total_deposit.saturating_reduce(old_deposit);
-			let mut deposit = Zero::zero();
-			if !class_details.free_holding && maybe_check_owner.is_some() {
-				deposit = T::DepositPerByte::get()
-					.saturating_mul(((key.len() + value.len()) as u32).into())
-					.saturating_add(T::AttributeDepositBase::get());
-			}
-			class_details.total_deposit.saturating_accrue(deposit);
-			if deposit > old_deposit {
-				T::Currency::reserve(&class_details.owner, deposit - old_deposit)?;
-			} else if deposit < old_deposit {
-				T::Currency::unreserve(&class_details.owner, old_deposit - deposit);
-			}
-
-			Attribute::<T, I>::insert((&class, maybe_instance, &key), (&value, deposit));
-			Class::<T, I>::insert(class, &class_details);
-			Self::deposit_event(Event::AttributeSet(class, maybe_instance, key, value));
-			Ok(())
-		}
+            Self::do_set_attribute(
+                class,
+                maybe_instance,
+                &maybe_check_owner,
+                key,
+                value,
+                |class_details| {
+                    if let Some(check_owner) = &maybe_check_owner {
+                        ensure!(
+                            check_owner == &class_details.owner,
+                            Error::<T, I>::NoPermission
+                        );
+                    }
+                    Ok(())
+                },
+            )
+        }
 
 		/// Set an attribute for an asset class or instance.
 		///
