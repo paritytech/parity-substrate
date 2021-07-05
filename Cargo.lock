@@ -5549,11 +5549,13 @@ dependencies = [
  "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "log",
  "parity-scale-codec",
  "serde",
  "sp-core",
  "sp-io",
  "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -9166,6 +9168,7 @@ version = "3.0.0"
 dependencies = [
  "either",
  "hash256-std-hasher",
+ "hex",
  "impl-trait-for-tuples",
  "log",
  "max-encoded-len",

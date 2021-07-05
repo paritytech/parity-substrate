@@ -15,7 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 
 [dependencies]
-serde = { version = "1.0.101", optional = true, features = ["derive"] }
+serde = { version = "1.0.101", default-features = false, features = ["derive"] }
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
 sp-core = { version = "3.0.0", default-features = false, path = "../core" }
 sp-application-crypto = { version = "3.0.0", default-features = false, path = "../application-crypto" }
@@ -29,10 +29,11 @@ impl-trait-for-tuples = "0.2.1"
 parity-util-mem = { version = "0.9.0", default-features = false, features = ["primitive-types"] }
 hash256-std-hasher = { version = "0.15.2", default-features = false }
 either = { version = "1.5", default-features = false }
+serde_json = { version = '1.0.64', default-features = false, features = ['alloc'] }
 max-encoded-len = { version = "3.0.0", default-features = false, path = "../../max-encoded-len", features = [ "derive" ] }
 
 [dev-dependencies]
-serde_json = "1.0.41"
+hex = "0.4"
 rand = "0.7.2"
 sp-state-machine = { version = "0.9.0", path = "../state-machine" }
 sp-api = { version = "3.0.0", path = "../api" }
@@ -52,7 +53,7 @@ std = [
 	"rand",
 	"sp-std/std",
 	"sp-io/std",
-	"serde",
+	"serde/std",
 	"parity-util-mem/std",
 	"hash256-std-hasher/std",
 	"either/use_std",
