@@ -129,12 +129,12 @@
 		},
 		{
 			"prefix": 13,
-			"network": "substratee",
-			"displayName": "SubstraTEE",
-			"symbols": null,
-			"decimals": null,
+			"network": "integritee",
+			"displayName": "Integritee",
+			"symbols": ["TEER"],
+			"decimals": [12],
 			"standardAccount": "*25519",
-			"website": "https://www.substratee.com"
+			"website": "https://integritee.network"
 		},
 		{
 			"prefix": 14,
@@ -531,6 +531,15 @@
 			"decimals": [18],
 			"standardAccount": "secp256k1",
 			"website": "https://origintrail.io"
+		},
+		{
+			"prefix": 113,
+			"network": "integritee-incognito",
+			"displayName": "Integritee Incognito",
+			"symbols": null,
+			"decimals": null,
+			"standardAccount": "*25519",
+			"website": "https://integritee.network"
 		},
 		{
 			"prefix": 136,
