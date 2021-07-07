@@ -78,7 +78,7 @@ use sp_runtime::{
 		self, CheckEqual, AtLeast32Bit, Zero, Lookup, LookupError,
 		SimpleBitOps, Hash, Member, MaybeDisplay, BadOrigin,
 		MaybeSerializeDeserialize, MaybeMallocSizeOf, StaticLookup, One, Bounded,
-		Dispatchable, AtLeast32BitUnsigned, Saturating, StoredMapError,
+		Dispatchable, AtLeast32BitUnsigned, Saturating, StoredMapError, SaturatedConversion
 	},
 	offchain::storage_lock::BlockNumberProvider,
 };
@@ -1471,8 +1471,15 @@ impl<T: Config> Pallet<T> {
 	}
 
 	/// Increment a particular account's nonce by 1.
+	/// If an account is new, set the nonce to its block number
 	pub fn inc_account_nonce(who: impl EncodeLike<T::AccountId>) {
-		Account::<T>::mutate(who, |a| a.nonce += T::Index::one());
+		Account::<T>::mutate(who, |a| {
+			if a.nonce > T::Index::zero() || Self::block_number().is_zero() {
+				a.nonce += T::Index::one();
+			} else {
+				a.nonce = Self::block_number().saturated_into::<u32>().into();
+			}
+		});
 	}
 
 	/// Note what the extrinsic data of the current extrinsic index is.

@@ -60,6 +60,24 @@ fn stored_map_works() {
 }
 
 #[test]
+fn inc_account_nonce_works() {
+	new_test_ext().execute_with(|| {
+		System::inc_account_nonce(&0);
+		//initial call when block number is 0 set nonce to 1
+		assert_eq!(System::account_nonce(&0), 1);
+		//subsequent calls increment nonce
+		System::inc_account_nonce(&0);
+		assert_eq!(System::account_nonce(&0), 2);
+		//testing behavior when block number is non zero
+		System::set_block_number(2);
+		System::inc_account_nonce(&1);
+		assert_eq!(System::account_nonce(&1), 2);
+		System::inc_account_nonce(&1);
+		assert_eq!(System::account_nonce(&1), 3);
+	});
+}
+
+#[test]
 fn provider_ref_handover_to_self_sufficient_ref_works() {
 	new_test_ext().execute_with(|| {
 		assert_eq!(System::inc_providers(&0), IncRefStatus::Created);
