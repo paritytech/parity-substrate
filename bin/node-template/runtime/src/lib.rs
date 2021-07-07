@@ -450,9 +450,11 @@ impl_runtime_apis! {
 	impl frame_benchmarking::Benchmark<Block> for Runtime {
 		fn dispatch_benchmark(
 			config: frame_benchmarking::BenchmarkConfig
-		) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, sp_runtime::RuntimeString> {
-			use frame_benchmarking::{Benchmarking, BenchmarkBatch, add_benchmark, TrackedStorageKey};
-
+		) -> Result<frame_benchmarking::BenchmarkData, sp_runtime::RuntimeString> {
+			use frame_benchmarking::{BenchmarkData::{AvailableBenchmarks, ExecutedBenchmarks},
+				Benchmarking, BenchmarkBatch, BenchmarkInfo, BenchmarkArguement,
+				list_benchmark, add_benchmark, execute_benchmark, TrackedStorageKey,
+			};
 			use frame_system_benchmarking::Pallet as SystemBench;
 			impl frame_system_benchmarking::Config for Runtime {}
 
@@ -470,15 +472,24 @@ impl_runtime_apis! {
 			];
 
 			let mut batches = Vec::<BenchmarkBatch>::new();
-			let params = (&config, &whitelist);
+			let info = Vec::<BenchmarkInfo>::new();
+			let mut params = BenchmarkArguement {
+				config: &config,
+				whitelist: &whitelist,
+				info: info,
+			};
 
 			add_benchmark!(params, batches, frame_system, SystemBench::<Runtime>);
 			add_benchmark!(params, batches, pallet_balances, Balances);
 			add_benchmark!(params, batches, pallet_timestamp, Timestamp);
 			add_benchmark!(params, batches, pallet_template, TemplateModule);
 
-			if batches.is_empty() { return Err("Benchmark not found for this pallet.".into()) }
-			Ok(batches)
+			if config.list {
+				Ok(AvailableBenchmarks(params.info))
+			} else {
+				if batches.is_empty() { return Err("Benchmark not found for this pallet.".into()) }
+				Ok(ExecutedBenchmarks(batches))
+			}
 		}
 	}
 }

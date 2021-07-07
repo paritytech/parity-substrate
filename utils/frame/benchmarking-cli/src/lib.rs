@@ -32,11 +32,11 @@ fn parse_pallet_name(pallet: &str) -> String {
 pub struct BenchmarkCmd {
 	/// Select a FRAME Pallet to benchmark, or `*` for all (in which case `extrinsic` must be `*`).
 	#[structopt(short, long, parse(from_str = parse_pallet_name))]
-	pub pallet: String,
+	pub pallet: Option<String>,
 
 	/// Select an extrinsic inside the pallet to benchmark, or `*` for all.
 	#[structopt(short, long)]
-	pub extrinsic: String,
+	pub extrinsic: Option<String>,
 
 	/// Select how many samples we should take across the variable components.
 	#[structopt(short, long, use_delimiter = true)]
@@ -127,4 +127,8 @@ pub struct BenchmarkCmd {
 	/// Limit the memory the database cache can use.
 	#[structopt(long = "db-cache", value_name = "MiB", default_value = "128")]
 	pub database_cache_size: u32,
+
+	/// List available pallets and extrinisics for benchmarking
+	#[structopt(long)]
+	pub list: bool,
 }

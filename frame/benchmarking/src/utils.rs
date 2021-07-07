@@ -37,6 +37,26 @@ impl std::fmt::Display for BenchmarkParameter {
 	}
 }
 
+/// Information returned from runtime to client queried by CLI
+#[derive(Encode, Decode, Clone, PartialEq, Debug)]
+pub enum BenchmarkData {
+	/// Information to list available benchmarks
+	AvailableBenchmarks(Vec<BenchmarkInfo>),
+	/// Benchmark info along with executed benchmark results
+	ExecutedBenchmarks(Vec<BenchmarkBatch>),
+}
+
+/// Contains information on available benchmarks
+#[derive(Encode, Decode, Clone, PartialEq, Debug)]
+pub struct BenchmarkInfo {
+	/// The pallet's encoded name
+	pub pallet: Vec<u8>,
+	/// The encoded instance of this pallet available for benchmarking.
+	pub instance: Vec<u8>,
+	/// Vec of encoded available benchmarks
+	pub benchmark: Vec<Vec<u8>>,
+}
+
 /// The results of a single of benchmark.
 #[derive(Encode, Decode, Clone, PartialEq, Debug)]
 pub struct BenchmarkBatch {
@@ -65,6 +85,13 @@ pub struct BenchmarkResults {
 	pub proof_size: u32,
 }
 
+// Benchmark configuration arguement passed to add_benchmark! macro in runtime
+pub struct BenchmarkArguement<'a> {
+	pub config: &'a BenchmarkConfig,
+	pub whitelist: &'a Vec<TrackedStorageKey>,
+	pub info: Vec<BenchmarkInfo>,
+}
+
 /// Configuration used to setup and run runtime benchmarks.
 #[derive(Encode, Decode, Default, Clone, PartialEq, Debug)]
 pub struct BenchmarkConfig {
@@ -84,13 +111,15 @@ pub struct BenchmarkConfig {
 	pub verify: bool,
 	/// Enable benchmarking of "extra" extrinsics, i.e. those that are not directly used in a pallet.
 	pub extra: bool,
+	/// Enable --list CLI command
+	pub list: bool,
 }
 
 sp_api::decl_runtime_apis! {
 	/// Runtime api for benchmarking a FRAME runtime.
 	pub trait Benchmark {
 		/// Dispatch the given benchmark.
-		fn dispatch_benchmark(config: BenchmarkConfig) -> Result<Vec<BenchmarkBatch>, sp_runtime::RuntimeString>;
+		fn dispatch_benchmark(config: BenchmarkConfig) -> Result< BenchmarkData, sp_runtime::RuntimeString>;
 	}
 }
 

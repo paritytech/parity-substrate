@@ -1333,9 +1333,24 @@ pub fn show_benchmark_debug_info(
 #[macro_export]
 macro_rules! add_benchmark {
 	( $params:ident, $batches:ident, $name:path, $( $location:tt )* ) => (
-		let name_string = stringify!($name).as_bytes();
-		let instance_string = stringify!( $( $location )* ).as_bytes();
-		let (config, whitelist) = $params;
+		if $params.config.list {
+			let ref_param = &mut $params;
+			list_benchmark!(ref_param, $name, $( $location )*);
+		} else {
+			execute_benchmark!($params, $batches, $name, $( $location )*);
+		}
+	)
+}
+
+/// Builds list of available benchmarks
+#[macro_export]
+macro_rules! list_benchmark {
+	( $params:ident, $name:path, $( $location:tt )* ) => (
+		let $crate::BenchmarkArguement {
+			config,
+			whitelist,
+			info,
+		} = $params;
 		let $crate::BenchmarkConfig {
 			pallet,
 			benchmark,
@@ -1345,6 +1360,40 @@ macro_rules! add_benchmark {
 			repeat,
 			verify,
 			extra,
+			list,
+		} = config;
+		let name_string = stringify!($name).as_bytes();
+		let instance_string = stringify!( $( $location )* ).as_bytes();
+		let mut available_benchmark = Vec::new();
+		for benchmark in $( $location )*::benchmarks(*extra).into_iter() {
+			available_benchmark.push(benchmark.to_vec());
+		}
+		info.push($crate::BenchmarkInfo {
+				pallet: name_string.to_vec(),
+				instance: instance_string.to_vec(),
+				benchmark: available_benchmark,
+		});
+	)
+}
+
+
+#[macro_export]
+macro_rules! execute_benchmark {
+	( $params:ident, $batches:ident, $name:path, $( $location:tt )*) => (
+		let name_string = stringify!($name).as_bytes();
+		let instance_string = stringify!( $( $location )* ).as_bytes();
+		let config = $params.config;
+		let whitelist = $params.whitelist;
+		let $crate::BenchmarkConfig {
+			pallet,
+			benchmark,
+			lowest_range_values,
+			highest_range_values,
+			steps,
+			repeat,
+			verify,
+			extra,
+			list,
 		} = config;
 		if &pallet[..] == &name_string[..] || &pallet[..] == &b"*"[..] {
 			if &pallet[..] == &b"*"[..] || &benchmark[..] == &b"*"[..] {
