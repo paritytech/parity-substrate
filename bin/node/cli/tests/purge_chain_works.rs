@@ -37,7 +37,29 @@ fn purge_chain_works() {
 		.unwrap();
 	assert!(status.success());
 
-	// Make sure that the `dev` chain folder exists, but the `db` is deleted.
-	assert!(base_path.path().join("chains/dev/").exists());
-	assert!(!base_path.path().join("chains/dev/db").exists());
+	// Make sure that the `dev` db chain folder exists, but the `db` is deleted.
+	assert!(base_path.path().join("chains/dev/db").exists());
+	assert!(!base_path.path().join("chains/dev/db/full").exists());
 }
+
+#[test]
+#[cfg(unix)]
+fn purge_wrong_role_chain_does_nothing() {
+	let base_path = tempdir().expect("could not create a temp dir");
+
+	// start a light client
+	common::run_node_with_args_for_a_while(base_path.path(), &["--dev", "--light"]);
+
+	// issue the command in full mode
+	let status = Command::new(cargo_bin("substrate"))
+		.args(&["purge-chain", "--dev", "-d"])
+		.arg(base_path.path())
+		.arg("-y")
+		.status()
+		.unwrap();
+	assert!(status.success());
+
+	// Make sure that the `light` db chain folder still exists.
+	assert!(base_path.path().join("chains/dev/db/light").exists());
+}
+

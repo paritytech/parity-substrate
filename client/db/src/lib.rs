@@ -80,7 +80,7 @@ use sp_state_machine::{
 	StorageCollection, ChildStorageCollection, OffchainChangesCollection,
 	backend::Backend as StateBackend, StateMachineStats, IndexOperation,
 };
-use crate::utils::{DatabaseType, Meta, meta_keys, read_db, read_meta};
+use crate::utils::{Meta, meta_keys, read_db, read_meta};
 use crate::changes_tries_storage::{DbChangesTrieStorage, DbChangesTrieStorageTransaction};
 use sc_state_db::StateDb;
 use sp_blockchain::{CachedHeaderMetadata, HeaderMetadata, HeaderMetadataCache};
@@ -90,6 +90,8 @@ use crate::stats::StateUsageStats;
 // Re-export the Database trait so that one can pass an implementation of it.
 pub use sp_database::Database;
 pub use sc_state_db::PruningMode;
+
+pub use utils::DatabaseType;
 
 #[cfg(any(feature = "with-kvdb-rocksdb", test))]
 pub use bench::BenchmarkingState;
@@ -337,6 +339,20 @@ pub enum DatabaseSettingsSrc {
 }
 
 impl DatabaseSettingsSrc {
+	/// Set the database path
+	pub fn set_path(&mut self, p: &Path) -> bool {
+		match self {
+			DatabaseSettingsSrc::RocksDb {ref mut path, ..} => {
+				*path = p.into();
+				true
+			},
+			DatabaseSettingsSrc::ParityDb {ref mut path, ..} => {
+				*path = p.into();
+				true
+			},
+			_ => false
+		}
+	}
 	/// Return dabase path for databases that are on the disk.
 	pub fn path(&self) -> Option<&Path> {
 		match self {
@@ -1054,6 +1070,28 @@ impl<Block: BlockT> Backend<Block> {
 	pub fn new(config: DatabaseSettings, canonicalization_delay: u64) -> ClientResult<Self> {
 		let db = crate::utils::open_database::<Block>(&config, DatabaseType::Full)?;
 		Self::from_database(db as Arc<_>, canonicalization_delay, &config)
+	}
+
+	/// Return the type of the database
+	pub fn database_type(source: DatabaseSettingsSrc) -> ClientResult<DatabaseType> {
+		let config = DatabaseSettings{
+			state_cache_size: 0,
+			state_cache_child_ratio: None,
+			state_pruning: PruningMode::ArchiveAll,
+			source: source,
+			keep_blocks: KeepBlocks::All,
+			transaction_storage: TransactionStorageMode::BlockBody
+		};
+
+		if crate::utils::open_database::<Block>(&config, DatabaseType::Full).is_ok() {
+			return Ok(DatabaseType::Full);
+        }
+
+		if crate::utils::open_database::<Block>(&config, DatabaseType::Light).is_ok() {
+			return Ok(DatabaseType::Light);
+        }
+
+		Err(sp_blockchain::Error::Backend("Unknown database type".into()))
 	}
 
 	/// Create new memory-backed client backend for tests.

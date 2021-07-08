@@ -65,3 +65,39 @@ pub fn run_dev_node_for_a_while(base_path: &Path) {
 	kill(Pid::from_raw(cmd.id().try_into().unwrap()), SIGINT).unwrap();
 	assert!(wait_for(&mut cmd, 40).map(|x| x.success()).unwrap_or_default());
 }
+
+/// Run the node for a while (30 seconds)
+pub fn run_node_with_args_for_a_while(base_path: &Path, args: &[&str]) {
+	let mut cmd = Command::new(cargo_bin("substrate"));
+
+	let mut cmd = cmd
+		.args(args)
+		.arg("-d")
+		.arg(base_path)
+		.spawn()
+		.unwrap();
+
+	// Let it produce some blocks.
+	thread::sleep(Duration::from_secs(30));
+	assert!(cmd.try_wait().unwrap().is_none(), "the process should still be running");
+
+	// Stop the process
+	kill(Pid::from_raw(cmd.id().try_into().unwrap()), SIGINT).unwrap();
+	assert!(wait_for(&mut cmd, 40).map(|x| x.success()).unwrap_or_default());
+}
+
+/// Run the node asserting that it fails with an error
+pub fn run_node_with_args_assert_fail(base_path: &Path, args: &[&str]) {
+	let mut cmd = Command::new(cargo_bin("substrate"));
+
+	let mut cmd = cmd
+		.args(args)
+		.arg("-d")
+		.arg(base_path)
+		.spawn()
+		.unwrap();
+
+	// Let it produce some blocks.
+	thread::sleep(Duration::from_secs(10));
+	assert!(cmd.try_wait().unwrap().is_some(), "the process should not be running anymore");
+}

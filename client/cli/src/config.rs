@@ -24,9 +24,10 @@ use crate::{
 	DatabaseParams, ImportParams, KeystoreParams, NetworkParams, NodeKeyParams,
 	OffchainWorkerParams, PruningParams, SharedParams, SubstrateCli,
 };
-use log::warn;
+use log::{warn, info};
 use names::{Generator, Name};
 use sc_client_api::execution_extensions::ExecutionStrategies;
+use sc_client_db::{Backend, DatabaseType};
 use sc_service::config::{
 	BasePath, Configuration, DatabaseConfig, ExtTransport, KeystoreConfig, NetworkConfiguration,
 	NodeKeyConfig, OffchainWorkerConfig, PrometheusConfig, PruningMode, Role, RpcMethods,
@@ -34,8 +35,10 @@ use sc_service::config::{
 };
 use sc_service::{ChainSpec, TracingReceiver, KeepBlocks, TransactionStorageMode};
 use sc_tracing::logging::LoggerBuilder;
+use sp_runtime::{generic, OpaqueExtrinsic, traits::BlakeTwo256};
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::fs;
 
 /// The maximum number of characters for a node name.
 pub(crate) const NODE_NAME_MAX_LENGTH: usize = 64;
@@ -226,16 +229,51 @@ pub trait CliConfiguration<DCV: DefaultConfigurationValues = ()>: Sized {
 		base_path: &PathBuf,
 		cache_size: usize,
 		database: Database,
+		role: &Role
 	) -> Result<DatabaseConfig> {
-		Ok(match database {
+		let role_suffix = match role {
+			Role::Light => "light",
+			Role::Full | Role::Authority => "full",
+		};
+
+		let db_conf = match database {
 			Database::RocksDb => DatabaseConfig::RocksDb {
-				path: base_path.join("db"),
+				path: base_path.join("db").join(role_suffix),
 				cache_size,
 			},
 			Database::ParityDb => DatabaseConfig::ParityDb {
-				path: base_path.join("paritydb"),
+				path: base_path.join("paritydb").join(role_suffix),
 			},
-		})
+		};
+
+		if let Some(p) = db_conf.path() {
+			let mut basedir = p.to_path_buf();
+			basedir.pop();
+
+			// Do we have to migrate to a role-based subdirectory layout:
+			// See if the base dir exists (`db`) and there's no `light` or `full` directory inside
+			// of it, so we assume the database is not-migrated yet.
+			if basedir.exists() && !(basedir.join("light").exists() || basedir.join("full").exists()) {
+				type DummyBlock = generic::Block<generic::Header<u32, BlakeTwo256>, OpaqueExtrinsic>;
+				let mut old_conf = db_conf.clone();
+				old_conf.set_path(&basedir);
+
+				// assert that the node is started with the same role as the database type
+				match (role, Backend::<DummyBlock>::database_type(old_conf)) {
+					(Role::Light, Ok(DatabaseType::Light)) |
+					(Role::Full, Ok(DatabaseType::Full)) |
+					(Role::Authority, Ok(DatabaseType::Full)) =>
+						migrate_to_role_subdir(&basedir, role_suffix)?,
+					_ => return Err(
+							sp_blockchain::Error::Backend(
+								"Client role does not match database type: {:?}".into()
+							).into()
+						),
+				}
+			}
+		}
+
+		Ok(db_conf)
 	}
 
 	/// Get the state cache size.
@@ -524,7 +562,7 @@ pub trait CliConfiguration<DCV: DefaultConfigurationValues = ()>: Sized {
 			)?,
 			keystore_remote,
 			keystore,
-			database: self.database_config(&config_dir, database_cache_size, database)?,
+			database: self.database_config( &config_dir, database_cache_size, database, &role)?,
 			state_cache_size: self.state_cache_size()?,
 			state_cache_child_ratio: self.state_cache_child_ratio()?,
 			state_pruning: self.state_pruning(unsafe_pruning, &role)?,
@@ -632,3 +670,21 @@ pub fn generate_node_name() -> String {
 		}
 	}
 }
+
+/// Move the database to a role specific subdirectory `light` or `full`
+fn migrate_to_role_subdir(db_path: &Path, role_suffix: &str) -> Result<()> {
+	info!("Migrating database to a role-based subdirectory: '{:?}' -> '{:?}'",
+		  db_path, db_path.join(role_suffix));
+	let mut db_path = db_path.to_path_buf();
+	let mut tmp_dir = db_path.clone();
+	tmp_dir.pop();
+	tmp_dir.push("tmp");
+
+	fs::rename(&db_path, &tmp_dir)?;
+	db_path.push(role_suffix);
+	fs::create_dir_all(&db_path)?;
+	fs::rename(tmp_dir, db_path)?;
+
+	Ok(())
+}
+
