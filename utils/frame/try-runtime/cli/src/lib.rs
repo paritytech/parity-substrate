@@ -187,7 +187,7 @@ where
 	ExecDispatch: NativeExecutionDispatch + 'static,
 {
 	let wasm_method = shared.wasm_method;
-	let execution = shared.execution;
+	let execution: sp_state_machine::ExecutionStrategy = shared.execution.into();
 	let heap_pages = shared.heap_pages.or(config.default_heap_pages);
 
 	let mut changes = Default::default();
@@ -233,10 +233,10 @@ where
 		&[],
 		ext.extensions,
 		&sp_state_machine::backend::BackendRuntimeCode::new(&ext.backend)
-			.runtime_code()?,
+			.runtime_code(sp_core::traits::CodeContext::Consensus)?,
 		sp_core::testing::TaskExecutor::new(),
 	)
-	.execute(execution.into())
+	.execute(execution.in_consensus())
 	.map_err(|e| format!("failed to execute 'TryRuntime_on_runtime_upgrade': {:?}", e))?;
 
 	let (weight, total_weight) = <(u64, u64) as Decode>::decode(&mut &*encoded_result)
@@ -266,7 +266,7 @@ where
 	ExecDispatch: NativeExecutionDispatch + 'static,
 {
 	let wasm_method = shared.wasm_method;
-	let execution = shared.execution;
+	let execution: sp_state_machine::ExecutionStrategy = shared.execution.into();
 	let heap_pages = shared.heap_pages.or(config.default_heap_pages);
 
 	let mut changes = Default::default();
@@ -333,10 +333,10 @@ where
 		header.encode().as_ref(),
 		ext.extensions,
 		&sp_state_machine::backend::BackendRuntimeCode::new(&ext.backend)
-			.runtime_code()?,
+			.runtime_code(sp_core::traits::CodeContext::Offchain)?,
 		sp_core::testing::TaskExecutor::new(),
 	)
-	.execute(execution.into())
+	.execute(execution.in_offchain())
 	.map_err(|e| format!("failed to execute 'OffchainWorkerApi_offchain_worker':  {:?}", e))?;
 
 	log::info!("OffchainWorkerApi_offchain_worker executed without errors.");
@@ -358,7 +358,7 @@ where
 	ExecDispatch: NativeExecutionDispatch + 'static,
 {
 	let wasm_method = shared.wasm_method;
-	let execution = shared.execution;
+	let execution: sp_state_machine::ExecutionStrategy = shared.execution.into();
 	let heap_pages = shared.heap_pages.or(config.default_heap_pages);
 
 	let mut changes = Default::default();
@@ -435,10 +435,11 @@ where
 		"Core_execute_block",
 		block.encode().as_ref(),
 		ext.extensions,
-		&sp_state_machine::backend::BackendRuntimeCode::new(&ext.backend).runtime_code()?,
+		&sp_state_machine::backend::BackendRuntimeCode::new(&ext.backend)
+			.runtime_code(sp_core::traits::CodeContext::Consensus)?,
 		sp_core::testing::TaskExecutor::new(),
 	)
-	.execute(execution.into())
+	.execute(execution.in_consensus())
 	.map_err(|e| format!("failed to execute 'Core_execute_block': {:?}", e))?;
 	debug_assert!(_encoded_result == vec![1]);
 

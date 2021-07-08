@@ -101,8 +101,9 @@ pub fn executor() -> NativeExecutor<Executor> {
 }
 
 pub fn executor_call<
-	R:Decode + Encode + PartialEq,
-	NC: FnOnce() -> std::result::Result<R, Box<dyn std::error::Error + Send + Sync>> + std::panic::UnwindSafe
+	R: Decode + Encode + PartialEq,
+	NC: FnOnce() -> std::result::Result<R, Box<dyn std::error::Error + Send + Sync>>
+		+ std::panic::UnwindSafe,
 >(
 	t: &mut TestExternalities<BlakeTwo256>,
 	method: &str,
@@ -116,6 +117,7 @@ pub fn executor_call<
 	let heap_pages = t.storage(sp_core::storage::well_known_keys::HEAP_PAGES);
 	let runtime_code = RuntimeCode {
 		code_fetcher: &sp_core::traits::WrappedRuntimeCode(code.as_slice().into()),
+		context: sp_core::traits::CodeContext::Consensus,
 		hash: sp_core::blake2_256(&code).to_vec(),
 		heap_pages: heap_pages.and_then(|hp| Decode::decode(&mut &hp[..]).ok()),
 	};

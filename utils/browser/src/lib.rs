@@ -87,7 +87,7 @@ where
 		default_heap_pages: Default::default(),
 		dev_key_seed: Default::default(),
 		disable_grandpa: Default::default(),
-		execution_strategies: Default::default(),
+		execution_configs: Default::default(),
 		force_authoring: Default::default(),
 		impl_name: String::from("parity-substrate"),
 		impl_version: String::from("0.0.0"),

@@ -345,11 +345,10 @@ pub fn new_full_parts<TBl, TRtApi, TExecDisp>(
 			transaction_storage: config.transaction_storage.clone(),
 		};
 
-
 		let backend = new_db_backend(db_config)?;
 
 		let extensions = sc_client_api::execution_extensions::ExecutionExtensions::new(
-			config.execution_strategies.clone(),
+			config.execution_configs.clone(),
 			Some(keystore_container.sync_keystore()),
 			sc_offchain::OffchainDb::factory_from_backend(&*backend),
 		);

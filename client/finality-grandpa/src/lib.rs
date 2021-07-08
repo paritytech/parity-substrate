@@ -476,8 +476,10 @@ pub trait GenesisAuthoritySetProvider<Block: BlockT> {
 	fn get(&self) -> Result<AuthorityList, ClientError>;
 }
 
-impl<Block: BlockT, E> GenesisAuthoritySetProvider<Block> for Arc<dyn ExecutorProvider<Block, Executor = E>>
-	where E: CallExecutor<Block>,
+impl<Block: BlockT, E> GenesisAuthoritySetProvider<Block>
+	for Arc<dyn ExecutorProvider<Block, Executor = E>>
+where
+	E: CallExecutor<Block>,
 {
 	fn get(&self) -> Result<AuthorityList, ClientError> {
 		// This implementation uses the Grandpa runtime API instead of reading directly from the
@@ -488,7 +490,7 @@ impl<Block: BlockT, E> GenesisAuthoritySetProvider<Block> for Arc<dyn ExecutorPr
 				&BlockId::Number(Zero::zero()),
 				"GrandpaApi_grandpa_authorities",
 				&[],
-				ExecutionStrategy::NativeElseWasm,
+				sc_client_api::ExecutionConfig::new_consensus(ExecutionStrategy::NativeElseWasm),
 				None,
 			)
 			.and_then(|call_result| {

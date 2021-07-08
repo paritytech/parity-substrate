@@ -201,7 +201,7 @@ impl CallExecutor<Block> for DummyCallExecutor {
 		_id: &BlockId<Block>,
 		_method: &str,
 		_call_data: &[u8],
-		_strategy: ExecutionStrategy,
+		_config: sp_state_machine::ExecutionConfig,
 		_extensions: Option<Extensions>,
 	) -> Result<Vec<u8>, ClientError> {
 		Ok(vec![42])
@@ -414,7 +414,7 @@ fn code_is_executed_at_genesis_only() {
 			&BlockId::Number(0),
 			"test_method",
 			&[],
-			ExecutionStrategy::NativeElseWasm,
+			ExecutionStrategy::NativeElseWasm.in_consensus(),
 			None,
 		).unwrap(),
 		vec![42],
@@ -424,7 +424,7 @@ fn code_is_executed_at_genesis_only() {
 		&BlockId::Number(1),
 		"test_method",
 		&[],
-		ExecutionStrategy::NativeElseWasm,
+		ExecutionStrategy::NativeElseWasm.in_consensus(),
 		None,
 	);
 

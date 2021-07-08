@@ -21,11 +21,10 @@
 use std::{panic::UnwindSafe, result, cell::RefCell};
 use codec::{Encode, Decode};
 use sp_runtime::{
-	generic::BlockId, traits::{Block as BlockT, HashFor},
+	generic::BlockId,
+	traits::{Block as BlockT, HashFor},
 };
-use sp_state_machine::{
-	OverlayedChanges, ExecutionManager, ExecutionStrategy, StorageProof,
-};
+use sp_state_machine::{OverlayedChanges, ExecutionManager, ExecutionConfig, StorageProof};
 use sc_executor::{RuntimeVersion, NativeVersion};
 use sp_externalities::Extensions;
 use sp_core::NativeOrEncoded;
@@ -61,7 +60,7 @@ pub trait CallExecutor<B: BlockT> {
 		id: &BlockId<B>,
 		method: &str,
 		call_data: &[u8],
-		strategy: ExecutionStrategy,
+		config: ExecutionConfig,
 		extensions: Option<Extensions>,
 	) -> Result<Vec<u8>, sp_blockchain::Error>;
 

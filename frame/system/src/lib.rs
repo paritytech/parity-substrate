@@ -27,8 +27,8 @@
 //! The System pallet defines the core data types used in a Substrate runtime.
 //! It also provides several utility functions (see [`Pallet`]) for other FRAME pallets.
 //!
-//! In addition, it manages the storage items for extrinsics data, indexes, event records, and digest items,
-//! among other things that support the execution of the current block.
+//! In addition, it manages the storage items for extrinsics data, indexes, event records, and
+//! digest items, among other things that support the execution of the current block.
 //!
 //! It also handles low-level tasks like depositing logs, basic set up and take down of
 //! temporary storage entries, and access to previous block hashes.
@@ -54,10 +54,10 @@
 //!   - [`CheckEra`]: Checks the era of the transaction. Contains a single payload of type `Era`.
 //!   - [`CheckGenesis`]: Checks the provided genesis hash of the transaction. Must be a part of the
 //!     signed payload of the transaction.
-//!   - [`CheckSpecVersion`]: Checks that the runtime version is the same as the one used to sign the
-//!     transaction.
-//!   - [`CheckTxVersion`]: Checks that the transaction version is the same as the one used to sign the
-//!     transaction.
+//!   - [`CheckSpecVersion`]: Checks that the runtime version is the same as the one used to sign
+//!     the transaction.
+//!   - [`CheckTxVersion`]: Checks that the transaction version is the same as the one used to sign
+//!     the transaction.
 //!
 //! Lookup the runtime aggregator file (e.g. `node/runtime`) to see the full list of signed
 //! extensions included in a chain.
@@ -316,14 +316,7 @@ pub mod pallet {
 			Ok(().into())
 		}
 
-		/// Set the number of pages in the WebAssembly environment's heap.
-		///
-		/// # <weight>
-		/// - `O(1)`
-		/// - 1 storage write.
-		/// - Base Weight: 1.405 µs
-		/// - 1 write to HEAP_PAGES
-		/// # </weight>
+		/// Set the number of pages in the consensus WebAssembly environment's heap.
 		#[pallet::weight((T::SystemWeightInfo::set_heap_pages(), DispatchClass::Operational))]
 		pub fn set_heap_pages(origin: OriginFor<T>, pages: u64) -> DispatchResultWithPostInfo {
 			ensure_root(origin)?;
@@ -467,16 +460,19 @@ pub mod pallet {
 		}
 
 		/// Make some on-chain remark and emit event.
-		///
-		/// # <weight>
-		/// - `O(b)` where b is the length of the remark.
-		/// - 1 event.
-		/// # </weight>
 		#[pallet::weight(T::SystemWeightInfo::remark_with_event(remark.len() as u32))]
 		pub fn remark_with_event(origin: OriginFor<T>, remark: Vec<u8>) -> DispatchResultWithPostInfo {
 			let who = ensure_signed(origin)?;
 			let hash = T::Hashing::hash(&remark[..]);
 			Self::deposit_event(Event::Remarked(who, hash));
+			Ok(().into())
+		}
+
+		/// Set the number of pages in the offchain WebAssembly environment's heap.
+		#[pallet::weight((T::SystemWeightInfo::set_heap_pages(), DispatchClass::Operational))]
+		pub fn set_heap_pages_offchain(origin: OriginFor<T>, pages: u64) -> DispatchResultWithPostInfo {
+			ensure_root(origin)?;
+			storage::unhashed::put_raw(well_known_keys::OFFCHAIN_HEAP_PAGES, &pages.encode());
 			Ok(().into())
 		}
 	}

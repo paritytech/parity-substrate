@@ -33,34 +33,33 @@ use sp_runtime::{
 	generic::BlockId,
 	traits,
 };
-use sp_state_machine::{ExecutionManager, DefaultHandler};
-pub use sp_state_machine::ExecutionStrategy;
+use sp_state_machine::{ExecutionManager, ExecutionStrategy, ExecutionConfig, DefaultHandler};
 use sp_externalities::Extensions;
 use parking_lot::RwLock;
 
-/// Execution strategies settings.
+/// Execution configurations, per operation type.
 #[derive(Debug, Clone)]
-pub struct ExecutionStrategies {
-	/// Execution strategy used when syncing.
-	pub syncing: ExecutionStrategy,
-	/// Execution strategy used when importing blocks.
-	pub importing: ExecutionStrategy,
-	/// Execution strategy used when constructing blocks.
-	pub block_construction: ExecutionStrategy,
-	/// Execution strategy used for offchain workers.
-	pub offchain_worker: ExecutionStrategy,
-	/// Execution strategy used in other cases.
-	pub other: ExecutionStrategy,
+pub struct ExecutionConfigs {
+	/// Execution config used when syncing.
+	pub syncing: ExecutionConfig,
+	/// Execution config used when importing blocks.
+	pub importing: ExecutionConfig,
+	/// Execution config used when constructing blocks.
+	pub block_construction: ExecutionConfig,
+	/// Execution config used for offchain workers.
+	pub offchain_worker: ExecutionConfig,
+	/// Execution config used in other cases.
+	pub other: ExecutionConfig,
 }
 
-impl Default for ExecutionStrategies {
-	fn default() -> ExecutionStrategies {
-		ExecutionStrategies {
-			syncing: ExecutionStrategy::NativeElseWasm,
-			importing: ExecutionStrategy::NativeElseWasm,
-			block_construction: ExecutionStrategy::AlwaysWasm,
-			offchain_worker: ExecutionStrategy::NativeWhenPossible,
-			other: ExecutionStrategy::NativeElseWasm,
+impl Default for ExecutionConfigs {
+	fn default() -> ExecutionConfigs {
+		ExecutionConfigs {
+			syncing: ExecutionStrategy::NativeElseWasm.in_consensus(),
+			importing: ExecutionStrategy::NativeElseWasm.in_consensus(),
+			block_construction: ExecutionStrategy::AlwaysWasm.in_consensus(),
+			offchain_worker: ExecutionStrategy::NativeWhenPossible.in_offchain(),
+			other: ExecutionStrategy::NativeElseWasm.in_consensus(),
 		}
 	}
 }
@@ -95,7 +94,7 @@ impl<T: offchain::DbExternalities + Clone + Sync + Send + 'static> DbExternaliti
 /// and is responsible for producing a correct `Extensions` object.
 /// for each call, based on required `Capabilities`.
 pub struct ExecutionExtensions<Block: traits::Block> {
-	strategies: ExecutionStrategies,
+	configs: ExecutionConfigs,
 	keystore: Option<SyncCryptoStorePtr>,
 	offchain_db: Option<Box<dyn DbExternalitiesFactory>>,
 	// FIXME: these two are only RwLock because of https://github.com/paritytech/substrate/issues/4587
@@ -104,14 +103,15 @@ pub struct ExecutionExtensions<Block: traits::Block> {
 	// extension to be a `Weak` reference.
 	// That's also the reason why it's being registered lazily instead of
 	// during initialization.
-	transaction_pool: RwLock<Option<Weak<dyn sp_transaction_pool::OffchainSubmitTransaction<Block>>>>,
+	transaction_pool:
+		RwLock<Option<Weak<dyn sp_transaction_pool::OffchainSubmitTransaction<Block>>>>,
 	extensions_factory: RwLock<Box<dyn ExtensionsFactory>>,
 }
 
 impl<Block: traits::Block> Default for ExecutionExtensions<Block> {
 	fn default() -> Self {
 		Self {
-			strategies: Default::default(),
+			configs: Default::default(),
 			keystore: None,
 			offchain_db: None,
 			transaction_pool: RwLock::new(None),
@@ -121,16 +121,16 @@ impl<Block: traits::Block> Default for ExecutionExtensions<Block> {
 }
 
 impl<Block: traits::Block> ExecutionExtensions<Block> {
-	/// Create new `ExecutionExtensions` given a `keystore` and `ExecutionStrategies`.
+	/// Create new `ExecutionExtensions` given a `keystore` and `ExecutionConfigs`.
 	pub fn new(
-		strategies: ExecutionStrategies,
+		configs: ExecutionConfigs,
 		keystore: Option<SyncCryptoStorePtr>,
 		offchain_db: Option<Box<dyn DbExternalitiesFactory>>,
 	) -> Self {
 		let transaction_pool = RwLock::new(None);
 		let extensions_factory = Box::new(());
 		Self {
-			strategies,
+			configs,
 			keystore,
 			offchain_db,
 			extensions_factory: RwLock::new(extensions_factory),
@@ -138,9 +138,9 @@ impl<Block: traits::Block> ExecutionExtensions<Block> {
 		}
 	}
 
-	/// Get a reference to the execution strategies.
-	pub fn strategies(&self) -> &ExecutionStrategies {
-		&self.strategies
+	/// Get a reference to the execution configs.
+	pub fn configs(&self) -> &ExecutionConfigs {
+		&self.configs
 	}
 
 	/// Set the new extensions_factory
@@ -211,21 +211,15 @@ impl<Block: traits::Block> ExecutionExtensions<Block> {
 		&self,
 		at: &BlockId<Block>,
 		context: ExecutionContext,
-	) -> (
-		ExecutionManager<DefaultHandler<R, E>>,
-		Extensions,
-	) {
+	) -> (ExecutionManager<DefaultHandler<R, E>>, Extensions) {
 		let manager = match context {
-			ExecutionContext::BlockConstruction =>
-				self.strategies.block_construction.get_manager(),
-			ExecutionContext::Syncing =>
-				self.strategies.syncing.get_manager(),
-			ExecutionContext::Importing =>
-				self.strategies.importing.get_manager(),
-			ExecutionContext::OffchainCall(Some((_, capabilities))) if capabilities.has_all() =>
-				self.strategies.offchain_worker.get_manager(),
-			ExecutionContext::OffchainCall(_) =>
-				self.strategies.other.get_manager(),
+			ExecutionContext::BlockConstruction => self.configs.block_construction.get_manager(),
+			ExecutionContext::Syncing => self.configs.syncing.get_manager(),
+			ExecutionContext::Importing => self.configs.importing.get_manager(),
+			ExecutionContext::OffchainCall(Some((_, capabilities))) if capabilities.has_all() => {
+				self.configs.offchain_worker.get_manager()
+			}
+			ExecutionContext::OffchainCall(_) => self.configs.other.get_manager(),
 		};
 
 		(manager, self.extensions(at, context))

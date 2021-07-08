@@ -55,8 +55,8 @@ use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_inherents::InherentData;
 use sc_client_api::{
-	ExecutionStrategy, BlockBackend,
-	execution_extensions::{ExecutionExtensions, ExecutionStrategies},
+	ExecutionStrategy, BlockBackend, ExecutionConfig,
+	execution_extensions::{ExecutionExtensions, ExecutionConfigs},
 };
 use sc_block_builder::BlockBuilderProvider;
 use futures::executor;
@@ -424,7 +424,7 @@ impl BenchDb {
 			&keyring.generate_genesis(),
 			None,
 			None,
-			ExecutionExtensions::new(profile.into_execution_strategies(), None, None),
+			ExecutionExtensions::new(profile.into_execution_configs(), None, None),
 			Box::new(task_executor.clone()),
 			None,
 			None,
@@ -616,7 +616,7 @@ impl BenchKeyring {
 	}
 }
 
-/// Profile for exetion strategies.
+/// Profile for execution configurations.
 #[derive(Clone, Copy, Debug)]
 pub enum Profile {
 	/// As native as possible.
@@ -626,22 +626,24 @@ pub enum Profile {
 }
 
 impl Profile {
-	fn into_execution_strategies(self) -> ExecutionStrategies {
+	fn into_execution_configs(self) -> ExecutionConfigs {
 		match self {
-			Profile::Wasm => ExecutionStrategies {
-				syncing: ExecutionStrategy::AlwaysWasm,
-				importing: ExecutionStrategy::AlwaysWasm,
-				block_construction: ExecutionStrategy::AlwaysWasm,
-				offchain_worker: ExecutionStrategy::AlwaysWasm,
-				other: ExecutionStrategy::AlwaysWasm,
+			Profile::Wasm => ExecutionConfigs {
+				syncing: ExecutionConfig::new_offchain(ExecutionStrategy::AlwaysWasm),
+				importing: ExecutionConfig::new_offchain(ExecutionStrategy::AlwaysWasm),
+				block_construction: ExecutionConfig::new_offchain(ExecutionStrategy::AlwaysWasm),
+				offchain_worker: ExecutionConfig::new_offchain(ExecutionStrategy::AlwaysWasm),
+				other: ExecutionConfig::new_offchain(ExecutionStrategy::AlwaysWasm),
 			},
-			Profile::Native => ExecutionStrategies {
-				syncing: ExecutionStrategy::NativeElseWasm,
-				importing: ExecutionStrategy::NativeElseWasm,
-				block_construction: ExecutionStrategy::NativeElseWasm,
-				offchain_worker: ExecutionStrategy::NativeElseWasm,
-				other: ExecutionStrategy::NativeElseWasm,
-			}
+			Profile::Native => ExecutionConfigs {
+				syncing: ExecutionConfig::new_offchain(ExecutionStrategy::NativeElseWasm),
+				importing: ExecutionConfig::new_offchain(ExecutionStrategy::NativeElseWasm),
+				block_construction: ExecutionConfig::new_offchain(
+					ExecutionStrategy::NativeElseWasm,
+				),
+				offchain_worker: ExecutionConfig::new_offchain(ExecutionStrategy::NativeElseWasm),
+				other: ExecutionConfig::new_offchain(ExecutionStrategy::NativeElseWasm),
+			},
 		}
 	}
 }

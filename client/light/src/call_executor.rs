@@ -31,8 +31,8 @@ use sp_runtime::{
 };
 use sp_externalities::Extensions;
 use sp_state_machine::{
-	self, Backend as StateBackend, OverlayedChanges, ExecutionStrategy, create_proof_check_backend,
-	execution_proof_check_on_trie_backend, ExecutionManager, StorageProof,
+	self, Backend as StateBackend, OverlayedChanges, ExecutionConfig, create_proof_check_backend,
+	execution_proof_check_on_trie_backend, ExecutionManager, ExecutionStrategy, StorageProof,
 };
 use hash_db::Hasher;
 
@@ -71,12 +71,11 @@ impl<B, L: Clone> Clone for GenesisCallExecutor<B, L> {
 	}
 }
 
-impl<Block, B, Local> CallExecutor<Block> for
-	GenesisCallExecutor<B, Local>
-	where
-		Block: BlockT,
-		B: RemoteBackend<Block>,
-		Local: CallExecutor<Block>,
+impl<Block, B, Local> CallExecutor<Block> for GenesisCallExecutor<B, Local>
+where
+	Block: BlockT,
+	B: RemoteBackend<Block>,
+	Local: CallExecutor<Block>,
 {
 	type Error = ClientError;
 
@@ -87,7 +86,7 @@ impl<Block, B, Local> CallExecutor<Block> for
 		id: &BlockId<Block>,
 		method: &str,
 		call_data: &[u8],
-		strategy: ExecutionStrategy,
+		strategy: ExecutionConfig,
 		extensions: Option<Extensions>,
 	) -> ClientResult<Vec<u8>> {
 		match self.backend.is_local_state_available(id) {
@@ -99,7 +98,7 @@ impl<Block, B, Local> CallExecutor<Block> for
 	fn contextual_call<
 		EM: Fn(
 			Result<NativeOrEncoded<R>, Self::Error>,
-			Result<NativeOrEncoded<R>, Self::Error>
+			Result<NativeOrEncoded<R>, Self::Error>,
 		) -> Result<NativeOrEncoded<R>, Self::Error>,
 		R: Encode + Decode + PartialEq,
 		NC: FnOnce() -> result::Result<R, sp_api::ApiError> + UnwindSafe,
@@ -133,7 +132,7 @@ impl<Block, B, Local> CallExecutor<Block> for
 				call_data,
 				changes,
 				None,
-				ExecutionManager::NativeWhenPossible,
+				ExecutionConfig::new_consensus(ExecutionStrategy::NativeWhenPossible).get_manager(),
 				native_call,
 				recorder,
 				extensions,
@@ -220,7 +219,8 @@ pub fn check_execution_proof<Header, E, H>(
 
 	// TODO: Remove when solved: https://github.com/paritytech/substrate/issues/5047
 	let backend_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(&trie_backend);
-	let runtime_code = backend_runtime_code.runtime_code()
+	let runtime_code = backend_runtime_code
+		.runtime_code(sp_core::traits::CodeContext::Consensus)
 		.map_err(|_e| ClientError::RuntimeCodeMissing)?;
 
 	// execute method

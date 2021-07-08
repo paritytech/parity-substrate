@@ -420,6 +420,7 @@ mod tests {
 			let runtime_code = RuntimeCode {
 				code_fetcher: &sp_core::traits::WrappedRuntimeCode(wasm_binary_unwrap().into()),
 				hash: Vec::new(),
+				context: sp_core::traits::CodeContext::Consensus,
 				heap_pages: None,
 			};
 
@@ -520,6 +521,7 @@ mod tests {
 			let runtime_code = RuntimeCode {
 				code_fetcher: &sp_core::traits::WrappedRuntimeCode(wasm_binary_unwrap().into()),
 				hash: Vec::new(),
+				context: sp_core::traits::CodeContext::Consensus,
 				heap_pages: None,
 			};
 

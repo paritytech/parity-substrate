@@ -26,7 +26,7 @@ use sc_network::{multiaddr, config::{NetworkConfiguration, TransportConfig, Role
 use sc_informant::OutputFormat;
 use sc_service::config::KeystoreConfig;
 use sc_executor::WasmExecutionMethod;
-use sc_client_api::execution_extensions::ExecutionStrategies;
+use sc_client_api::execution_extensions::ExecutionConfigs;
 
 /// Base db path gotten from env
 pub fn base_path() -> BasePath {
@@ -67,7 +67,10 @@ where
 }
 
 /// Produces a default configuration object, suitable for use with most set ups.
-pub fn default_config(task_executor: TaskExecutor, mut chain_spec: Box<dyn ChainSpec>) -> Configuration {
+pub fn default_config(
+	task_executor: TaskExecutor,
+	mut chain_spec: Box<dyn ChainSpec>,
+) -> Configuration {
 	let base_path = base_path();
 	let root_path = base_path.path().to_path_buf().join("chains").join(chain_spec.id());
 
@@ -113,12 +116,12 @@ pub fn default_config(task_executor: TaskExecutor, mut chain_spec: Box<dyn Chain
 		state_cache_child_ratio: None,
 		chain_spec,
 		wasm_method: WasmExecutionMethod::Interpreted,
-		execution_strategies: ExecutionStrategies {
-			syncing: sc_client_api::ExecutionStrategy::AlwaysWasm,
-			importing: sc_client_api::ExecutionStrategy::AlwaysWasm,
-			block_construction: sc_client_api::ExecutionStrategy::AlwaysWasm,
-			offchain_worker: sc_client_api::ExecutionStrategy::AlwaysWasm,
-			other: sc_client_api::ExecutionStrategy::AlwaysWasm,
+		execution_configs: ExecutionConfigs {
+			syncing: sc_client_api::ExecutionConfig::new_offchain(sc_client_api::ExecutionStrategy::AlwaysWasm),
+			importing: sc_client_api::ExecutionConfig::new_offchain(sc_client_api::ExecutionStrategy::AlwaysWasm),
+			block_construction: sc_client_api::ExecutionConfig::new_offchain(sc_client_api::ExecutionStrategy::AlwaysWasm),
+			offchain_worker: sc_client_api::ExecutionConfig::new_offchain(sc_client_api::ExecutionStrategy::AlwaysWasm),
+			other: sc_client_api::ExecutionConfig::new_offchain(sc_client_api::ExecutionStrategy::AlwaysWasm),
 		},
 		rpc_http: None,
 		rpc_ws: None,

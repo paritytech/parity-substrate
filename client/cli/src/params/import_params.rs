@@ -17,13 +17,16 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::arg_enums::{
-	ExecutionStrategy, WasmExecutionMethod, DEFAULT_EXECUTION_BLOCK_CONSTRUCTION,
-	DEFAULT_EXECUTION_IMPORT_BLOCK, DEFAULT_EXECUTION_IMPORT_BLOCK_VALIDATOR,
-	DEFAULT_EXECUTION_OFFCHAIN_WORKER, DEFAULT_EXECUTION_OTHER, DEFAULT_EXECUTION_SYNCING,
+	ExecutionStrategy, WasmExecutionMethod, DEFAULT_STRATEGY_BLOCK_CONSTRUCTION,
+	DEFAULT_STRATEGY_IMPORT_BLOCK, DEFAULT_STRATEGY_IMPORT_BLOCK_VALIDATOR,
+	DEFAULT_STRATEGY_OFFCHAIN_WORKER, DEFAULT_STRATEGY_OTHER, DEFAULT_STRATEGY_SYNCING,
+	DEFAULT_CODE_CONTEXT_SYNCING, DEFAULT_CODE_CONTEXT_IMPORT_BLOCK,
+	DEFAULT_CODE_CONTEXT_IMPORT_BLOCK_VALIDATOR,DEFAULT_CODE_CONTEXT_BLOCK_CONSTRUCTION,
+	DEFAULT_CODE_CONTEXT_OFFCHAIN_WORKER, DEFAULT_CODE_CONTEXT_OTHER,
 };
 use crate::params::DatabaseParams;
 use crate::params::PruningParams;
-use sc_client_api::execution_extensions::ExecutionStrategies;
+use sc_client_api::execution_extensions::ExecutionConfigs;
 use structopt::StructOpt;
 use std::path::PathBuf;
 
@@ -99,32 +102,53 @@ impl ImportParams {
 	}
 
 	/// Get execution strategies for the parameters
-	pub fn execution_strategies(&self, is_dev: bool, is_validator: bool) -> ExecutionStrategies {
+	pub fn execution_configs(&self, is_dev: bool, is_validator: bool) -> ExecutionConfigs {
+		use sc_client_api::ExecutionConfig;
 		let exec = &self.execution_strategies;
-		let exec_all_or = |strat: Option<ExecutionStrategy>, default: ExecutionStrategy| {
-			let default = if is_dev {
-				ExecutionStrategy::Native
-			} else {
-				default
-			};
+		let exec_all_or = |start: Option<ExecutionStrategy>, default: ExecutionStrategy| {
+			let default = if is_dev { ExecutionStrategy::Native } else { default };
 
-			exec.execution.unwrap_or_else(|| strat.unwrap_or(default)).into()
+			exec.execution.unwrap_or_else(|| start.unwrap_or(default)).into()
 		};
 
 		let default_execution_import_block = if is_validator {
-			DEFAULT_EXECUTION_IMPORT_BLOCK_VALIDATOR
+			DEFAULT_STRATEGY_IMPORT_BLOCK_VALIDATOR
 		} else {
-			DEFAULT_EXECUTION_IMPORT_BLOCK
+			DEFAULT_STRATEGY_IMPORT_BLOCK
+		};
+		let default_context_import_block = if is_validator {
+			DEFAULT_CODE_CONTEXT_IMPORT_BLOCK_VALIDATOR
+		} else {
+			DEFAULT_CODE_CONTEXT_IMPORT_BLOCK
 		};
 
-		ExecutionStrategies {
-			syncing: exec_all_or(exec.execution_syncing, DEFAULT_EXECUTION_SYNCING),
-			importing: exec_all_or(exec.execution_import_block, default_execution_import_block),
-			block_construction:
-				exec_all_or(exec.execution_block_construction, DEFAULT_EXECUTION_BLOCK_CONSTRUCTION),
-			offchain_worker:
-				exec_all_or(exec.execution_offchain_worker, DEFAULT_EXECUTION_OFFCHAIN_WORKER),
-			other: exec_all_or(exec.execution_other, DEFAULT_EXECUTION_OTHER),
+		ExecutionConfigs {
+			syncing: ExecutionConfig {
+				strategy: exec_all_or(exec.execution_syncing, DEFAULT_STRATEGY_SYNCING),
+				context: DEFAULT_CODE_CONTEXT_SYNCING,
+			},
+			importing: ExecutionConfig {
+				strategy: exec_all_or(exec.execution_import_block, default_execution_import_block),
+				context: default_context_import_block,
+			},
+			block_construction: ExecutionConfig {
+				strategy: exec_all_or(
+					exec.execution_block_construction,
+					DEFAULT_STRATEGY_BLOCK_CONSTRUCTION,
+				),
+				context: DEFAULT_CODE_CONTEXT_BLOCK_CONSTRUCTION,
+			},
+			offchain_worker: ExecutionConfig {
+				strategy: exec_all_or(
+					exec.execution_offchain_worker,
+					DEFAULT_STRATEGY_OFFCHAIN_WORKER,
+				),
+				context: DEFAULT_CODE_CONTEXT_OFFCHAIN_WORKER,
+			},
+			other: ExecutionConfig {
+				strategy: exec_all_or(exec.execution_other, DEFAULT_STRATEGY_OTHER),
+				context: DEFAULT_CODE_CONTEXT_OTHER,
+			},
 		}
 	}
 }

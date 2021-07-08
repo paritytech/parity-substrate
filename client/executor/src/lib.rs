@@ -29,7 +29,7 @@
 //! wasm engine used, instance cache.
 
 #![warn(missing_docs)]
-#![recursion_limit="128"]
+#![recursion_limit = "128"]
 
 #[macro_use]
 mod native_executor;
@@ -80,7 +80,6 @@ mod tests {
 
 		let executor = WasmExecutor::new(
 			WasmExecutionMethod::Interpreted,
-			Some(8),
 			sp_io::SubstrateHostFunctions::host_functions(),
 			8,
 			None,
@@ -92,6 +91,7 @@ mod tests {
 				true,
 				"test_empty_return",
 				&[],
+				8,
 			)
 			.unwrap();
 		assert_eq!(res, vec![0u8; 0]);

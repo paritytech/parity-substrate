@@ -30,6 +30,7 @@ sp-api = { version = "3.0.0", path = "../../primitives/api" }
 sp-wasm-interface = { version = "3.0.0", path = "../../primitives/wasm-interface" }
 sp-runtime-interface = { version = "3.0.0", path = "../../primitives/runtime-interface" }
 sp-externalities = { version = "0.9.0", path = "../../primitives/externalities" }
+sp-state-machine = { version = "0.9.0", path = "../../primitives/state-machine" }
 sc-executor-common = { version = "0.9.0", path = "common" }
 sc-executor-wasmi = { version = "0.9.0", path = "wasmi" }
 sc-executor-wasmtime = { version = "0.9.0", path = "wasmtime", optional = true }

@@ -65,6 +65,7 @@ impl WasmBlob {
 		RuntimeCode {
 			code_fetcher: self,
 			hash: self.hash.clone(),
+			context: sp_core::traits::CodeContext::Consensus,
 			heap_pages,
 		}
 	}

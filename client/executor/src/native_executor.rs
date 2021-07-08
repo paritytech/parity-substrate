@@ -45,7 +45,8 @@ use sp_externalities::ExternalitiesExt as _;
 use sp_tasks::new_async_externalities;
 
 /// Default num of pages for the heap
-const DEFAULT_HEAP_PAGES: u64 = 2048;
+const DEFAULT_HEAP_PAGES_CONSENSUS: u64 = 2048;
+const DEFAULT_HEAP_PAGES_OFFCHAIN: u64 = DEFAULT_HEAP_PAGES_CONSENSUS * 4;
 
 /// Set up the externalities and safe calling environment to execute runtime calls.
 ///
@@ -95,8 +96,6 @@ pub trait NativeExecutionDispatch: Send + Sync {
 pub struct WasmExecutor {
 	/// Method used to execute fallback Wasm code.
 	method: WasmExecutionMethod,
-	/// The number of 64KB pages to allocate for Wasm execution.
-	default_heap_pages: u64,
 	/// The host functions registered with this instance.
 	host_functions: Arc<Vec<&'static dyn Function>>,
 	/// WASM runtime cache.
@@ -128,14 +127,12 @@ impl WasmExecutor {
 	///   compiled execution method is used.
 	pub fn new(
 		method: WasmExecutionMethod,
-		default_heap_pages: Option<u64>,
 		host_functions: Vec<&'static dyn Function>,
 		max_runtime_instances: usize,
 		cache_path: Option<PathBuf>,
 	) -> Self {
 		WasmExecutor {
 			method,
-			default_heap_pages: default_heap_pages.unwrap_or(DEFAULT_HEAP_PAGES),
 			host_functions: Arc::new(host_functions),
 			cache: Arc::new(RuntimeCache::new(max_runtime_instances, cache_path.clone())),
 			max_runtime_instances,
@@ -149,6 +146,8 @@ impl WasmExecutor {
 	/// while executing the runtime in Wasm. If a `panic!` occurred, the runtime is invalidated to
 	/// prevent any poisoned state. Native runtime execution does not need to report back
 	/// any `panic!`.
+	///
+	/// The number of heap pages to use is deduced from `runtime_code`'s context.
 	///
 	/// # Safety
 	///
@@ -170,11 +169,15 @@ impl WasmExecutor {
 			AssertUnwindSafe<&mut dyn Externalities>,
 		) -> Result<Result<R>>,
 	{
+		let default_heap_pages = match runtime_code.context {
+			sp_core::traits::CodeContext::Consensus => DEFAULT_HEAP_PAGES_CONSENSUS,
+			sp_core::traits::CodeContext::Offchain => DEFAULT_HEAP_PAGES_OFFCHAIN,
+		};
 		match self.cache.with_instance(
 			runtime_code,
 			ext,
 			self.method,
-			self.default_heap_pages,
+			default_heap_pages,
 			&*self.host_functions,
 			allow_missing_host_functions,
 			|module, instance, version, ext| {
@@ -191,11 +194,14 @@ impl WasmExecutor {
 
 	/// Perform a call into the given runtime.
 	///
-	/// The runtime is passed as a [`RuntimeBlob`]. The runtime will be isntantiated with the
+	/// The runtime is passed as a [`RuntimeBlob`]. The runtime will be instantiated with the
 	/// parameters this `WasmExecutor` was initialized with.
 	///
-	/// In case of problems with during creation of the runtime or instantation, a `Err` is returned.
-	/// that describes the message.
+	/// In case of problems during creation of the runtime or instantiation, a `Err` is
+	/// returned. that describes the message.
+	///
+	/// Unlike `with_instance`, the number of heap pages to use must be explicitly given to this
+	/// function.
 	#[doc(hidden)] // We use this function for tests across multiple crates.
 	pub fn uncached_call(
 		&self,
@@ -204,10 +210,11 @@ impl WasmExecutor {
 		allow_missing_host_functions: bool,
 		export_name: &str,
 		call_data: &[u8],
+		heap_pages: u64,
 	) -> std::result::Result<Vec<u8>, String> {
 		let module = crate::wasm_runtime::create_wasm_runtime_with_code(
 			self.method,
-			self.default_heap_pages,
+			heap_pages,
 			runtime_blob,
 			self.host_functions.to_vec(),
 			allow_missing_host_functions,
@@ -262,12 +269,13 @@ impl sp_core::traits::ReadRuntimeVersion for WasmExecutor {
 			true,
 			"Core_version",
 			&[],
+			DEFAULT_HEAP_PAGES_CONSENSUS,
 		)
 	}
 }
 
-/// A generic `CodeExecutor` implementation that uses a delegate to determine wasm code equivalence
-/// and dispatch to native code when possible, falling back on `WasmExecutor` when not.
+/// A generic `CodeExecutor` implementation that uses a delegate `D` to determine wasm code
+/// equivalence and dispatch to native code when possible, falling back on `WasmExecutor` when not.
 pub struct NativeExecutor<D> {
 	/// Dummy field to avoid the compiler complaining about us not using `D`.
 	_dummy: std::marker::PhantomData<D>,
@@ -283,12 +291,13 @@ impl<D: NativeExecutionDispatch> NativeExecutor<D> {
 	/// # Parameters
 	///
 	/// `fallback_method` - Method used to execute fallback Wasm code.
-	///
 	/// `default_heap_pages` - Number of 64KB pages to allocate for Wasm execution.
 	/// 	Defaults to `DEFAULT_HEAP_PAGES` if `None` is provided.
 	pub fn new(
 		fallback_method: WasmExecutionMethod,
-		default_heap_pages: Option<u64>,
+		// deprecated: this is the CLI configurable heap pages, which no longer exists and is
+		// ALWAYS NONE. This parameter should be removed.
+		_default_heap_pages: Option<u64>,
 		max_runtime_instances: usize,
 	) -> Self {
 		let extended = D::ExtendHostFunctions::host_functions();
@@ -305,13 +314,8 @@ impl<D: NativeExecutionDispatch> NativeExecutor<D> {
 
 		// Add the custom host functions provided by the user.
 		host_functions.extend(extended);
-		let wasm_executor = WasmExecutor::new(
-			fallback_method,
-			default_heap_pages,
-			host_functions,
-			max_runtime_instances,
-			None,
-		);
+		let wasm_executor =
+			WasmExecutor::new(fallback_method, host_functions, max_runtime_instances, None);
 
 		NativeExecutor {
 			_dummy: Default::default(),
@@ -489,6 +493,12 @@ impl<D: NativeExecutionDispatch + 'static> CodeExecutor for NativeExecutor<D> {
 		use_native: bool,
 		native_call: Option<NC>,
 	) -> (Result<NativeOrEncoded<R>>, bool) {
+		trace!(
+			target: "executor",
+			"call({}) [use_native = {}]",
+			method,
+			use_native,
+		);
 		let mut used_native = false;
 		let result = self.wasm.with_instance(
 			runtime_code,

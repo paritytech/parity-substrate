@@ -54,7 +54,6 @@
 //!	from on-chain storage.
 //!
 //! NOTE This pallet is experimental and not proven to work in production.
-//!
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use codec::Encode;

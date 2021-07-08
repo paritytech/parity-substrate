@@ -72,11 +72,13 @@ pub struct FullState<BE, Block: BlockT, Client> {
 }
 
 impl<BE, Block: BlockT, Client> FullState<BE, Block, Client>
-	where
-		BE: Backend<Block>,
-		Client: StorageProvider<Block, BE> + HeaderBackend<Block> + BlockBackend<Block>
-			+ HeaderMetadata<Block, Error = sp_blockchain::Error>,
-		Block: BlockT + 'static,
+where
+	BE: Backend<Block>,
+	Client: StorageProvider<Block, BE>
+		+ HeaderBackend<Block>
+		+ BlockBackend<Block>
+		+ HeaderMetadata<Block, Error = sp_blockchain::Error>,
+	Block: BlockT + 'static,
 {
 	/// Create new state API backend for full nodes.
 	pub fn new(
@@ -227,15 +229,22 @@ impl<BE, Block: BlockT, Client> FullState<BE, Block, Client>
 	}
 }
 
-impl<BE, Block, Client> StateBackend<Block, Client> for FullState<BE, Block, Client> where
+impl<BE, Block, Client> StateBackend<Block, Client> for FullState<BE, Block, Client>
+where
 	Block: BlockT + 'static,
 	BE: Backend<Block> + 'static,
-	Client: ExecutorProvider<Block> + StorageProvider<Block, BE>
-		+ ProofProvider<Block> + HeaderBackend<Block>
-		+ HeaderMetadata<Block, Error = sp_blockchain::Error> + BlockchainEvents<Block>
-		+ CallApiAt<Block> + ProvideRuntimeApi<Block>
+	Client: ExecutorProvider<Block>
+		+ StorageProvider<Block, BE>
+		+ ProofProvider<Block>
+		+ HeaderBackend<Block>
+		+ HeaderMetadata<Block, Error = sp_blockchain::Error>
+		+ BlockchainEvents<Block>
+		+ CallApiAt<Block>
+		+ ProvideRuntimeApi<Block>
 		+ BlockBackend<Block>
-		+ Send + Sync + 'static,
+		+ Send
+		+ Sync
+		+ 'static,
 	Client::Api: Metadata<Block>,
 {
 	fn call(
@@ -252,7 +261,7 @@ impl<BE, Block, Client> StateBackend<Block, Client> for FullState<BE, Block, Cli
 					&BlockId::Hash(block),
 					&method,
 					&*call_data,
-					self.client.execution_extensions().strategies().other,
+					self.client.execution_extensions().configs().other,
 					None,
 				)
 				.map(Into::into)

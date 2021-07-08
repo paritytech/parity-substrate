@@ -72,6 +72,17 @@ impl FetchRuntimeCode for NoneFetchRuntimeCode {
 	}
 }
 
+/// The context of the runtime code.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum CodeContext {
+	/// Consensus critical task. Resources should be sufficient, but not not more, and trust
+	/// levels should be high. The need for determinism is absolute.
+	Consensus,
+	/// Offchain operations that do not affect the chain state directly. Can be used for
+	/// offchain worker threads, and other utility tools.
+	Offchain,
+}
+
 /// The Wasm code of a Substrate runtime.
 #[derive(Clone)]
 pub struct RuntimeCode<'a> {
@@ -79,8 +90,10 @@ pub struct RuntimeCode<'a> {
 	pub code_fetcher: &'a dyn FetchRuntimeCode,
 	/// The optional heap pages this `code` should be executed with.
 	///
-	/// If `None` are given, the default value of the executor will be used.
+	/// If `None` is given, the default value of the executor will be used.
 	pub heap_pages: Option<u64>,
+	/// The context at which this code is intended to be executed.
+	pub context: CodeContext,
 	/// The SCALE encoded hash of `code`.
 	///
 	/// The hashing algorithm isn't that important, as long as all runtime
@@ -103,6 +116,7 @@ impl<'a> RuntimeCode<'a> {
 			code_fetcher: &NoneFetchRuntimeCode,
 			hash: Vec::new(),
 			heap_pages: None,
+			context: CodeContext::Consensus,
 		}
 	}
 }

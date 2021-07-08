@@ -92,10 +92,11 @@ impl BenchmarkCmd {
 				self.extra,
 			).encode(),
 			extensions,
-			&sp_state_machine::backend::BackendRuntimeCode::new(&state).runtime_code()?,
+			&sp_state_machine::backend::BackendRuntimeCode::new(&state)
+				.runtime_code(sp_core::traits::CodeContext::Offchain)?,
 			sp_core::testing::TaskExecutor::new(),
 		)
-		.execute(strategy.into())
+		.execute(sp_state_machine::ExecutionConfig::new_offchain(strategy.into()))
 		.map_err(|e| format!("Error executing runtime benchmark: {:?}", e))?;
 
 		let results = <std::result::Result<

@@ -19,16 +19,18 @@
 use std::{sync::Arc, panic::UnwindSafe, result, cell::RefCell};
 use codec::{Encode, Decode};
 use sp_runtime::{
-	generic::BlockId, traits::{Block as BlockT, HashFor, NumberFor},
+	generic::BlockId,
+	traits::{Block as BlockT, HashFor, NumberFor},
 };
 use sp_state_machine::{
-	self, OverlayedChanges, Ext, ExecutionManager, StateMachine, ExecutionStrategy,
-	backend::Backend as _, StorageProof,
+	self, OverlayedChanges, Ext, ExecutionManager, StateMachine, backend::Backend as _,
+	StorageProof,
 };
 use sc_executor::{RuntimeVersion, RuntimeInfo, NativeVersion};
 use sp_externalities::Extensions;
 use sp_core::{
-	NativeOrEncoded, NeverNativeValue, traits::{CodeExecutor, SpawnNamed, RuntimeCode},
+	NativeOrEncoded, NeverNativeValue,
+	traits::{CodeExecutor, SpawnNamed, RuntimeCode},
 };
 use sp_api::{ProofRecorder, StorageTransactionCache};
 use sc_client_api::{backend, call_executor::CallExecutor};
@@ -78,9 +80,9 @@ where
 		})
 	}
 
-	/// Check if local runtime code overrides are enabled and one is available
-	/// for the given `BlockId`. If yes, return it; otherwise return the same
-	/// `RuntimeCode` instance that was passed.
+	/// Check if local runtime code overrides are enabled and one is available for the given
+	/// `BlockId`. If yes, return it; otherwise return the same `RuntimeCode` instance that was
+	/// passed.
 	fn check_override<'a>(
 		&'a self,
 		onchain_code: RuntimeCode<'a>,
@@ -141,7 +143,7 @@ where
 		id: &BlockId<Block>,
 		method: &str,
 		call_data: &[u8],
-		strategy: ExecutionStrategy,
+		config: sp_state_machine::ExecutionConfig,
 		extensions: Option<Extensions>,
 	) -> sp_blockchain::Result<Vec<u8>> {
 		let mut changes = OverlayedChanges::default();
@@ -150,7 +152,8 @@ where
 		)?;
 		let state = self.backend.state_at(*id)?;
 		let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(&state);
-		let runtime_code = state_runtime_code.runtime_code()
+		let runtime_code = state_runtime_code
+			.runtime_code(config.context)
 			.map_err(sp_blockchain::Error::RuntimeCode)?;
 		let runtime_code = self.check_override(runtime_code, id)?;
 
@@ -165,7 +168,7 @@ where
 			&runtime_code,
 			self.spawn_handle.clone(),
 		).execute_using_consensus_failure_handler::<_, NeverNativeValue, fn() -> _>(
-			strategy.get_manager(),
+			config.get_manager(),
 			None,
 		)?;
 
@@ -175,7 +178,7 @@ where
 	fn contextual_call<
 		EM: Fn(
 			Result<NativeOrEncoded<R>, Self::Error>,
-			Result<NativeOrEncoded<R>, Self::Error>
+			Result<NativeOrEncoded<R>, Self::Error>,
 		) -> Result<NativeOrEncoded<R>, Self::Error>,
 		R: Encode + Decode + PartialEq,
 		NC: FnOnce() -> result::Result<R, sp_api::ApiError> + UnwindSafe,
@@ -197,7 +200,6 @@ where
 		let mut storage_transaction_cache = storage_transaction_cache.map(|c| c.borrow_mut());
 
 		let mut state = self.backend.state_at(*at)?;
-
 		let changes = &mut *changes.borrow_mut();
 
 		match recorder {
@@ -210,7 +212,7 @@ where
 				let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_state);
 				// It is important to extract the runtime code here before we create the proof
 				// recorder.
-				let runtime_code = state_runtime_code.runtime_code()
+				let runtime_code = state_runtime_code.runtime_code(execution_manager.context)
 					.map_err(sp_blockchain::Error::RuntimeCode)?;
 				let runtime_code = self.check_override(runtime_code, at)?;
 
@@ -239,7 +241,7 @@ where
 			},
 			None => {
 				let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(&state);
-				let runtime_code = state_runtime_code.runtime_code()
+				let runtime_code = state_runtime_code.runtime_code(execution_manager.context)
 					.map_err(sp_blockchain::Error::RuntimeCode)?;
 				let runtime_code = self.check_override(runtime_code, at)?;
 
@@ -278,9 +280,11 @@ where
 			None,
 		);
 		let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(&state);
-		let runtime_code = state_runtime_code.runtime_code()
+		let runtime_code = state_runtime_code
+			.runtime_code(sp_core::traits::CodeContext::Consensus)
 			.map_err(sp_blockchain::Error::RuntimeCode)?;
-		self.executor.runtime_version(&mut ext, &runtime_code)
+		self.executor
+			.runtime_version(&mut ext, &runtime_code)
 			.map_err(|e| sp_blockchain::Error::VersionInvalid(format!("{:?}", e)).into())
 	}
 
@@ -289,10 +293,11 @@ where
 		trie_state: &sp_state_machine::TrieBackend<S, HashFor<Block>>,
 		overlay: &mut OverlayedChanges,
 		method: &str,
-		call_data: &[u8]
+		call_data: &[u8],
 	) -> Result<(Vec<u8>, StorageProof), sp_blockchain::Error> {
 		let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_state);
-		let runtime_code = state_runtime_code.runtime_code()
+		let runtime_code = state_runtime_code
+			.runtime_code(sp_core::traits::CodeContext::Consensus)
 			.map_err(sp_blockchain::Error::RuntimeCode)?;
 		sp_state_machine::prove_execution_on_trie_backend::<_, _, NumberFor<Block>, _, _>(
 			trie_state,
@@ -347,6 +352,7 @@ mod tests {
 		let onchain_code = RuntimeCode {
 			code_fetcher: &onchain_code,
 			heap_pages: Some(128),
+			context: sp_core::traits::CodeContext::Consensus,
 			hash: vec![0, 0, 0, 0],
 		};
 

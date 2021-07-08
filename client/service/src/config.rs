@@ -19,19 +19,25 @@
 //! Service configuration.
 
 pub use sc_client_db::{
-	Database, PruningMode, DatabaseSettingsSrc as DatabaseConfig,
-	KeepBlocks, TransactionStorageMode
+	Database, PruningMode, DatabaseSettingsSrc as DatabaseConfig, KeepBlocks,
+	TransactionStorageMode,
 };
 pub use sc_network::Multiaddr;
 pub use sc_network::config::{
-	ExtTransport, MultiaddrWithPeerId, NetworkConfiguration, Role, NodeKeyConfig,
-	SetConfig, NonDefaultSetConfig, TransportConfig,
-	RequestResponseConfig, IncomingRequest, OutgoingResponse,
+	ExtTransport, MultiaddrWithPeerId, NetworkConfiguration, Role, NodeKeyConfig, SetConfig,
+	NonDefaultSetConfig, TransportConfig, RequestResponseConfig, IncomingRequest, OutgoingResponse,
 };
 pub use sc_executor::WasmExecutionMethod;
-pub use sc_client_api::execution_extensions::{ExecutionStrategies, ExecutionStrategy};
+pub use sc_client_api::execution_extensions::ExecutionConfigs;
 
-use std::{io, future::Future, path::{PathBuf, Path}, pin::Pin, net::SocketAddr, sync::Arc};
+use std::{
+	io,
+	future::Future,
+	path::{PathBuf, Path},
+	pin::Pin,
+	net::SocketAddr,
+	sync::Arc,
+};
 pub use sc_transaction_pool::Options as TransactionPoolOptions;
 use sc_chain_spec::ChainSpec;
 use sp_core::crypto::SecretString;
@@ -79,8 +85,8 @@ pub struct Configuration {
 	/// over on-chain runtimes when the spec version matches. Set to `None` to
 	/// disable overrides (default).
 	pub wasm_runtime_overrides: Option<PathBuf>,
-	/// Execution strategies.
-	pub execution_strategies: ExecutionStrategies,
+	/// Execution configurations.
+	pub execution_configs: ExecutionConfigs,
 	/// RPC over HTTP binding address. `None` if disabled.
 	pub rpc_http: Option<SocketAddr>,
 	/// RPC over Websockets binding address. `None` if disabled.
@@ -114,7 +120,8 @@ pub struct Configuration {
 	pub disable_grandpa: bool,
 	/// Development key seed.
 	///
-	/// When running in development mode, the seed will be used to generate authority keys by the keystore.
+	/// When running in development mode, the seed will be used to generate authority keys by the
+	/// keystore.
 	///
 	/// Should only be set when `node` is running development mode.
 	pub dev_key_seed: Option<String>,

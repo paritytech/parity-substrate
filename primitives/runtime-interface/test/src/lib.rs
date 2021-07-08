@@ -41,7 +41,6 @@ fn call_wasm_method_with_result<HF: HostFunctionsT>(
 
 	let executor = sc_executor::WasmExecutor::new(
 		sc_executor::WasmExecutionMethod::Interpreted,
-		Some(8),
 		host_functions,
 		8,
 		None,
@@ -53,6 +52,7 @@ fn call_wasm_method_with_result<HF: HostFunctionsT>(
 			false,
 			method,
 			&[],
+			8
 		)
 		.map_err(|e| format!("Failed to execute `{}`: {}", method, e))?;
 	Ok(ext)

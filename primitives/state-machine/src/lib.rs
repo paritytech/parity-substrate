@@ -178,7 +178,7 @@ mod execution {
 	use codec::{Decode, Encode, Codec};
 	use sp_core::{
 		storage::ChildInfo, NativeOrEncoded, NeverNativeValue, hexdisplay::HexDisplay,
-		traits::{CodeExecutor, ReadRuntimeVersionExt, RuntimeCode, SpawnNamed},
+		traits::{CodeExecutor, CodeContext, ReadRuntimeVersionExt, RuntimeCode, SpawnNamed},
 	};
 	use sp_externalities::Extensions;
 
@@ -201,6 +201,17 @@ mod execution {
 	/// Trie backend with in-memory storage.
 	pub type InMemoryBackend<H> = TrieBackend<MemoryDB<H>, H>;
 
+	/// Configurations of an execution.
+	///
+	/// Combination of a strategy, and a context.
+	#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+	pub struct ExecutionConfig {
+		/// The strategy of the execution's runtime.
+		pub strategy: ExecutionStrategy,
+		/// The context at which the aforementioned strategy is being used.
+		pub context: CodeContext,
+	}
+
 	/// Strategy for executing a call into the runtime.
 	#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 	pub enum ExecutionStrategy {
@@ -209,10 +220,72 @@ mod execution {
 		NativeWhenPossible,
 		/// Use the given wasm module.
 		AlwaysWasm,
-		/// Run with both the wasm and the native variant (if compatible). Report any discrepancy as an error.
+		/// Run with both the wasm and the native variant (if compatible). Report any discrepancy
+		/// as an error.
 		Both,
 		/// First native, then if that fails or is not possible, wasm.
 		NativeElseWasm,
+	}
+
+	impl ExecutionStrategy {
+		/// Consumes self and returned the corresponding [`ExecutionConfig`], when executed in a
+		/// consensus context.
+		///
+		/// This is merely a syntactic sugar around [`ExecutionConfig::new_consensus`].
+		pub fn in_consensus(self) -> ExecutionConfig {
+			ExecutionConfig::new_consensus(self)
+		}
+
+		/// Consumes self and returned the corresponding [`ExecutionConfig`], when executed in a
+		/// offchain context.
+		///
+		/// This is merely a syntactic sugar around [`ExecutionConfig::new_offchain`].
+		pub fn in_offchain(self) -> ExecutionConfig {
+			ExecutionConfig::new_offchain(self)
+		}
+	}
+
+	impl ExecutionConfig {
+		/// Build a new [`ExecutionConfig`] with the given strategy and
+		/// [`CodeContext::Consensus`].
+		pub fn new_consensus(strategy: ExecutionStrategy) -> Self {
+			Self { strategy, context: CodeContext::Consensus }
+		}
+
+		/// Build a new [`ExecutionConfig`] with the given strategy and
+		/// [`CodeContext::Offchain`].
+		pub fn new_offchain(strategy: ExecutionStrategy) -> Self {
+			Self { strategy, context: CodeContext::Offchain }
+		}
+
+		/// Gets the corresponding manager for the execution config.
+		pub fn get_manager<E: fmt::Debug, R: Decode + Encode>(
+			self,
+		) -> ExecutionManager<DefaultHandler<R, E>> {
+			let failure_handler: DefaultHandler<R, E> = |wasm_result, native_result| {
+				warn!(
+					"Consensus error between wasm {:?} and native {:?}. Using wasm.",
+					wasm_result, native_result,
+				);
+				warn!("   Native result {:?}", native_result);
+				warn!("   Wasm result {:?}", wasm_result);
+				wasm_result
+			};
+
+			let strategy = match self.strategy {
+				ExecutionStrategy::AlwaysWasm => {
+					ExecutionStrategyWithHandler::AlwaysWasm(BackendTrustLevel::Trusted)
+				}
+				ExecutionStrategy::NativeWhenPossible => {
+					ExecutionStrategyWithHandler::NativeWhenPossible
+				}
+				ExecutionStrategy::NativeElseWasm => ExecutionStrategyWithHandler::NativeElseWasm,
+				ExecutionStrategy::Both => ExecutionStrategyWithHandler::Both(failure_handler),
+			};
+			let context = self.context;
+
+			ExecutionManager { strategy, context }
+		}
 	}
 
 	/// Storage backend trust level.
@@ -220,83 +293,95 @@ mod execution {
 	pub enum BackendTrustLevel {
 		/// Panics from trusted backends are considered justified, and never caught.
 		Trusted,
-		/// Panics from untrusted backend are caught and interpreted as runtime error.
-		/// Untrusted backend may be missing some parts of the trie, so panics are not considered
-		/// fatal.
+		/// Panics from untrusted backend are caught and interpreted as runtime error. Untrusted
+		/// backend may be missing some parts of the trie, so panics are not considered fatal.
 		Untrusted,
 	}
 
-	/// Like `ExecutionStrategy` only it also stores a handler in case of consensus failure.
+	/// Like `ExecutionStrategy`, only it also stores a handler in case of consensus failure.
 	#[derive(Clone)]
-	pub enum ExecutionManager<F> {
+	pub enum ExecutionStrategyWithHandler<F> {
 		/// Execute with the native equivalent if it is compatible with the given wasm module;
 		/// otherwise fall back to the wasm.
 		NativeWhenPossible,
-		/// Use the given wasm module. The backend on which code is executed code could be
-		/// trusted to provide all storage or not (i.e. the light client cannot be trusted to provide
-		/// for all storage queries since the storage entries it has come from an external node).
+		/// Use the given wasm module. The backend on which code is executed code could be trusted
+		/// to provide all storage or not (i.e. the light client cannot be trusted to provide for
+		/// all storage queries since the storage entries it has come from an external node).
 		AlwaysWasm(BackendTrustLevel),
-		/// Run with both the wasm and the native variant (if compatible). Call `F` in the case of any discrepancy.
+		/// Run with both the wasm and the native variant (if compatible). Call `F` in the case of
+		/// any discrepancy.
 		Both(F),
 		/// First native, then if that fails or is not possible, wasm.
 		NativeElseWasm,
 	}
 
-	impl<'a, F> From<&'a ExecutionManager<F>> for ExecutionStrategy {
+	/// The execution manager.
+	///
+	/// Same as [`ExecutionConfig`], but the inner `strategy` contains failure handler as well.
+	#[derive(Clone)]
+	pub struct ExecutionManager<F> {
+		/// The strategy of the execution's runtime.
+		pub strategy: ExecutionStrategyWithHandler<F>,
+		/// The context in which the aforementioned strategy is being used.
+		pub context: CodeContext,
+	}
+
+	#[cfg(test)]
+	impl<F> ExecutionManager<F> {
+		/// Create a new instance of [`Self`] from the given strategy for testing.
+		pub(crate) fn new(strategy: ExecutionStrategyWithHandler<F>) -> Self {
+			Self { strategy, context: CodeContext::Consensus }
+		}
+	}
+
+	impl<'a, F> From<&'a ExecutionManager<F>> for ExecutionConfig {
 		fn from(s: &'a ExecutionManager<F>) -> Self {
-			match *s {
-				ExecutionManager::NativeWhenPossible => ExecutionStrategy::NativeWhenPossible,
-				ExecutionManager::AlwaysWasm(_) => ExecutionStrategy::AlwaysWasm,
-				ExecutionManager::NativeElseWasm => ExecutionStrategy::NativeElseWasm,
-				ExecutionManager::Both(_) => ExecutionStrategy::Both,
-			}
+			let strategy = match s.strategy {
+				ExecutionStrategyWithHandler::NativeWhenPossible => {
+					ExecutionStrategy::NativeWhenPossible
+				}
+				ExecutionStrategyWithHandler::AlwaysWasm(_) => ExecutionStrategy::AlwaysWasm,
+				ExecutionStrategyWithHandler::NativeElseWasm => ExecutionStrategy::NativeElseWasm,
+				ExecutionStrategyWithHandler::Both(_) => ExecutionStrategy::Both,
+			};
+			let context = s.context;
+
+			Self { strategy, context }
 		}
 	}
 
-	impl ExecutionStrategy {
-		/// Gets the corresponding manager for the execution strategy.
-		pub fn get_manager<E: fmt::Debug, R: Decode + Encode>(
-			self,
-		) -> ExecutionManager<DefaultHandler<R, E>> {
-			match self {
-				ExecutionStrategy::AlwaysWasm => ExecutionManager::AlwaysWasm(BackendTrustLevel::Trusted),
-				ExecutionStrategy::NativeWhenPossible => ExecutionManager::NativeWhenPossible,
-				ExecutionStrategy::NativeElseWasm => ExecutionManager::NativeElseWasm,
-				ExecutionStrategy::Both => ExecutionManager::Both(|wasm_result, native_result| {
-					warn!(
-						"Consensus error between wasm {:?} and native {:?}. Using wasm.",
-						wasm_result,
-						native_result,
-					);
-					warn!("   Native result {:?}", native_result);
-					warn!("   Wasm result {:?}", wasm_result);
-					wasm_result
-				}),
-			}
-		}
-	}
-
-	/// Evaluate to ExecutionManager::NativeElseWasm, without having to figure out the type.
+	/// Helper to create the [`ExecutionStrategyWithHandler::NativeElseWasm`] without naming types.
 	pub fn native_else_wasm<E, R: Decode>() -> ExecutionManager<DefaultHandler<R, E>> {
-		ExecutionManager::NativeElseWasm
+		ExecutionManager {
+			strategy: ExecutionStrategyWithHandler::NativeElseWasm,
+			context: CodeContext::Consensus,
+		}
 	}
 
-	/// Evaluate to ExecutionManager::AlwaysWasm with trusted backend, without having to figure out the type.
+	/// Helper to create the [`ExecutionStrategyWithHandler::AlwaysWasm(Trusted)`] without naming
+	/// types.
 	fn always_wasm<E, R: Decode>() -> ExecutionManager<DefaultHandler<R, E>> {
-		ExecutionManager::AlwaysWasm(BackendTrustLevel::Trusted)
+		ExecutionManager {
+			strategy: ExecutionStrategyWithHandler::AlwaysWasm(BackendTrustLevel::Trusted),
+			context: CodeContext::Consensus,
+		}
 	}
 
-	/// Evaluate ExecutionManager::AlwaysWasm with untrusted backend, without having to figure out the type.
+	/// Helper to create the [`ExecutionStrategyWithHandler::AlwaysWasm(Untrusted)`] without naming
+	/// types.
 	fn always_untrusted_wasm<E, R: Decode>() -> ExecutionManager<DefaultHandler<R, E>> {
-		ExecutionManager::AlwaysWasm(BackendTrustLevel::Untrusted)
+		ExecutionManager {
+			strategy: ExecutionStrategyWithHandler::AlwaysWasm(BackendTrustLevel::Untrusted),
+			context: CodeContext::Consensus,
+		}
 	}
 
 	/// The substrate state machine.
 	pub struct StateMachine<'a, B, H, N, Exec>
-		where
-			H: Hasher,
-			B: Backend<H>,
-			N: ChangesTrieBlockNumber,
+	where
+		H: Hasher,
+		B: Backend<H>,
+		N: ChangesTrieBlockNumber,
 	{
 		backend: &'a B,
 		exec: &'a Exec,
@@ -310,7 +395,8 @@ mod execution {
 		stats: StateMachineStats,
 	}
 
-	impl<'a, B, H, N, Exec> Drop for StateMachine<'a, B, H, N, Exec> where
+	impl<'a, B, H, N, Exec> Drop for StateMachine<'a, B, H, N, Exec>
+	where
 		H: Hasher,
 		B: Backend<H>,
 		N: ChangesTrieBlockNumber,
@@ -320,7 +406,8 @@ mod execution {
 		}
 	}
 
-	impl<'a, B, H, N, Exec> StateMachine<'a, B, H, N, Exec> where
+	impl<'a, B, H, N, Exec> StateMachine<'a, B, H, N, Exec>
+	where
 		H: Hasher,
 		H::Out: Ord + 'static + codec::Codec,
 		Exec: CodeExecutor + Clone + 'static,
@@ -377,13 +464,14 @@ mod execution {
 		/// blocks (e.g. a transaction at a time), ensure a different method is used.
 		///
 		/// Returns the SCALE encoded result of the executed function.
-		pub fn execute(&mut self, strategy: ExecutionStrategy) -> Result<Vec<u8>, Box<dyn Error>> {
-			// We are not giving a native call and thus we are sure that the result can never be a native
-			// value.
+		pub fn execute(&mut self, config: ExecutionConfig) -> Result<Vec<u8>, Box<dyn Error>> {
+			// We are not giving a native call and thus we are sure that the result can never be a
+			// native value.
 			self.execute_using_consensus_failure_handler::<_, NeverNativeValue, fn() -> _>(
-				strategy.get_manager(),
+				config.get_manager(),
 				None,
-			).map(NativeOrEncoded::into_encoded)
+			)
+			.map(NativeOrEncoded::into_encoded)
 		}
 
 		fn execute_aux<R, NC>(
@@ -523,40 +611,36 @@ mod execution {
 			manager: ExecutionManager<Handler>,
 			mut native_call: Option<NC>,
 		) -> Result<NativeOrEncoded<R>, Box<dyn Error>>
-			where
-				R: Decode + Encode + PartialEq,
-				NC: FnOnce() -> result::Result<R, Box<dyn std::error::Error + Send + Sync>> + UnwindSafe,
-				Handler: FnOnce(
-					CallResult<R, Exec::Error>,
-					CallResult<R, Exec::Error>,
-				) -> CallResult<R, Exec::Error>
+		where
+			R: Decode + Encode + PartialEq,
+			NC: FnOnce() -> result::Result<R, Box<dyn std::error::Error + Send + Sync>> + UnwindSafe,
+			Handler: FnOnce(
+				CallResult<R, Exec::Error>,
+				CallResult<R, Exec::Error>,
+			) -> CallResult<R, Exec::Error>
 		{
 			let changes_tries_enabled = self.changes_trie_state.is_some();
 			self.overlay.set_collect_extrinsics(changes_tries_enabled);
 
 			let result = {
-				match manager {
-					ExecutionManager::Both(on_consensus_failure) => {
-						self.execute_call_with_both_strategy(
-							native_call.take(),
-							on_consensus_failure,
-						)
-					},
-					ExecutionManager::NativeElseWasm => {
-						self.execute_call_with_native_else_wasm_strategy(
-							native_call.take(),
-						)
-					},
-					ExecutionManager::AlwaysWasm(trust_level) => {
+				match manager.strategy {
+					ExecutionStrategyWithHandler::Both(on_consensus_failure) => self
+						.execute_call_with_both_strategy(native_call.take(), on_consensus_failure),
+					ExecutionStrategyWithHandler::NativeElseWasm => {
+						self.execute_call_with_native_else_wasm_strategy(native_call.take())
+					}
+					ExecutionStrategyWithHandler::AlwaysWasm(trust_level) => {
 						let _abort_guard = match trust_level {
 							BackendTrustLevel::Trusted => None,
-							BackendTrustLevel::Untrusted => Some(sp_panic_handler::AbortGuard::never_abort()),
+							BackendTrustLevel::Untrusted => {
+								Some(sp_panic_handler::AbortGuard::never_abort())
+							}
 						};
 						self.execute_aux(false, native_call).0
-					},
-					ExecutionManager::NativeWhenPossible => {
+					}
+					ExecutionStrategyWithHandler::NativeWhenPossible => {
 						self.execute_aux(true, native_call).0
-					},
+					}
 				}
 			};
 
@@ -1070,11 +1154,10 @@ mod tests {
 		);
 
 		assert_eq!(
-			state_machine.execute(ExecutionStrategy::NativeWhenPossible).unwrap(),
+			state_machine.execute(ExecutionStrategy::NativeWhenPossible.in_consensus()).unwrap(),
 			vec![66],
 		);
 	}
-
 
 	#[test]
 	fn execute_works_with_native_else_wasm() {
@@ -1099,7 +1182,10 @@ mod tests {
 			TaskExecutor::new(),
 		);
 
-		assert_eq!(state_machine.execute(ExecutionStrategy::NativeElseWasm).unwrap(), vec![66]);
+		assert_eq!(
+			state_machine.execute(ExecutionStrategy::NativeElseWasm.in_consensus()).unwrap(),
+			vec![66]
+		);
 	}
 
 	#[test]
@@ -1126,15 +1212,15 @@ mod tests {
 			TaskExecutor::new(),
 		);
 
-		assert!(
-			state_machine.execute_using_consensus_failure_handler::<_, NeverNativeValue, fn() -> _>(
-				ExecutionManager::Both(|we, _ne| {
+		assert!(state_machine
+			.execute_using_consensus_failure_handler::<_, NeverNativeValue, fn() -> _>(
+				ExecutionManager::new(ExecutionStrategyWithHandler::Both(|we, _ne| {
 					consensus_failed = true;
 					we
-				}),
+				})),
 				None,
-			).is_err()
-		);
+			)
+			.is_err());
 		assert!(consensus_failed);
 	}
 
@@ -1782,16 +1868,19 @@ mod tests {
 		);
 
 		let run_state_machine = |state_machine: &mut StateMachine<_, _, _, _>| {
-			state_machine.execute_using_consensus_failure_handler::<fn(_, _) -> _, _, _>(
-				ExecutionManager::NativeWhenPossible,
-				Some(|| {
-					sp_externalities::with_externalities(|mut ext| {
-						ext.register_extension(DummyExt(2)).unwrap();
-					}).unwrap();
+			state_machine
+				.execute_using_consensus_failure_handler::<fn(_, _) -> _, _, _>(
+					ExecutionManager::new(ExecutionStrategyWithHandler::NativeWhenPossible),
+					Some(|| {
+						sp_externalities::with_externalities(|mut ext| {
+							ext.register_extension(DummyExt(2)).unwrap();
+						})
+						.unwrap();
 
-					Ok(())
-				}),
-			).unwrap();
+						Ok(())
+					}),
+				)
+				.unwrap();
 		};
 
 		run_state_machine(&mut state_machine);

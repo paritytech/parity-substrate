@@ -208,8 +208,7 @@ fn node_config<G: RuntimeGenesis + 'static, E: ChainSpecExtension + Clone + 'sta
 	key_seed: Option<String>,
 	base_port: u16,
 	root: &TempDir,
-) -> Configuration
-{
+) -> Configuration {
 	let root = root.path().join(format!("node-{}", index));
 
 	let mut network_config = NetworkConfiguration::new(
@@ -257,7 +256,7 @@ fn node_config<G: RuntimeGenesis + 'static, E: ChainSpecExtension + Clone + 'sta
 		chain_spec: Box::new((*spec).clone()),
 		wasm_method: sc_service::config::WasmExecutionMethod::Interpreted,
 		wasm_runtime_overrides: Default::default(),
-		execution_strategies: Default::default(),
+		execution_configs: Default::default(),
 		rpc_http: None,
 		rpc_ipc: None,
 		rpc_ws: None,

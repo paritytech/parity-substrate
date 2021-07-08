@@ -201,10 +201,20 @@ pub mod well_known_keys {
 	/// Stored as a raw byte vector. Required by substrate.
 	pub const CODE: &'static [u8] = b":code";
 
-	/// Number of wasm linear memory pages required for execution of the runtime.
+	/// Number of wasm linear memory pages required for execution of the runtime in consensus
+	/// context. By consensus, we mean any code that contributes to the state transition and
+	/// therefore need to be part of consensus.
 	///
 	/// The type of this value is encoded `u64`.
+	///
+	/// Note that this value is used for consensus-related runtime operations, such as block import.
 	pub const HEAP_PAGES: &'static [u8] = b":heappages";
+
+	/// Number of wasm linear memory pages used required for the execution of the runtime in
+	/// offchain context. By offchain we mean anything other than `consensus` (see `HEAP_PAGES`).
+	///
+	/// The type of this value is encoded `u64`.
+	pub const OFFCHAIN_HEAP_PAGES: &'static [u8] = b":offchain_heappages";
 
 	/// Current extrinsic index (u32) is stored under this key.
 	pub const EXTRINSIC_INDEX: &'static [u8] = b":extrinsic_index";
@@ -235,7 +245,6 @@ pub mod well_known_keys {
 			CHILD_STORAGE_KEY_PREFIX.starts_with(key)
 		}
 	}
-
 }
 
 /// Information related to a child state.

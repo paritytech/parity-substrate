@@ -18,6 +18,7 @@
 // NOTE: we allow missing docs here because arg_enum! creates the function variants without doc
 #![allow(missing_docs)]
 
+use sp_core::traits::CodeContext;
 use structopt::clap::arg_enum;
 
 /// How to execute Wasm runtime code.
@@ -256,15 +257,24 @@ impl Into<sc_network::config::SyncMode> for SyncMode {
 	}
 }
 
-/// Default value for the `--execution-syncing` parameter.
-pub const DEFAULT_EXECUTION_SYNCING: ExecutionStrategy = ExecutionStrategy::NativeElseWasm;
-/// Default value for the `--execution-import-block` parameter.
-pub const DEFAULT_EXECUTION_IMPORT_BLOCK: ExecutionStrategy = ExecutionStrategy::NativeElseWasm;
-/// Default value for the `--execution-import-block` parameter when the node is a validator.
-pub const DEFAULT_EXECUTION_IMPORT_BLOCK_VALIDATOR: ExecutionStrategy = ExecutionStrategy::Wasm;
-/// Default value for the `--execution-block-construction` parameter.
-pub const DEFAULT_EXECUTION_BLOCK_CONSTRUCTION: ExecutionStrategy = ExecutionStrategy::Wasm;
-/// Default value for the `--execution-offchain-worker` parameter.
-pub const DEFAULT_EXECUTION_OFFCHAIN_WORKER: ExecutionStrategy = ExecutionStrategy::Native;
-/// Default value for the `--execution-other` parameter.
-pub const DEFAULT_EXECUTION_OTHER: ExecutionStrategy = ExecutionStrategy::Native;
+macro_rules! generate_config_const {
+	($( $role:ident => $strategy:ident, $context:ident ),*) => {
+		paste::paste! {
+			$(
+				pub const [<DEFAULT_STRATEGY_ $role:snake:upper>]: ExecutionStrategy
+					= ExecutionStrategy::$strategy;
+				pub const [<DEFAULT_CODE_CONTEXT_ $role:snake:upper>]: CodeContext
+					= CodeContext::$context;
+			)*
+		}
+	};
+}
+
+generate_config_const!(
+	syncing => NativeElseWasm, Consensus,
+	import_block => NativeElseWasm, Consensus,
+	import_block_validator => Wasm, Consensus,
+	block_construction => Wasm, Consensus,
+	offchain_worker => Native, Offchain,
+	other => Native, Consensus
+);

@@ -75,19 +75,15 @@ fn call_in_wasm<E: Externalities>(
 	execution_method: WasmExecutionMethod,
 	ext: &mut E,
 ) -> Result<Vec<u8>, String> {
-	let executor = crate::WasmExecutor::new(
-		execution_method,
-		Some(1024),
-		HostFunctions::host_functions(),
-		8,
-		None,
-	);
+	let executor =
+		crate::WasmExecutor::new(execution_method, HostFunctions::host_functions(), 8, None);
 	executor.uncached_call(
 		RuntimeBlob::uncompress_if_needed(&wasm_binary_unwrap()[..]).unwrap(),
 		ext,
 		true,
 		function,
 		call_data,
+		1024,
 	)
 }
 
@@ -537,13 +533,7 @@ test_wasm_execution!(should_trap_when_heap_exhausted);
 fn should_trap_when_heap_exhausted(wasm_method: WasmExecutionMethod) {
 	let mut ext = TestExternalities::default();
 
-	let executor = crate::WasmExecutor::new(
-		wasm_method,
-		Some(17),  // `17` is the initial number of pages compiled into the binary.
-		HostFunctions::host_functions(),
-		8,
-		None,
-	);
+	let executor = crate::WasmExecutor::new(wasm_method, HostFunctions::host_functions(), 8, None);
 
 	let err = executor
 		.uncached_call(
@@ -552,6 +542,8 @@ fn should_trap_when_heap_exhausted(wasm_method: WasmExecutionMethod) {
 			true,
 			"test_exhaust_heap",
 			&[0],
+			// `17` is the initial number of pages compiled into the binary.
+			17,
 		)
 		.unwrap_err();
 
@@ -655,7 +647,6 @@ test_wasm_execution!(parallel_execution);
 fn parallel_execution(wasm_method: WasmExecutionMethod) {
 	let executor = std::sync::Arc::new(crate::WasmExecutor::new(
 		wasm_method,
-		Some(1024),
 		HostFunctions::host_functions(),
 		8,
 		None,
@@ -674,6 +665,7 @@ fn parallel_execution(wasm_method: WasmExecutionMethod) {
 							true,
 							"test_twox_128",
 							&[0],
+							1024
 						)
 						.unwrap(),
 					hex!("99e9d85137db46ef4bbea33613baafd5").to_vec().encode(),

@@ -22,15 +22,15 @@
 //! Allows you to test
 //! <br />
 //!
-//! -   Migrations
-//! -   Runtime Upgrades
-//! -   Pallets and general runtime functionality.
+//! - Migrations
+//! - Runtime Upgrades
+//! - Pallets and general runtime functionality.
 //!
 //! This works by running a full node with a Manual Seal-BABE™ hybrid consensus for block authoring.
 //!
 //! <h2>Note</h2>
-//! The running node has no signature verification, which allows us author extrinsics for any account on chain.
-//!     <br/>
+//! The running node has no signature verification, which allows us author extrinsics for any
+//! account on chain.     <br/>
 //!     <br/>
 //!
 //! <h2>How do I Use this?</h2>
@@ -55,7 +55,7 @@
 //! use sp_runtime::{traits::IdentifyAccount, MultiSigner, generic::Era};
 //! use sc_executor::WasmExecutionMethod;
 //! use sc_network::{multiaddr, config::TransportConfig};
-//! use sc_client_api::execution_extensions::ExecutionStrategies;
+//! use sc_client_api::execution_extensions::ExecutionConfigs;
 //! use sc_informant::OutputFormat;
 //! use sp_api::TransactionFor;
 //!
@@ -186,12 +186,12 @@
 //! fn simple_balances_test() {
 //! 	// given
 //! 	let config = NodeConfig {
-//!			execution_strategies: ExecutionStrategies {
-//!				syncing: sc_client_api::ExecutionStrategy::NativeWhenPossible,
-//!				importing: sc_client_api::ExecutionStrategy::NativeWhenPossible,
-//!				block_construction: sc_client_api::ExecutionStrategy::NativeWhenPossible,
-//!				offchain_worker: sc_client_api::ExecutionStrategy::NativeWhenPossible,
-//!				other: sc_client_api::ExecutionStrategy::NativeWhenPossible,
+//! 			execution_configs: ExecutionConfigs {
+//! 				syncing: sc_client_api::ExecutionStrategy::NativeWhenPossible,
+//! 				importing: sc_client_api::ExecutionStrategy::NativeWhenPossible,
+//! 				block_construction: sc_client_api::ExecutionStrategy::NativeWhenPossible,
+//! 				offchain_worker: sc_client_api::ExecutionStrategy::NativeWhenPossible,
+//! 				other: sc_client_api::ExecutionStrategy::NativeWhenPossible,
 //! 		},
 //! 		chain_spec: Box::new(development_config()),
 //! 		log_targets: vec![],

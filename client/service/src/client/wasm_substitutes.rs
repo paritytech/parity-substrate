@@ -55,6 +55,7 @@ impl<Block: BlockT> WasmSubstitute<Block> {
 			code_fetcher: self,
 			hash: self.hash.clone(),
 			heap_pages,
+			context: sp_core::traits::CodeContext::Consensus,
 		}
 	}
 

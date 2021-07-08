@@ -22,7 +22,7 @@
 pub mod client_ext;
 
 pub use sc_client_api::{
-	execution_extensions::{ExecutionStrategies, ExecutionExtensions},
+	execution_extensions::{ExecutionConfigs, ExecutionExtensions},
 	ForkBlocks, BadBlocks,
 };
 pub use sc_client_db::{Backend, self};
@@ -35,7 +35,7 @@ pub use sp_keyring::{
 };
 pub use sp_keystore::{SyncCryptoStorePtr, SyncCryptoStore};
 pub use sp_runtime::{Storage, StorageChild};
-pub use sp_state_machine::ExecutionStrategy;
+pub use sp_state_machine::{ExecutionStrategy, ExecutionConfig};
 pub use sc_service::{RpcHandlers, RpcSession, client};
 pub use self::client_ext::{ClientExt, ClientBlockImportExt};
 
@@ -69,7 +69,7 @@ impl GenesisInit for () {
 
 /// A builder for creating a test client instance.
 pub struct TestClientBuilder<Block: BlockT, Executor, Backend, G: GenesisInit> {
-	execution_strategies: ExecutionStrategies,
+	execution_configs: ExecutionConfigs,
 	genesis_init: G,
 	/// The key is an unprefixed storage key, this only contains
 	/// default child trie content.
@@ -90,7 +90,9 @@ impl<Block: BlockT, Executor, G: GenesisInit> Default
 	}
 }
 
-impl<Block: BlockT, Executor, G: GenesisInit> TestClientBuilder<Block, Executor, Backend<Block>, G> {
+impl<Block: BlockT, Executor, G: GenesisInit>
+	TestClientBuilder<Block, Executor, Backend<Block>, G>
+{
 	/// Create new `TestClientBuilder` with default backend.
 	pub fn with_default_backend() -> Self {
 		let backend = Arc::new(Backend::new_test(std::u32::MAX, std::u64::MAX));
@@ -104,12 +106,14 @@ impl<Block: BlockT, Executor, G: GenesisInit> TestClientBuilder<Block, Executor,
 	}
 }
 
-impl<Block: BlockT, Executor, Backend, G: GenesisInit> TestClientBuilder<Block, Executor, Backend, G> {
+impl<Block: BlockT, Executor, Backend, G: GenesisInit>
+	TestClientBuilder<Block, Executor, Backend, G>
+{
 	/// Create a new instance of the test client builder.
 	pub fn with_backend(backend: Arc<Backend>) -> Self {
 		TestClientBuilder {
 			backend,
-			execution_strategies: ExecutionStrategies::default(),
+			execution_configs: ExecutionConfigs::default(),
 			child_storage_extension: Default::default(),
 			genesis_init: Default::default(),
 			_executor: Default::default(),
@@ -155,16 +159,14 @@ impl<Block: BlockT, Executor, Backend, G: GenesisInit> TestClientBuilder<Block, 
 	}
 
 	/// Set the execution strategy that should be used by all contexts.
-	pub fn set_execution_strategy(
-		mut self,
-		execution_strategy: ExecutionStrategy
-	) -> Self {
-		self.execution_strategies = ExecutionStrategies {
-			syncing: execution_strategy,
-			importing: execution_strategy,
-			block_construction: execution_strategy,
-			offchain_worker: execution_strategy,
-			other: execution_strategy,
+	pub fn set_execution_strategy(mut self, execution_strategy: ExecutionStrategy) -> Self {
+		self.execution_configs = ExecutionConfigs {
+			// NOTE: we set the context to consensus for all of them.
+			syncing: execution_strategy.in_consensus(),
+			importing: execution_strategy.in_consensus(),
+			block_construction: execution_strategy.in_consensus(),
+			offchain_worker: execution_strategy.in_offchain(),
+			other: execution_strategy.in_consensus(),
 		};
 		self
 	}
@@ -196,14 +198,10 @@ impl<Block: BlockT, Executor, Backend, G: GenesisInit> TestClientBuilder<Block, 
 		self,
 		executor: Executor,
 	) -> (
-		client::Client<
-			Backend,
-			Executor,
-			Block,
-			RuntimeApi,
-		>,
+		client::Client<Backend, Executor, Block, RuntimeApi>,
 		sc_consensus::LongestChain<Backend, Block>,
-	) where
+	)
+	where
 		Executor: sc_client_api::CallExecutor<Block> + 'static,
 		Backend: sc_client_api::backend::Backend<Block>,
 		<Backend as sc_client_api::backend::Backend<Block>>::OffchainStorage: 'static,
@@ -232,7 +230,7 @@ impl<Block: BlockT, Executor, Backend, G: GenesisInit> TestClientBuilder<Block, 
 			self.fork_blocks,
 			self.bad_blocks,
 			ExecutionExtensions::new(
-				self.execution_strategies,
+				self.execution_configs,
 				self.keystore,
 				sc_offchain::OffchainDb::factory_from_backend(&*self.backend),
 			),

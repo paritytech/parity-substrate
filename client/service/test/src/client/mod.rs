@@ -168,7 +168,9 @@ fn construct_block(
 	let hash = header.hash();
 	let mut overlay = OverlayedChanges::default();
 	let backend_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(backend);
-	let runtime_code = backend_runtime_code.runtime_code().expect("Code is part of the backend");
+	let runtime_code = backend_runtime_code
+		.runtime_code(sp_core::traits::CodeContext::Consensus)
+		.expect("Code is part of the backend");
 	let task_executor = Box::new(TaskExecutor::new());
 
 	StateMachine::new(
@@ -182,7 +184,7 @@ fn construct_block(
 		&runtime_code,
 		task_executor.clone() as Box<_>,
 	).execute(
-		ExecutionStrategy::NativeElseWasm,
+		ExecutionStrategy::NativeElseWasm.in_consensus(),
 	).unwrap();
 
 	for tx in transactions.iter() {
@@ -197,7 +199,7 @@ fn construct_block(
 			&runtime_code,
 			task_executor.clone() as Box<_>,
 		).execute(
-			ExecutionStrategy::NativeElseWasm,
+			ExecutionStrategy::NativeElseWasm.in_consensus(),
 		).unwrap();
 	}
 
@@ -212,7 +214,7 @@ fn construct_block(
 		&runtime_code,
 		task_executor.clone() as Box<_>,
 	).execute(
-		ExecutionStrategy::NativeElseWasm,
+		ExecutionStrategy::NativeElseWasm.in_consensus(),
 	).unwrap();
 	header = Header::decode(&mut &ret_data[..]).unwrap();
 
@@ -249,7 +251,9 @@ fn construct_genesis_should_work_with_native() {
 	let backend = InMemoryBackend::from(storage);
 	let (b1data, _b1hash) = block1(genesis_hash, &backend);
 	let backend_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(&backend);
-	let runtime_code = backend_runtime_code.runtime_code().expect("Code is part of the backend");
+	let runtime_code = backend_runtime_code
+		.runtime_code(sp_core::traits::CodeContext::Consensus)
+		.expect("Code is part of the backend");
 
 	let mut overlay = OverlayedChanges::default();
 
@@ -264,7 +268,7 @@ fn construct_genesis_should_work_with_native() {
 		&runtime_code,
 		TaskExecutor::new(),
 	).execute(
-		ExecutionStrategy::NativeElseWasm,
+		ExecutionStrategy::NativeElseWasm.in_consensus(),
 	).unwrap();
 }
 
@@ -283,7 +287,9 @@ fn construct_genesis_should_work_with_wasm() {
 	let backend = InMemoryBackend::from(storage);
 	let (b1data, _b1hash) = block1(genesis_hash, &backend);
 	let backend_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(&backend);
-	let runtime_code = backend_runtime_code.runtime_code().expect("Code is part of the backend");
+	let runtime_code = backend_runtime_code
+		.runtime_code(sp_core::traits::CodeContext::Consensus)
+		.expect("Code is part of the backend");
 
 	let mut overlay = OverlayedChanges::default();
 
@@ -298,7 +304,7 @@ fn construct_genesis_should_work_with_wasm() {
 		&runtime_code,
 		TaskExecutor::new(),
 	).execute(
-		ExecutionStrategy::AlwaysWasm,
+		ExecutionStrategy::AlwaysWasm.in_consensus(),
 	).unwrap();
 }
 
@@ -317,7 +323,9 @@ fn construct_genesis_with_bad_transaction_should_panic() {
 	let backend = InMemoryBackend::from(storage);
 	let (b1data, _b1hash) = block1(genesis_hash, &backend);
 	let backend_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(&backend);
-	let runtime_code = backend_runtime_code.runtime_code().expect("Code is part of the backend");
+	let runtime_code = backend_runtime_code
+		.runtime_code(sp_core::traits::CodeContext::Consensus)
+		.expect("Code is part of the backend");
 
 	let mut overlay = OverlayedChanges::default();
 
@@ -332,7 +340,7 @@ fn construct_genesis_with_bad_transaction_should_panic() {
 		&runtime_code,
 		TaskExecutor::new(),
 	).execute(
-		ExecutionStrategy::NativeElseWasm,
+		ExecutionStrategy::NativeElseWasm.in_consensus(),
 	);
 	assert!(r.is_err());
 }

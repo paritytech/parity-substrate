@@ -156,6 +156,7 @@ fn record_proof_works() {
 		code_fetcher: &sp_core::traits::WrappedRuntimeCode(
 			client.code_at(&block_id).unwrap().into(),
 		),
+		context: sp_core::traits::CodeContext::Consensus,
 		hash: vec![1],
 		heap_pages: None,
 	};
