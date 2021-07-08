@@ -149,6 +149,15 @@ pub fn new_full(mut config: Configuration) -> Result<TaskManager, ServiceError> 
 
 	config.network.extra_sets.push(sc_finality_grandpa::grandpa_peers_set_config());
 
+	config.network.request_response_protocols.push(
+		sc_finality_grandpa_warp_sync::request_response_config_for_chain(
+			&config,
+			task_manager.spawn_handle(),
+			backend.clone(),
+			grandpa_link.shared_authority_set().clone(),
+		)
+	);
+
 	let (network, system_rpc_tx, network_starter) =
 		sc_service::build_network(sc_service::BuildNetworkParams {
 			config: &config,

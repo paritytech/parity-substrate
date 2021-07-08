@@ -4432,6 +4432,7 @@ dependencies = [
  "sc-consensus-aura",
  "sc-executor",
  "sc-finality-grandpa",
+ "sc-finality-grandpa-warp-sync",
  "sc-keystore",
  "sc-rpc",
  "sc-rpc-api",
