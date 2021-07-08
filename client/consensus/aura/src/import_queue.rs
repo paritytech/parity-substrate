@@ -27,7 +27,7 @@ use prometheus_endpoint::Registry;
 use codec::{Encode, Decode, Codec};
 use sp_consensus::{
 	BlockImport, CanAuthorWith, ForkChoiceStrategy, BlockImportParams,
-	BlockOrigin, Error as ConsensusError,
+	Error as ConsensusError,
 	import_queue::{
 		Verifier, BasicQueue, DefaultImportQueue, BoxJustificationImport,
 	},
@@ -35,7 +35,7 @@ use sp_consensus::{
 use sc_client_api::{BlockOf, UsageProvider, backend::AuxStore};
 use sp_blockchain::{well_known_cache_keys::{self, Id as CacheKeyId}, ProvideCache, HeaderBackend};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
-use sp_runtime::{generic::{BlockId, OpaqueDigestItemId}, Justifications};
+use sp_runtime::generic::{BlockId, OpaqueDigestItemId};
 use sp_runtime::traits::{Block as BlockT, Header, DigestItemFor};
 use sp_api::ProvideRuntimeApi;
 use sp_core::crypto::Pair;
@@ -205,13 +205,10 @@ impl<B: BlockT, C, P, CAW, CIDP> Verifier<B> for AuraVerifier<C, P, CAW, CIDP> w
 {
 	async fn verify(
 		&mut self,
-		origin: BlockOrigin,
-		header: B::Header,
-		justifications: Option<Justifications>,
-		mut body: Option<Vec<B::Extrinsic>>,
+		mut block: BlockImportParams<B, ()>,
 	) -> Result<(BlockImportParams<B, ()>, Option<Vec<(CacheKeyId, Vec<u8>)>>), String> {
-		let hash = header.hash();
-		let parent_hash = *header.parent_hash();
+		let hash = block.header.hash();
+		let parent_hash = *block.header.parent_hash();
 		let authorities = authorities(self.client.as_ref(), &BlockId::Hash(parent_hash))
 			.map_err(|e| format!("Could not fetch authorities at {:?}: {:?}", parent_hash, e))?;
 
@@ -234,7 +231,7 @@ impl<B: BlockT, C, P, CAW, CIDP> Verifier<B> for AuraVerifier<C, P, CAW, CIDP> w
 		let checked_header = check_header::<C, B, P>(
 			&self.client,
 			slot_now + 1,
-			header,
+			block.header,
 			hash,
 			&authorities[..],
 			self.check_for_equivocation,
@@ -244,8 +241,8 @@ impl<B: BlockT, C, P, CAW, CIDP> Verifier<B> for AuraVerifier<C, P, CAW, CIDP> w
 				// if the body is passed through, we need to use the runtime
 				// to check that the internally-set timestamp in the inherents
 				// actually matches the slot set in the seal.
-				if let Some(inner_body) = body.take() {
-					let block = B::new(pre_header.clone(), inner_body);
+				if let Some(inner_body) = block.body.take() {
+					let new_block = B::new(pre_header.clone(), inner_body);
 
 					inherent_data.aura_replace_inherent_data(slot);
 
@@ -259,15 +256,15 @@ impl<B: BlockT, C, P, CAW, CIDP> Verifier<B> for AuraVerifier<C, P, CAW, CIDP> w
 						.map_err(|e| format!("{:?}", e))?
 					{
 						self.check_inherents(
-							block.clone(),
+							new_block.clone(),
 							BlockId::Hash(parent_hash),
 							inherent_data,
 							create_inherent_data_providers,
 						).await.map_err(|e| e.to_string())?;
 					}
 
-					let (_, inner_body) = block.deconstruct();
-					body = Some(inner_body);
+					let (_, inner_body) = new_block.deconstruct();
+					block.body = Some(inner_body);
 				}
 
 				trace!(target: "aura", "Checked {:?}; importing.", pre_header);
@@ -292,14 +289,12 @@ impl<B: BlockT, C, P, CAW, CIDP> Verifier<B> for AuraVerifier<C, P, CAW, CIDP> w
 						_ => None,
 					});
 
-				let mut import_block = BlockImportParams::new(origin, pre_header);
-				import_block.post_digests.push(seal);
-				import_block.body = body;
-				import_block.justifications = justifications;
-				import_block.fork_choice = Some(ForkChoiceStrategy::LongestChain);
-				import_block.post_hash = Some(hash);
+				block.header = pre_header;
+				block.post_digests.push(seal);
+				block.fork_choice = Some(ForkChoiceStrategy::LongestChain);
+				block.post_hash = Some(hash);
 
-				Ok((import_block, maybe_keys))
+				Ok((block, maybe_keys))
 			}
 			CheckedHeader::Deferred(a, b) => {
 				debug!(target: "aura", "Checking {:?} failed; {:?}, {:?}.", hash, a, b);

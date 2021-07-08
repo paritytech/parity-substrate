@@ -76,7 +76,6 @@ sc-service = { version = "0.9.0", default-features = false, path = "../../../cli
 sc-tracing = { version = "3.0.0", path = "../../../client/tracing" }
 sc-telemetry = { version = "3.0.0", path = "../../../client/telemetry" }
 sc-authority-discovery = { version = "0.9.0",  path = "../../../client/authority-discovery" }
-sc-finality-grandpa-warp-sync = { version = "0.9.0", path = "../../../client/finality-grandpa-warp-sync", optional = true }
 
 # frame dependencies
 pallet-indices = { version = "3.0.0", path = "../../../frame/indices" }
@@ -160,7 +159,6 @@ cli = [
 	"frame-benchmarking-cli",
 	"substrate-frame-cli",
 	"sc-service/db",
-	"sc-finality-grandpa-warp-sync",
 	"structopt",
 	"substrate-build-script-utils",
 	"try-runtime-cli",

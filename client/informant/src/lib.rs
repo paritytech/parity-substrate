@@ -21,7 +21,7 @@
 use ansi_term::Colour;
 use futures::prelude::*;
 use futures_timer::Delay;
-use log::{info, trace, warn};
+use log::{info, trace, debug};
 use parity_util_mem::MallocSizeOf;
 use sc_client_api::{BlockchainEvents, UsageProvider};
 use sc_network::NetworkService;
@@ -146,7 +146,7 @@ where
 						Colour::White.bold().paint(format!("{}", ancestor.number)), ancestor.hash,
 					),
 					Ok(_) => {},
-					Err(e) => warn!("Error computing tree route: {}", e),
+					Err(e) => debug!("Error computing tree route: {}", e),
 				}
 			}
 		}

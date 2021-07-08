@@ -70,6 +70,7 @@ impl<Block: BlockT> HeaderBackend<Block> for TestApi {
 			genesis_hash: Default::default(),
 			number_leaves: Default::default(),
 			finalized_state: None,
+			block_gap: None,
 		}
 	}
 

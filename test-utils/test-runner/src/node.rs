@@ -147,6 +147,7 @@ impl<T: ChainInfo> Node<T> {
 				import_queue,
 				on_demand: None,
 				block_announce_validator_builder: None,
+				warp_sync: None,
 			};
 			build_network(params)?
 		};

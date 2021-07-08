@@ -160,6 +160,7 @@ impl<Block> BlockchainHeaderBackend<Block> for LightStorage<Block>
 				None
 			},
 			number_leaves: 1,
+			block_gap: None,
 		}
 	}
 

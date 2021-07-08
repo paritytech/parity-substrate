@@ -205,6 +205,10 @@ sp_api::mock_impl_runtime_apis! {
 			self.inner.genesis_authorities.clone()
 		}
 
+		fn current_set_id(&self) -> SetId {
+			0
+		}
+
 		fn submit_report_equivocation_unsigned_extrinsic(
 			_equivocation_proof: EquivocationProof<Hash, BlockNumber>,
 			_key_owner_proof: OpaqueKeyOwnershipProof,

@@ -469,6 +469,11 @@ impl<Block: BlockT> BlockchainDb<Block> {
 		}
 	}
 
+	fn update_block_gap(&self, gap: Option<(NumberFor<Block>, NumberFor<Block>)>) {
+		let mut meta = self.meta.write();
+		meta.block_gap = gap;
+	}
+
 	// Get block changes trie root, if available.
 	fn changes_trie_root(&self, block: BlockId<Block>) -> ClientResult<Option<Block::Hash>> {
 		self.header(block)
@@ -506,6 +511,7 @@ impl<Block: BlockT> sc_client_api::blockchain::HeaderBackend<Block> for Blockcha
 			finalized_number: meta.finalized_number,
 			finalized_state: meta.finalized_state.clone(),
 			number_leaves: self.leaves.read().count(),
+			block_gap: meta.block_gap,
 		}
 	}
 
@@ -664,7 +670,9 @@ impl<Block: BlockT> HeaderMetadata<Block> for BlockchainDb<Block> {
 					header_metadata.clone(),
 				);
 				header_metadata
-			}).ok_or_else(|| ClientError::UnknownBlock(format!("header not found in db: {}", hash)))
+			}).ok_or_else(||
+				ClientError::UnknownBlock(format!("Header was not found in the database: {:?}", hash))
+			)
 		}, Ok)
 	}
 
@@ -1176,9 +1184,11 @@ impl<Block: BlockT> Backend<Block> {
 		let mut retracted = Vec::default();
 
 		let meta = self.blockchain.meta.read();
+		let parent_exists = self.blockchain.status(BlockId::Hash(route_to))?
+			== sp_blockchain::BlockStatus::InChain;
 
-		// cannot find tree route with empty DB.
-		if meta.best_hash != Default::default() {
+		// Cannot find tree route with empty DB or when imported a detached block.
+		if meta.best_hash != Default::default() && parent_exists {
 			let tree_route = sp_blockchain::tree_route(
 				&self.blockchain,
 				meta.best_hash,
@@ -1235,10 +1245,12 @@ impl<Block: BlockT> Backend<Block> {
 		last_finalized: Option<Block::Hash>,
 	) -> ClientResult<()> {
 		let last_finalized = last_finalized.unwrap_or_else(|| self.blockchain.meta.read().finalized_hash);
-		if *header.parent_hash() != last_finalized {
-			return Err(::sp_blockchain::Error::NonSequentialFinalization(
-				format!("Last finalized {:?} not parent of {:?}", last_finalized, header.hash()),
-			).into());
+		if last_finalized != self.blockchain.meta.read().genesis_hash {
+			if *header.parent_hash() != last_finalized {
+				return Err(::sp_blockchain::Error::NonSequentialFinalization(
+					format!("Last finalized {:?} not parent of {:?}", last_finalized, header.hash()),
+				).into());
+			}
 		}
 		Ok(())
 	}
@@ -1332,9 +1344,10 @@ impl<Block: BlockT> Backend<Block> {
 		operation.apply_offchain(&mut transaction);
 
 		let mut meta_updates = Vec::with_capacity(operation.finalized_blocks.len());
-		let mut last_finalized_hash = self.blockchain.meta.read().finalized_hash;
-		let mut last_finalized_num = self.blockchain.meta.read().finalized_number;
-		let best_num = self.blockchain.meta.read().best_number;
+		let (best_num, mut last_finalized_hash, mut last_finalized_num, mut block_gap) = {
+			let meta = self.blockchain.meta.read();
+			(meta.best_number, meta.finalized_hash, meta.finalized_number, meta.block_gap.clone())
+		};
 
 		let mut changes_trie_cache_ops = None;
 		for (block, justification) in operation.finalized_blocks {
@@ -1484,7 +1497,6 @@ impl<Block: BlockT> Backend<Block> {
 					});
 				}
 
-
 				// Check if need to finalize. Genesis is always finalized instantly.
 				let finalized = number_u64 == 0 || pending_block.leaf_state.is_final();
 				finalized
@@ -1537,7 +1549,6 @@ impl<Block: BlockT> Backend<Block> {
 					self.force_delayed_canonicalize(&mut transaction, hash, *header.number())?
 				}
 
-
 				let displaced_leaf = {
 					let mut leaves = self.blockchain.leaves.write();
 					let displaced_leaf = leaves.import(hash, number, parent_hash);
@@ -1554,14 +1565,43 @@ impl<Block: BlockT> Backend<Block> {
 				)?;
 				if !children.contains(&hash) {
 					children.push(hash);
+					children::write_children(
+						&mut transaction,
+						columns::META,
+						meta_keys::CHILDREN_PREFIX,
+						parent_hash,
+						children,
+					);
 				}
-				children::write_children(
-					&mut transaction,
-					columns::META,
-					meta_keys::CHILDREN_PREFIX,
-					parent_hash,
-					children,
-				);
+
+				if let Some((mut start, end)) = block_gap {
+					if number == start {
+						start += One::one();
+						utils::insert_number_to_key_mapping(
+							&mut transaction,
+							columns::KEY_LOOKUP,
+							number,
+							hash
+						)?;
+					}
+					if start > end {
+						transaction.remove(columns::META, meta_keys::BLOCK_GAP);
+						block_gap = None;
+						debug!(target: "db", "Removed block gap.");
+					} else {
+						block_gap = Some((start, end));
+						debug!(target: "db", "Update block gap. {:?}", block_gap);
+						transaction.set(columns::META, meta_keys::BLOCK_GAP, &(start, end).encode());
+					}
+				} else if number > best_num + One::one()
+					&& number > One::one()
+					&& self.blockchain.header(BlockId::hash(parent_hash))?.is_none()
+				{
+					let gap = (best_num + One::one(), number - One::one());
+					transaction.set(columns::META, meta_keys::BLOCK_GAP, &gap.encode());
+					block_gap = Some(gap);
+					debug!(target: "db", "Detected block gap {:?}", block_gap);
+				}
 
 				meta_updates.push(MetaUpdate {
 					hash,
@@ -1649,6 +1689,7 @@ impl<Block: BlockT> Backend<Block> {
 		for m in meta_updates {
 			self.blockchain.update_meta(m);
 		}
+		self.blockchain.update_block_gap(block_gap);
 
 		Ok(())
 	}

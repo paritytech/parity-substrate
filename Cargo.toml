@@ -40,7 +40,6 @@ members = [
 	"client/executor/wasmi",
 	"client/executor/wasmtime",
 	"client/finality-grandpa",
-	"client/finality-grandpa-warp-sync",
 	"client/informant",
 	"client/keystore",
 	"client/light",

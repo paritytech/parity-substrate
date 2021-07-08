@@ -272,7 +272,9 @@ pub struct Info<Block: BlockT> {
 	/// Last finalized state.
 	pub finalized_state: Option<(Block::Hash, <<Block as BlockT>::Header as HeaderT>::Number)>,
 	/// Number of concurrent leave forks.
-	pub number_leaves: usize
+	pub number_leaves: usize,
+	/// Missing blocks after warp sync. (start, end).
+	pub block_gap: Option<(NumberFor<Block>, NumberFor<Block>)>,
 }
 
 /// Block status.

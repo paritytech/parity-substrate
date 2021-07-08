@@ -163,9 +163,10 @@ pub fn decode_compact<'a, L, DB, I>(
 		return Err(Error::IncompleteProof);
 	}
 
+	let mut nodes_iter = nodes_iter.peekable();
 	let mut previous_extracted_child_trie = None;
 	for child_root in child_tries.into_iter() {
-		if previous_extracted_child_trie.is_none() {
+		if previous_extracted_child_trie.is_none() && nodes_iter.peek().is_some() {
 			let (top_root, _) = trie_db::decode_compact_from_iter::<L, _, _, _>(
 				db,
 				&mut nodes_iter,

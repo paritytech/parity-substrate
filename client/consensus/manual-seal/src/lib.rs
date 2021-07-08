@@ -22,12 +22,12 @@
 use futures::prelude::*;
 use sp_consensus::{
 	Environment, Proposer, SelectChain, BlockImport,
-	ForkChoiceStrategy, BlockImportParams, BlockOrigin,
+	ForkChoiceStrategy, BlockImportParams,
 	import_queue::{Verifier, BasicQueue, CacheKeyId, BoxBlockImport},
 };
 use sp_blockchain::HeaderBackend;
 use sp_inherents::CreateInherentDataProviders;
-use sp_runtime::{traits::Block as BlockT, Justifications, ConsensusEngineId};
+use sp_runtime::{traits::Block as BlockT, ConsensusEngineId};
 use sc_client_api::backend::{Backend as ClientBackend, Finalizer};
 use std::{sync::Arc, marker::PhantomData};
 use prometheus_endpoint::Registry;
@@ -59,18 +59,11 @@ struct ManualSealVerifier;
 impl<B: BlockT> Verifier<B> for ManualSealVerifier {
 	async fn verify(
 		&mut self,
-		origin: BlockOrigin,
-		header: B::Header,
-		justifications: Option<Justifications>,
-		body: Option<Vec<B::Extrinsic>>,
+		mut block: BlockImportParams<B, ()>,
 	) -> Result<(BlockImportParams<B, ()>, Option<Vec<(CacheKeyId, Vec<u8>)>>), String> {
-		let mut import_params = BlockImportParams::new(origin, header);
-		import_params.justifications = justifications;
-		import_params.body = body;
-		import_params.finalized = false;
-		import_params.fork_choice = Some(ForkChoiceStrategy::LongestChain);
-
-		Ok((import_params, None))
+		block.finalized = false;
+		block.fork_choice = Some(ForkChoiceStrategy::LongestChain);
+		Ok((block, None))
 	}
 }
 

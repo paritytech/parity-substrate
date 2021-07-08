@@ -1093,11 +1093,37 @@ fn syncs_state() {
 	sp_tracing::try_init_simple();
 	for skip_proofs in &[ false, true ] {
 		let mut net = TestNet::new(0);
-		net.add_full_peer_with_config(Default::default());
-		net.add_full_peer_with_config(FullPeerConfig {
-			sync_mode: SyncMode::Fast { skip_proofs: *skip_proofs },
-			..Default::default()
-		});
+		let mut genesis_storage: sp_core::storage::Storage = Default::default();
+		genesis_storage.top.insert(b"additional_key".to_vec(), vec![1]);
+		let mut child_data: std::collections::BTreeMap<Vec<u8>, Vec<u8>> = Default::default();
+		for i in 0u8..16 {
+			child_data.insert(vec![i; 5], vec![i; 33]);
+		}
+		let child1 = sp_core::storage::StorageChild {
+			data: child_data.clone(),
+			child_info: sp_core::storage::ChildInfo::new_default(b"child1"),
+		};
+		let child3 = sp_core::storage::StorageChild {
+			data: child_data.clone(),
+			child_info: sp_core::storage::ChildInfo::new_default(b"child3"),
+		};
+		for i in 22u8..33 {
+			child_data.insert(vec![i; 5], vec![i; 33]);
+		}
+		let child2 = sp_core::storage::StorageChild {
+			data: child_data.clone(),
+			child_info: sp_core::storage::ChildInfo::new_default(b"child2"),
+		};
+		genesis_storage.children_default.insert(child1.child_info.storage_key().to_vec(), child1);
+		genesis_storage.children_default.insert(child2.child_info.storage_key().to_vec(), child2);
+		genesis_storage.children_default.insert(child3.child_info.storage_key().to_vec(), child3);
+		let mut config_one = FullPeerConfig::default();
+		config_one.extra_storage = Some(genesis_storage.clone());
+		net.add_full_peer_with_config(config_one);
+		let mut config_two = FullPeerConfig::default();
+		config_two.extra_storage = Some(genesis_storage);
+		config_two.sync_mode = SyncMode::Fast { skip_proofs: *skip_proofs };
+		net.add_full_peer_with_config(config_two);
 		net.peer(0).push_blocks(64, false);
 		// Wait for peer 1 to sync header chain.
 		net.block_until_sync();
@@ -1125,5 +1151,32 @@ fn syncs_state() {
 			}
 		}));
 	}
+}
+
+#[test]
+fn warp_sync() {
+	sp_tracing::try_init_simple();
+	let mut net = TestNet::new(0);
+	net.add_full_peer_with_config(Default::default());
+	net.add_full_peer_with_config(FullPeerConfig {
+		sync_mode: SyncMode::Warp,
+		..Default::default()
+	});
+	let gap_end = net.peer(0).push_blocks(63, false);
+	net.peer(0).push_blocks(1, false);
+	// Wait for peer 1 to sync state.
+	net.block_until_sync();
+	assert!(!net.peer(1).client().has_state_at(&BlockId::Number(1)));
+	assert!(net.peer(1).client().has_state_at(&BlockId::Number(64)));
+
+	// Wait for peer 1 download block history
+	block_on(futures::future::poll_fn::<(), _>(|cx| {
+		net.poll(cx);
+		if net.peer(1).has_block(&gap_end) {
+			Poll::Ready(())
+		} else {
+			Poll::Pending
+		}
+	}));
 }
 

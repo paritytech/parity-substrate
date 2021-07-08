@@ -44,6 +44,7 @@ use sc_network::config::{Role, OnDemand};
 use sc_network::NetworkService;
 use sc_network::block_request_handler::{self, BlockRequestHandler};
 use sc_network::state_request_handler::{self, StateRequestHandler};
+use sc_network::warp_request_handler::{self, RequestHandler as WarpSyncRequestHandler, WarpSyncProvider};
 use sc_network::light_client_requests::{self, handler::LightClientRequestHandler};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{
@@ -378,7 +379,8 @@ pub fn new_full_parts<TBl, TRtApi, TExecDisp>(
 				offchain_worker_enabled : config.offchain_worker.enabled,
 				offchain_indexing_api: config.offchain_worker.indexing_enabled,
 				wasm_runtime_overrides: config.wasm_runtime_overrides.clone(),
-				no_genesis: matches!(config.network.sync_mode, sc_network::config::SyncMode::Fast {..}),
+				no_genesis: matches!(config.network.sync_mode, sc_network::config::SyncMode::Fast {..})
+					|| matches!(config.network.sync_mode, sc_network::config::SyncMode::Warp),
 				wasm_runtime_substitutes,
 			},
 		)?;
@@ -857,6 +859,8 @@ pub struct BuildNetworkParams<'a, TBl: BlockT, TExPool, TImpQu, TCl> {
 	pub block_announce_validator_builder: Option<Box<
 		dyn FnOnce(Arc<TCl>) -> Box<dyn BlockAnnounceValidator<TBl> + Send> + Send
 	>>,
+	/// An optional warp sync provider.
+	pub warp_sync: Option<Arc<dyn WarpSyncProvider<TBl>>>,
 }
 
 /// Build the network service, the network status sinks and an RPC sender.
@@ -880,7 +884,7 @@ pub fn build_network<TBl, TExPool, TImpQu, TCl>(
 {
 	let BuildNetworkParams {
 		config, client, transaction_pool, spawn_handle, import_queue, on_demand,
-		block_announce_validator_builder,
+		block_announce_validator_builder, warp_sync,
 	} = params;
 
 	let transaction_pool_adapter = Arc::new(TransactionPoolAdapter {
@@ -931,6 +935,22 @@ pub fn build_network<TBl, TExPool, TImpQu, TCl>(
 		}
 	};
 
+	let warp_sync_params = warp_sync.map(|provider| {
+		let protocol_config = if matches!(config.role, Role::Light) {
+			// Allow outgoing requests but deny incoming requests.
+			warp_request_handler::generate_request_response_config(protocol_id.clone())
+		} else {
+			// Allow both outgoing and incoming requests.
+			let (handler, protocol_config) = WarpSyncRequestHandler::new(
+				protocol_id.clone(),
+				provider.clone(),
+			);
+			spawn_handle.spawn("warp_sync_request_handler", handler.run());
+			protocol_config
+		};
+		(provider, protocol_config)
+	});
+
 	let light_client_request_protocol_config = {
 		if matches!(config.role, Role::Light) {
 			// Allow outgoing requests but deny incoming requests.
@@ -970,6 +990,7 @@ pub fn build_network<TBl, TExPool, TImpQu, TCl>(
 		metrics_registry: config.prometheus_config.as_ref().map(|config| config.registry.clone()),
 		block_request_protocol_config,
 		state_request_protocol_config,
+		warp_sync: warp_sync_params,
 		light_client_request_protocol_config,
 	};
 

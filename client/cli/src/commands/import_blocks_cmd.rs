@@ -28,7 +28,7 @@ use std::io::{self, Read, Seek};
 use std::path::PathBuf;
 use std::sync::Arc;
 use structopt::StructOpt;
-use sc_client_api::UsageProvider;
+use sc_client_api::HeaderBackend;
 
 /// The `import-blocks` command used to import blocks.
 #[derive(Debug, StructOpt)]
@@ -69,7 +69,7 @@ impl ImportBlocksCmd {
 		import_queue: IQ,
 	) -> error::Result<()>
 	where
-		C: UsageProvider<B> + Send + Sync + 'static,
+		C: HeaderBackend<B> + Send + Sync + 'static,
 		B: BlockT + for<'de> serde::Deserialize<'de>,
 		IQ: sc_service::ImportQueue<B> + 'static,
 	{

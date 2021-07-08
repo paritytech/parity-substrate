@@ -38,7 +38,7 @@ use std::task::Poll;
 use serde_json::{de::IoRead as JsonIoRead, Deserializer, StreamDeserializer};
 use std::convert::{TryFrom, TryInto};
 use sp_runtime::traits::{CheckedDiv, Saturating};
-use sc_client_api::UsageProvider;
+use sc_client_api::HeaderBackend;
 
 /// Number of blocks we will add to the queue before waiting for the queue to catch up.
 const MAX_PENDING_BLOCKS: u64 = 1_024;
@@ -294,7 +294,7 @@ pub fn import_blocks<B, IQ, C>(
 	binary: bool,
 ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>
 where
-	C: UsageProvider<B> + Send + Sync + 'static,
+	C: HeaderBackend<B> + Send + Sync + 'static,
 	B: BlockT + for<'de> serde::Deserialize<'de>,
 	IQ: ImportQueue<B> + 'static,
 {
@@ -429,7 +429,7 @@ where
 					// Importing is done, we can log the result and return.
 					info!(
 						"🎉 Imported {} blocks. Best: #{}",
-						read_block_count, client.usage_info().chain.best_number
+						read_block_count, client.info().best_number
 					);
 					return Poll::Ready(Ok(()))
 				} else {
@@ -456,7 +456,7 @@ where
 
 		queue.poll_actions(cx, &mut link);
 
-		let best_number = client.usage_info().chain.best_number;
+		let best_number = client.info().best_number;
 		speedometer.notify_user(best_number);
 
 		if link.has_error {

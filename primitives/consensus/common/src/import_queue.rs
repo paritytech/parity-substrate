@@ -93,10 +93,7 @@ pub trait Verifier<B: BlockT>: Send + Sync {
 	/// presented to the User in the logs.
 	async fn verify(
 		&mut self,
-		origin: BlockOrigin,
-		header: B::Header,
-		justifications: Option<Justifications>,
-		body: Option<Vec<B::Extrinsic>>,
+		block: BlockImportParams<B, ()>,
 	) -> Result<(BlockImportParams<B, ()>, Option<Vec<(CacheKeyId, Vec<u8>)>>), String>;
 }
 
@@ -202,7 +199,7 @@ pub(crate) async fn import_single_block_metered<B: BlockT, V: Verifier<B>, Trans
 	trace!(target: "sync", "Header {} has {:?} logs", block.hash, header.digest().logs().len());
 
 	let number = header.number().clone();
-	let hash = header.hash();
+	let hash = block.hash;
 	let parent_hash = header.parent_hash().clone();
 
 	let import_handler = |import| {
@@ -237,17 +234,29 @@ pub(crate) async fn import_single_block_metered<B: BlockT, V: Verifier<B>, Trans
 		parent_hash,
 		allow_missing_state: block.allow_missing_state,
 		import_existing: block.import_existing,
+		allow_missing_parent: block.state.is_some(),
 	}).await)? {
 		BlockImportResult::ImportedUnknown { .. } => (),
 		r => return Ok(r), // Any other successful result means that the block is already imported.
 	}
 
 	let started = wasm_timer::Instant::now();
-	let (mut import_block, maybe_keys) = verifier.verify(
-		block_origin,
-		header,
-		justifications,
-		block.body
+
+	let mut import_block = BlockImportParams::new(block_origin, header);
+	import_block.body = block.body;
+	import_block.justifications = justifications;
+	import_block.post_hash = Some(hash);
+	import_block.import_existing = block.import_existing;
+	if let Some(state) = block.state {
+		import_block.state_action = StateAction::ApplyChanges(crate::StorageChanges::Import(state));
+	} else if block.skip_execution {
+		import_block.state_action = StateAction::Skip;
+	} else if block.allow_missing_state {
+		import_block.state_action = StateAction::ExecuteIfPossible;
+	}
+
+	let (import_block, maybe_keys) = verifier.verify(
+		import_block,
 	).await.map_err(|msg| {
 		if let Some(ref peer) = peer {
 			trace!(target: "sync", "Verifying {}({}) from {} failed: {}", number, hash, peer, msg);
@@ -268,16 +277,7 @@ pub(crate) async fn import_single_block_metered<B: BlockT, V: Verifier<B>, Trans
 	if let Some(keys) = maybe_keys {
 		cache.extend(keys.into_iter());
 	}
-	import_block.import_existing = block.import_existing;
-	let mut import_block = import_block.clear_storage_changes_and_mutate();
-	if let Some(state) = block.state {
-		import_block.state_action = StateAction::ApplyChanges(crate::StorageChanges::Import(state));
-	} else if block.skip_execution {
-		import_block.state_action = StateAction::Skip;
-	} else if block.allow_missing_state {
-		import_block.state_action = StateAction::ExecuteIfPossible;
-	}
-
+	let import_block = import_block.clear_storage_changes_and_mutate();
 	let imported = import_handle.import_block(import_block, cache).await;
 	if let Some(metrics) = metrics.as_ref() {
 		metrics.report_verification_and_import(started.elapsed());

@@ -1095,7 +1095,7 @@ where
 
 		// random between `[0, 2 * gossip_duration]` seconds.
 		let delay: u64 =
-			thread_rng().gen_range(0, 2 * self.config.gossip_duration.as_millis() as u64);
+			thread_rng().gen_range(0 .. 2 * self.config.gossip_duration.as_millis() as u64);
 		Box::pin(Delay::new(Duration::from_millis(delay)).map(Ok))
 	}
 

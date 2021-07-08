@@ -51,6 +51,8 @@ pub mod meta_keys {
 	pub const FINALIZED_BLOCK: &[u8; 5] = b"final";
 	/// Last finalized state key.
 	pub const FINALIZED_STATE: &[u8; 6] = b"fstate";
+	/// Block gap.
+	pub const BLOCK_GAP: &[u8; 3] = b"gap";
 	/// Meta information prefix for list-based caches.
 	pub const CACHE_META_PREFIX: &[u8; 5] = b"cache";
 	/// Meta information for changes tries key.
@@ -78,6 +80,8 @@ pub struct Meta<N, H> {
 	pub genesis_hash: H,
 	/// Finalized state, if any
 	pub finalized_state: Option<(H, N)>,
+	/// Block gap, if any.
+	pub block_gap: Option<(N, N)>,
 }
 
 /// A block lookup key: used for canonical lookup from block number to hash
@@ -396,6 +400,7 @@ pub fn read_meta<Block>(db: &dyn Database<DbHash>, col_header: u32) -> Result<
 			finalized_number: Zero::zero(),
 			genesis_hash: Default::default(),
 			finalized_state: None,
+			block_gap: None,
 		}),
 	};
 
@@ -409,7 +414,7 @@ pub fn read_meta<Block>(db: &dyn Database<DbHash>, col_header: u32) -> Result<
 				"Opened blockchain db, fetched {} = {:?} ({})",
 				desc,
 				hash,
-				header.number()
+				header.number(),
 			);
 			Ok((hash, *header.number()))
 		} else {
@@ -425,6 +430,8 @@ pub fn read_meta<Block>(db: &dyn Database<DbHash>, col_header: u32) -> Result<
 	} else {
 		None
 	};
+	let block_gap = db.get(COLUMN_META, meta_keys::BLOCK_GAP).and_then(|d| Decode::decode(&mut d.as_slice()).ok());
+	debug!(target: "db", "block_gap={:?}", block_gap);
 
 	Ok(Meta {
 		best_hash,
@@ -433,6 +440,7 @@ pub fn read_meta<Block>(db: &dyn Database<DbHash>, col_header: u32) -> Result<
 		finalized_number,
 		genesis_hash,
 		finalized_state,
+		block_gap,
 	})
 }
 

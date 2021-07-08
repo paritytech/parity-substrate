@@ -16,58 +16,57 @@
 
 //! Helper for handling (i.e. answering) grandpa warp sync requests from a remote peer.
 
-use codec::{Decode, Encode};
-use sc_network::config::{IncomingRequest, OutgoingResponse, ProtocolId, RequestResponseConfig};
-use sc_client_api::Backend;
-use sp_runtime::traits::NumberFor;
+use codec::{Encode, Decode};
+use crate::config::{IncomingRequest, OutgoingResponse, ProtocolId, RequestResponseConfig};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::StreamExt;
 use log::debug;
 use sp_runtime::traits::Block as BlockT;
 use std::time::Duration;
 use std::sync::Arc;
-use sc_service::{SpawnTaskHandle, config::{Configuration, Role}};
-use sc_finality_grandpa::SharedAuthoritySet;
+pub use sp_finality_grandpa::{SetId, AuthorityList};
 
-mod proof;
+/// Scale-encoded warp sync proof response.
+pub struct EncodedProof(pub Vec<u8>);
 
-pub use proof::{WarpSyncFragment, WarpSyncProof};
-
-/// Generates the appropriate [`RequestResponseConfig`] for a given chain configuration.
-pub fn request_response_config_for_chain<TBlock: BlockT, TBackend: Backend<TBlock> + 'static>(
-	config: &Configuration,
-	spawn_handle: SpawnTaskHandle,
-	backend: Arc<TBackend>,
-	authority_set: SharedAuthoritySet<TBlock::Hash, NumberFor<TBlock>>,
-) -> RequestResponseConfig
-where
-	NumberFor<TBlock>: sc_finality_grandpa::BlockNumberOps,
-{
-	let protocol_id = config.protocol_id();
-
-	if matches!(config.role, Role::Light) {
-		// Allow outgoing requests but deny incoming requests.
-		generate_request_response_config(protocol_id.clone())
-	} else {
-		// Allow both outgoing and incoming requests.
-		let (handler, request_response_config) = GrandpaWarpSyncRequestHandler::new(
-			protocol_id.clone(),
-			backend.clone(),
-			authority_set,
-		);
-		spawn_handle.spawn("grandpa-warp-sync", handler.run());
-		request_response_config
-	}
+/// Warp sync request
+#[derive(Encode, Decode, Debug)]
+pub struct Request<B: BlockT> {
+	/// Start collecting proofs from this block.
+	pub begin: B::Hash,
 }
 
-const LOG_TARGET: &str = "finality-grandpa-warp-sync-request-handler";
+const MAX_RESPONSE_SIZE: u64 = 16 * 1024 * 1024;
+
+/// Proof verification result.
+pub enum VerificationResult<Block: BlockT> {
+	/// Proof is valid, but the target was not reached.
+	Partial(SetId, AuthorityList, Block::Hash),
+	/// Target finality is proved.
+	Complete(SetId, AuthorityList, Block::Header),
+}
+
+/// Warp sync backend. Handles retrieveing and verifying warp sync proofs.
+pub trait WarpSyncProvider<B: BlockT>: Send + Sync {
+	/// Generate proof starting at given block hash. The proof is accumulated until maximum proof size is reached.
+	fn generate(&self, start: B::Hash) -> Result<EncodedProof, String>;
+	/// Verify warp proof against current set of authorities.
+	fn verify(
+		&self,
+		proof: &EncodedProof,
+		set_id: SetId,
+		authorities: AuthorityList,
+	) -> Result<VerificationResult<B>, String>;
+	/// Get current list of authorities. This is supposed to be genesis authorities when starting sync.
+	fn current_authorities(&self) -> AuthorityList;
+}
 
 /// Generates a [`RequestResponseConfig`] for the grandpa warp sync request protocol, refusing incoming requests.
 pub fn generate_request_response_config(protocol_id: ProtocolId) -> RequestResponseConfig {
 	RequestResponseConfig {
 		name: generate_protocol_name(protocol_id).into(),
 		max_request_size: 32,
-		max_response_size: proof::MAX_WARP_SYNC_PROOF_SIZE as u64,
+		max_response_size: MAX_RESPONSE_SIZE,
 		request_timeout: Duration::from_secs(10),
 		inbound_queue: None,
 	}
@@ -82,25 +81,17 @@ fn generate_protocol_name(protocol_id: ProtocolId) -> String {
 	s
 }
 
-#[derive(Decode)]
-struct Request<B: BlockT> {
-	begin: B::Hash,
-}
-
 /// Handler for incoming grandpa warp sync requests from a remote peer.
-pub struct GrandpaWarpSyncRequestHandler<TBackend, TBlock: BlockT> {
-	backend: Arc<TBackend>,
-	authority_set: SharedAuthoritySet<TBlock::Hash, NumberFor<TBlock>>,
+pub struct RequestHandler<TBlock: BlockT> {
+	backend: Arc<dyn WarpSyncProvider<TBlock>>,
 	request_receiver: mpsc::Receiver<IncomingRequest>,
-	_phantom: std::marker::PhantomData<TBlock>,
 }
 
-impl<TBlock: BlockT, TBackend: Backend<TBlock>> GrandpaWarpSyncRequestHandler<TBackend, TBlock> {
-	/// Create a new [`GrandpaWarpSyncRequestHandler`].
+impl<TBlock: BlockT> RequestHandler<TBlock> {
+	/// Create a new [`RequestHandler`].
 	pub fn new(
 		protocol_id: ProtocolId,
-		backend: Arc<TBackend>,
-		authority_set: SharedAuthoritySet<TBlock::Hash, NumberFor<TBlock>>,
+		backend: Arc<dyn WarpSyncProvider<TBlock>>,
 	) -> (Self, RequestResponseConfig) {
 		let (tx, request_receiver) = mpsc::channel(20);
 
@@ -111,8 +102,6 @@ impl<TBlock: BlockT, TBackend: Backend<TBlock>> GrandpaWarpSyncRequestHandler<TB
 			Self {
 				backend,
 				request_receiver,
-				_phantom: std::marker::PhantomData,
-				authority_set,
 			},
 			request_response_config,
 		)
@@ -122,35 +111,27 @@ impl<TBlock: BlockT, TBackend: Backend<TBlock>> GrandpaWarpSyncRequestHandler<TB
 		&self,
 		payload: Vec<u8>,
 		pending_response: oneshot::Sender<OutgoingResponse>,
-	) -> Result<(), HandleRequestError>
-		where NumberFor<TBlock>: sc_finality_grandpa::BlockNumberOps,
-	{
+	) -> Result<(), HandleRequestError> {
 		let request = Request::<TBlock>::decode(&mut &payload[..])?;
 
-		let proof = WarpSyncProof::generate(
-			&*self.backend,
-			request.begin,
-			&self.authority_set.authority_set_changes(),
-		)?;
+		let EncodedProof(proof) = self.backend.generate(request.begin).map_err(HandleRequestError::InvalidRequest)?;
 
 		pending_response.send(OutgoingResponse {
-			result: Ok(proof.encode()),
+			result: Ok(proof),
 			reputation_changes: Vec::new(),
 			sent_feedback: None,
 		}).map_err(|_| HandleRequestError::SendResponse)
 	}
 
-	/// Run [`GrandpaWarpSyncRequestHandler`].
-	pub async fn run(mut self)
-		where NumberFor<TBlock>: sc_finality_grandpa::BlockNumberOps,
-	{
+	/// Run [`RequestHandler`].
+	pub async fn run(mut self) {
 		while let Some(request) = self.request_receiver.next().await {
 			let IncomingRequest { peer, payload, pending_response } = request;
 
 			match self.handle_request(payload, pending_response) {
-				Ok(()) => debug!(target: LOG_TARGET, "Handled grandpa warp sync request from {}.", peer),
+				Ok(()) => debug!(target: "sync", "Handled grandpa warp sync request from {}.", peer),
 				Err(e) => debug!(
-					target: LOG_TARGET,
+					target: "sync",
 					"Failed to handle grandpa warp sync request from {}: {}",
 					peer, e,
 				),
@@ -160,7 +141,7 @@ impl<TBlock: BlockT, TBackend: Backend<TBlock>> GrandpaWarpSyncRequestHandler<TB
 }
 
 #[derive(Debug, derive_more::Display, derive_more::From)]
-pub enum HandleRequestError {
+enum HandleRequestError {
 	#[display(fmt = "Failed to decode request: {}.", _0)]
 	DecodeProto(prost::DecodeError),
 	#[display(fmt = "Failed to encode response: {}.", _0)]
@@ -170,10 +151,6 @@ pub enum HandleRequestError {
 	Client(sp_blockchain::Error),
 	#[from(ignore)]
 	InvalidRequest(String),
-	#[from(ignore)]
-	InvalidProof(String),
 	#[display(fmt = "Failed to send response.")]
 	SendResponse,
-	#[display(fmt = "Missing required data to be able to answer request.")]
-	MissingData,
 }

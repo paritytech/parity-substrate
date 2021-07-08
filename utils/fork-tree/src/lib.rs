@@ -84,8 +84,8 @@ pub struct ForkTree<H, N, V> {
 }
 
 impl<H, N, V> ForkTree<H, N, V> where
-	H: PartialEq + Clone,
-	N: Ord + Clone,
+	H: PartialEq + Clone + std::fmt::Debug,
+	N: Ord + Clone + std::fmt::Debug,
 	V: Clone,
 {
 	/// Prune the tree, removing all non-canonical nodes. We find the node in the
@@ -767,6 +767,10 @@ mod node_implementation {
 			// stop searching this branch
 			if *number < self.number {
 				return Ok(FindOutcome::Failure(false));
+			}
+			if *number == self.number && hash == &self.hash {
+				// This is not an ancestor that we seek, but the parent node definitely is.
+				return Ok(FindOutcome::Failure(true));
 			}
 
 			let mut known_descendent_of = false;

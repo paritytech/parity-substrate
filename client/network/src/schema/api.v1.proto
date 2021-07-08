@@ -72,22 +72,32 @@ message BlockData {
 message StateRequest {
 	// Block header hash.
 	bytes block = 1;
-	// Start from this key. Equivalent to <empty bytes> if omitted.
-	bytes start = 2; // optional
+	// Start from this key.
+	// Multiple keys used for nested state start.
+	repeated bytes start = 2; // optional
 	// if 'true' indicates that response should contain raw key-values, rather than proof.
 	bool no_proof = 3;
 }
 
 message StateResponse {
-	// A collection of keys-values. Only populated if `no_proof` is `true`
-	repeated StateEntry entries = 1;
+	// A collection of keys-values states. Only populated if `no_proof` is `true`
+	repeated KeyValueStateEntry entries = 1;
 	// If `no_proof` is false in request, this contains proof nodes.
 	bytes proof = 2;
+}
+
+// A key value state.
+message KeyValueStateEntry {
+	// Root of for this level, empty length bytes
+	// if top level.
+	bytes state_root = 1;
+	// A collection of keys-values.
+	repeated StateEntry entries = 2;
 	// Set to true when there are no more keys to return.
 	bool complete = 3;
 }
 
-// A key-value pair
+// A key-value pair.
 message StateEntry {
 	bytes key = 1;
 	bytes value = 2;

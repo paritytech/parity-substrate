@@ -366,7 +366,7 @@ fn should_query_storage() {
 			Err(Error::InvalidBlockRange {
 				from: format!("{:?}", genesis_hash),
 				to: format!("{:?}", Some(random_hash1)),
-				details: format!("UnknownBlock: header not found in db: {}", random_hash1),
+				details: format!("UnknownBlock: Header was not found in the database: {:?}", random_hash1),
 			}).map_err(|e| e.to_string())
 		);
 
@@ -382,7 +382,7 @@ fn should_query_storage() {
 			Err(Error::InvalidBlockRange {
 				from: format!("{:?}", random_hash1),
 				to: format!("{:?}", Some(genesis_hash)),
-				details: format!("UnknownBlock: header not found in db: {}", random_hash1),
+				details: format!("UnknownBlock: Header was not found in the database: {:?}", random_hash1),
 			}).map_err(|e| e.to_string()),
 		);
 
@@ -398,7 +398,7 @@ fn should_query_storage() {
 			Err(Error::InvalidBlockRange {
 				from: format!("{:?}", random_hash1),
 				to: format!("{:?}", Some(block2_hash)), // Best block hash.
-				details: format!("UnknownBlock: header not found in db: {}", random_hash1),
+				details: format!("UnknownBlock: Header was not found in the database: {:?}", random_hash1),
 			}).map_err(|e| e.to_string()),
 		);
 
@@ -414,7 +414,7 @@ fn should_query_storage() {
 			Err(Error::InvalidBlockRange {
 				from: format!("{:?}", random_hash1), // First hash not found.
 				to: format!("{:?}", Some(random_hash2)),
-				details: format!("UnknownBlock: header not found in db: {}", random_hash1),
+				details: format!("UnknownBlock: Header was not found in the database: {:?}", random_hash1),
 			}).map_err(|e| e.to_string()),
 		);
 

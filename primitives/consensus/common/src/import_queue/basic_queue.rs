@@ -453,12 +453,9 @@ mod tests {
 	impl Verifier<Block> for () {
 		async fn verify(
 			&mut self,
-			origin: BlockOrigin,
-			header: Header,
-			_justifications: Option<Justifications>,
-			_body: Option<Vec<Extrinsic>>,
+			block: BlockImportParams<Block, ()>,
 		) -> Result<(BlockImportParams<Block, ()>, Option<Vec<(CacheKeyId, Vec<u8>)>>), String> {
-			Ok((BlockImportParams::new(origin, header), None))
+			Ok((BlockImportParams::new(block.origin, block.header), None))
 		}
 	}
 

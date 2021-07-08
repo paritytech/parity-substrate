@@ -131,6 +131,8 @@ pub struct BlockCheckParams<Block: BlockT> {
 	pub parent_hash: Block::Hash,
 	/// Allow importing the block skipping state verification if parent state is missing.
 	pub allow_missing_state: bool,
+	/// Allow importing the block if parent block is missing.
+	pub allow_missing_parent: bool,
 	/// Re-validate existing block.
 	pub import_existing: bool,
 }
@@ -143,13 +145,14 @@ pub enum StorageChanges<Block: BlockT, Transaction> {
 	Import(ImportedState<Block>),
 }
 
+
 /// Imported state data. A vector of key-value pairs that should form a trie.
 #[derive(PartialEq, Eq, Clone)]
 pub struct ImportedState<B: BlockT> {
 	/// Target block hash.
 	pub block: B::Hash,
 	/// State keys and values.
-	pub state: Vec<(Vec<u8>, Vec<u8>)>,
+	pub state: sp_state_machine::KeyValueStates,
 }
 
 impl<B: BlockT> std::fmt::Debug for ImportedState<B> {
@@ -320,6 +323,11 @@ impl<Block: BlockT, Transaction> BlockImportParams<Block, Transaction> {
 			.ok_or(Error::NoIntermediate)?
 			.downcast_mut::<T>()
 			.ok_or(Error::InvalidIntermediate)
+	}
+
+	/// Check if this block contains state import action
+	pub fn with_state(&self) -> bool {
+		matches!(self.state_action, StateAction::ApplyChanges(StorageChanges::Import(_)))
 	}
 }
 

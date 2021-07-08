@@ -54,7 +54,7 @@ use futures::prelude::*;
 use futures::future::BoxFuture;
 use sc_network::{
 	NetworkWorker, NetworkService, config::{ProtocolId, MultiaddrWithPeerId, NonReservedPeerMode},
-	Multiaddr,
+	Multiaddr, warp_request_handler,
 };
 use sc_network::config::{NetworkConfiguration, NonDefaultSetConfig, TransportConfig, SyncMode};
 use libp2p::PeerId;
@@ -64,6 +64,7 @@ use sc_network::config::ProtocolConfig;
 use sp_runtime::generic::{BlockId, OpaqueDigestItemId};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::{Justification, Justifications};
+use sp_runtime::codec::{Encode, Decode};
 use substrate_test_runtime_client::AccountKeyring;
 use sc_service::client::Client;
 pub use sc_network::config::EmptyTransactionPool;
@@ -108,23 +109,16 @@ impl PassThroughVerifier {
 impl<B: BlockT> Verifier<B> for PassThroughVerifier {
 	async fn verify(
 		&mut self,
-		origin: BlockOrigin,
-		header: B::Header,
-		justifications: Option<Justifications>,
-		body: Option<Vec<B::Extrinsic>>
+		mut block: BlockImportParams<B, ()>,
 	) -> Result<(BlockImportParams<B, ()>, Option<Vec<(CacheKeyId, Vec<u8>)>>), String> {
-		let maybe_keys = header.digest()
+		let maybe_keys = block.header.digest()
 			.log(|l| l.try_as_raw(OpaqueDigestItemId::Consensus(b"aura"))
 				.or_else(|| l.try_as_raw(OpaqueDigestItemId::Consensus(b"babe")))
 			)
 			.map(|blob| vec![(well_known_cache_keys::AUTHORITIES, blob.to_vec())]);
-		let mut import = BlockImportParams::new(origin, header);
-		import.body = body;
-		import.finalized = self.finalized;
-		import.justifications = justifications;
-		import.fork_choice = Some(self.fork_choice.clone());
-
-		Ok((import, maybe_keys))
+		block.finalized = self.finalized;
+		block.fork_choice = Some(self.fork_choice.clone());
+		Ok((block, maybe_keys))
 	}
 }
 
@@ -372,11 +366,10 @@ impl<D, B> Peer<D, B> where
 				block.header.parent_hash,
 			);
 			let header = block.header.clone();
+			let mut import_block = BlockImportParams::new(origin, header.clone());
+			import_block.body = if headers_only { None } else { Some(block.extrinsics) };
 			let (import_block, cache) = futures::executor::block_on(self.verifier.verify(
-				origin,
-				header.clone(),
-				None,
-				if headers_only { None } else { Some(block.extrinsics) },
+				import_block,
 			)).unwrap();
 			let cache = if let Some(cache) = cache {
 				cache.into_iter().collect()
@@ -612,13 +605,10 @@ struct VerifierAdapter<B: BlockT> {
 impl<B: BlockT> Verifier<B> for VerifierAdapter<B> {
 	async fn verify(
 		&mut self,
-		origin: BlockOrigin,
-		header: B::Header,
-		justifications: Option<Justifications>,
-		body: Option<Vec<B::Extrinsic>>
+		block: BlockImportParams<B, ()>,
 	) -> Result<(BlockImportParams<B, ()>, Option<Vec<(CacheKeyId, Vec<u8>)>>), String> {
-		let hash = header.hash();
-		self.verifier.lock().await.verify(origin, header, justifications, body).await.map_err(|e| {
+		let hash = block.header.hash();
+		self.verifier.lock().await.verify(block).await.map_err(|e| {
 			self.failed_verifications.lock().insert(hash, e.clone());
 			e
 		})
@@ -643,6 +633,30 @@ impl<B: BlockT> VerifierAdapter<B> {
 	}
 }
 
+struct TestWarpSyncProvider<B: BlockT>(Arc<dyn HeaderBackend<B>>);
+
+impl<B: BlockT> warp_request_handler::WarpSyncProvider<B> for TestWarpSyncProvider<B> {
+	fn generate(&self, _start: B::Hash) -> Result<warp_request_handler::EncodedProof, String> {
+		let info = self.0.info();
+		let best_header = self.0.header(BlockId::hash(info.best_hash)).unwrap().unwrap();
+		Ok(warp_request_handler::EncodedProof(best_header.encode()))
+	}
+	fn verify(
+		&self,
+		proof: &warp_request_handler::EncodedProof,
+		_set_id: warp_request_handler::SetId,
+		_authorities: warp_request_handler::AuthorityList,
+	) -> Result<warp_request_handler::VerificationResult<B>, String> {
+		let warp_request_handler::EncodedProof(encoded) = proof;
+		let header = B::Header::decode(&mut encoded.as_slice()).unwrap();
+		Ok(warp_request_handler::VerificationResult::Complete(0, Default::default(), header))
+	}
+	fn current_authorities(&self) -> warp_request_handler::AuthorityList {
+		Default::default()
+	}
+}
+
+
 /// Configuration for a full peer.
 #[derive(Default)]
 pub struct FullPeerConfig {
@@ -660,6 +674,8 @@ pub struct FullPeerConfig {
 	pub is_authority: bool,
 	/// Syncing mode
 	pub sync_mode: SyncMode,
+	/// Extra genesis storage.
+	pub extra_storage: Option<sp_core::storage::Storage>,
 }
 
 pub trait TestNetFactory: Sized where <Self::BlockImport as BlockImport<Block>>::Transaction: Send {
@@ -719,7 +735,13 @@ pub trait TestNetFactory: Sized where <Self::BlockImport as BlockImport<Block>>:
 			Some(keep_blocks) => TestClientBuilder::with_pruning_window(keep_blocks),
 			None => TestClientBuilder::with_default_backend(),
 		};
-		if matches!(config.sync_mode, SyncMode::Fast{..}) {
+
+		if let Some(storage) = config.extra_storage {
+			let genesis_extra_storage = test_client_builder.genesis_init_mut().extra_storage();
+			*genesis_extra_storage = storage;
+		}
+
+		if matches!(config.sync_mode, SyncMode::Fast{..}) || matches!(config.sync_mode, SyncMode::Warp) {
 			test_client_builder = test_client_builder.set_no_genesis();
 		}
 		let backend = test_client_builder.backend();
@@ -805,6 +827,14 @@ pub trait TestNetFactory: Sized where <Self::BlockImport as BlockImport<Block>>:
 			protocol_config
 		};
 
+		let warp_sync = Arc::new(TestWarpSyncProvider(client.clone()));
+
+		let warp_protocol_config = {
+			let (handler, protocol_config) = warp_request_handler::RequestHandler::new(protocol_id.clone(), warp_sync.clone());
+			self.spawn_task(handler.run().boxed());
+			protocol_config
+		};
+
 		let network = NetworkWorker::new(sc_network::config::Params {
 			role: if config.is_authority { Role::Authority } else { Role::Full },
 			executor: None,
@@ -821,6 +851,7 @@ pub trait TestNetFactory: Sized where <Self::BlockImport as BlockImport<Block>>:
 			block_request_protocol_config,
 			state_request_protocol_config,
 			light_client_request_protocol_config,
+			warp_sync: Some((warp_sync, warp_protocol_config)),
 		}).unwrap();
 
 		trace!(target: "test_network", "Peer identifier: {}", network.service().local_peer_id());
@@ -915,6 +946,7 @@ pub trait TestNetFactory: Sized where <Self::BlockImport as BlockImport<Block>>:
 			block_request_protocol_config,
 			state_request_protocol_config,
 			light_client_request_protocol_config,
+			warp_sync: None,
 		}).unwrap();
 
 		self.mut_peers(|peers| {

@@ -496,7 +496,7 @@ sp_api::decl_runtime_apis! {
 	/// applied in the runtime after those N blocks have passed.
 	///
 	/// The consensus protocol will coordinate the handoff externally.
-	#[api_version(2)]
+	#[api_version(3)]
 	pub trait GrandpaApi {
 		/// Get the current GRANDPA authorities and weights. This should not change except
 		/// for when changes are scheduled and the corresponding delay has passed.
@@ -534,5 +534,8 @@ sp_api::decl_runtime_apis! {
 			set_id: SetId,
 			authority_id: AuthorityId,
 		) -> Option<OpaqueKeyOwnershipProof>;
+
+		/// Get current GRANDPA authority set id.
+		fn current_set_id() -> SetId;
 	}
 }

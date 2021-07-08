@@ -175,7 +175,7 @@ pub struct AuthoritySet<H, N> {
 	/// Track at which blocks the set id changed. This is useful when we need to prove finality for a
 	/// given block since we can figure out what set the block belongs to and when the set
 	/// started/ended.
-	authority_set_changes: AuthoritySetChanges<N>,
+	pub(crate) authority_set_changes: AuthoritySetChanges<N>,
 }
 
 impl<H, N> AuthoritySet<H, N>
@@ -739,6 +739,16 @@ impl<N: Ord + Clone> AuthoritySetChanges<N> {
 		} else {
 			AuthoritySetChangeId::Unknown
 		}
+	}
+
+	pub(crate) fn insert(&mut self, block_number: N) {
+		let idx = self.0
+			.binary_search_by_key(&block_number, |(_, n)| n.clone())
+			.unwrap_or_else(|b| b);
+
+		let set_id = if idx == 0 { 0 } else { self.0[idx-1].0 + 1 };
+		assert!(idx == self.0.len() || self.0[idx].0 != set_id);
+		self.0.insert(idx, (set_id, block_number));
 	}
 
 	/// Returns an iterator over all historical authority set changes starting at the given block
@@ -1677,6 +1687,18 @@ mod tests {
 				.canon_hash,
 			"D"
 		);
+	}
+
+	#[test]
+	fn authority_set_changes_insert() {
+		let mut authority_set_changes = AuthoritySetChanges::empty();
+		authority_set_changes.append(0, 41);
+		authority_set_changes.append(1, 81);
+		authority_set_changes.append(4, 121);
+
+		authority_set_changes.insert(101);
+		assert_eq!(authority_set_changes.get_set_id(100), AuthoritySetChangeId::Set(2, 101));
+		assert_eq!(authority_set_changes.get_set_id(101), AuthoritySetChangeId::Set(2, 101));
 	}
 
 	#[test]

@@ -52,14 +52,14 @@ use parking_lot::Mutex;
 use sc_client_api::{BlockOf, backend::AuxStore, BlockchainEvents};
 use sp_blockchain::{HeaderBackend, ProvideCache, well_known_cache_keys::Id as CacheKeyId};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
-use sp_runtime::{Justifications, RuntimeString};
+use sp_runtime::RuntimeString;
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_api::ProvideRuntimeApi;
 use sp_consensus_pow::{Seal, TotalDifficulty, POW_ENGINE_ID};
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_consensus::{
-	BlockImportParams, BlockOrigin, ForkChoiceStrategy, SyncOracle, Environment, Proposer,
+	BlockImportParams, ForkChoiceStrategy, SyncOracle, Environment, Proposer,
 	SelectChain, Error as ConsensusError, CanAuthorWith, BlockImport, BlockCheckParams, ImportResult,
 };
 use sp_consensus::import_queue::{
@@ -465,29 +465,23 @@ impl<B: BlockT, Algorithm> Verifier<B> for PowVerifier<B, Algorithm> where
 {
 	async fn verify(
 		&mut self,
-		origin: BlockOrigin,
-		header: B::Header,
-		justifications: Option<Justifications>,
-		body: Option<Vec<B::Extrinsic>>,
+		mut block: BlockImportParams<B, ()>,
 	) -> Result<(BlockImportParams<B, ()>, Option<Vec<(CacheKeyId, Vec<u8>)>>), String> {
-		let hash = header.hash();
-		let (checked_header, seal) = self.check_header(header)?;
+		let hash = block.header.hash();
+		let (checked_header, seal) = self.check_header(block.header)?;
 
 		let intermediate = PowIntermediate::<Algorithm::Difficulty> {
 			difficulty: None,
 		};
-
-		let mut import_block = BlockImportParams::new(origin, checked_header);
-		import_block.post_digests.push(seal);
-		import_block.body = body;
-		import_block.justifications = justifications;
-		import_block.intermediates.insert(
+		block.header = checked_header;
+		block.post_digests.push(seal);
+		block.intermediates.insert(
 			Cow::from(INTERMEDIATE_KEY),
 			Box::new(intermediate) as Box<_>
 		);
-		import_block.post_hash = Some(hash);
+		block.post_hash = Some(hash);
 
-		Ok((import_block, None))
+		Ok((block, None))
 	}
 }
 

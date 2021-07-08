@@ -19,7 +19,7 @@
 use std::{collections::HashMap, marker::PhantomData, sync::Arc};
 
 use log::debug;
-use parity_scale_codec::Encode;
+use parity_scale_codec::{Encode, Decode};
 
 use sc_client_api::{backend::Backend, utils::is_descendent_of};
 use sc_consensus::shared_data::{SharedDataLocked, SharedDataLockedUpgradable};
@@ -28,13 +28,14 @@ use sp_api::TransactionFor;
 use sp_blockchain::{well_known_cache_keys, BlockStatus};
 use sp_consensus::{
 	BlockCheckParams, BlockImport, BlockImportParams, BlockOrigin, Error as ConsensusError,
-	ImportResult, JustificationImport, SelectChain,
+	ImportResult, JustificationImport, SelectChain, StateAction,
 };
-use sp_finality_grandpa::{ConsensusLog, ScheduledChange, SetId, GRANDPA_ENGINE_ID};
+use sp_finality_grandpa::{ConsensusLog, ScheduledChange, SetId, GrandpaApi, GRANDPA_ENGINE_ID};
 use sp_runtime::generic::{BlockId, OpaqueDigestItemId};
 use sp_runtime::traits::{Block as BlockT, DigestFor, Header as HeaderT, NumberFor, Zero};
 use sp_runtime::Justification;
 use sp_utils::mpsc::TracingUnboundedSender;
+use sp_core::hashing::twox_128;
 
 use crate::{
 	authorities::{AuthoritySet, DelayKind, PendingChange, SharedAuthoritySet},
@@ -42,6 +43,7 @@ use crate::{
 	justification::GrandpaJustification,
 	notification::GrandpaJustificationSender,
 	ClientForGrandpa, CommandOrError, Error, NewAuthoritySet, VoterCommand,
+	AuthoritySetChanges,
 };
 
 /// A block-import handler for GRANDPA.
@@ -232,6 +234,10 @@ where
 	DigestFor<Block>: Encode,
 	BE: Backend<Block>,
 	Client: ClientForGrandpa<Block, BE>,
+	Client::Api: GrandpaApi<Block>,
+	for<'a> &'a Client:
+		BlockImport<Block, Error = ConsensusError, Transaction = TransactionFor<Client, Block>>,
+	TransactionFor<Client, Block>: 'static,
 {
 	// check for a new authority set change.
 	fn check_new_change(
@@ -427,6 +433,74 @@ where
 			do_pause,
 		})
 	}
+
+	/// Read current set id form a given state.
+	fn current_set_id(&self, id: &BlockId<Block>) -> Result<SetId, ConsensusError> {
+		match self.inner.runtime_api().current_set_id(&id) {
+			Ok(set_id) => Ok(set_id),
+			Err(sp_api::ApiError::Application(_)) => {
+				// The new API is not supported in this runtime. Try reading directly from storage.
+				// This code may be removed once warp sync to an old runtime is no longer needed.
+				for prefix in ["GrandpaFinality", "Grandpa"] {
+					let k = [twox_128(prefix.as_bytes()), twox_128(b"CurrentSetId")].concat();
+					if let Ok(Some(id)) = self.inner.storage(&id, &sc_client_api::StorageKey(k.to_vec())) {
+						if let Ok(id) = SetId::decode(&mut id.0.as_ref()) {
+							return Ok(id)
+						}
+					}
+				}
+				Err(ConsensusError::ClientImport("Unable to read retrieve current set id.".into()))
+			}
+			Err(e) => Err(ConsensusError::ClientImport(e.to_string())),
+		}
+	}
+
+	/// Import whole new state and reset authority set.
+	async fn import_state(
+		&mut self,
+		mut block: BlockImportParams<Block, TransactionFor<Client, Block>>,
+		new_cache: HashMap<well_known_cache_keys::Id, Vec<u8>>,
+	) -> Result<ImportResult, ConsensusError> {
+		let hash = block.post_hash();
+		let number = *block.header.number();
+		// Force imported state finality.
+		block.finalized = true;
+		let import_result = (&*self.inner).import_block(block, new_cache).await;
+		match import_result {
+			Ok(ImportResult::Imported(aux)) => {
+				// Read authority list and set id from the state.
+				self.authority_set_hard_forks.clear();
+				let block_id = BlockId::hash(hash);
+				let authorities = self.inner.runtime_api().grandpa_authorities(&block_id)
+					.map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
+				let set_id = self.current_set_id(&block_id)?;
+				let authority_set = AuthoritySet::new(
+					authorities.clone(),
+					set_id,
+					fork_tree::ForkTree::new(),
+					Vec::new(),
+					AuthoritySetChanges::empty(),
+				).ok_or_else(|| ConsensusError::ClientImport("Invalid authority list".into()))?;
+				*self.authority_set.inner_locked() = authority_set.clone();
+
+				crate::aux_schema::update_authority_set::<Block, _, _>(
+					&authority_set,
+					None,
+					|insert| self.inner.insert_aux(insert, [])
+				).map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
+				let new_set = NewAuthoritySet {
+					canon_number: number,
+					canon_hash: hash,
+					set_id,
+					authorities,
+				};
+				let _ = self.send_voter_commands.unbounded_send(VoterCommand::ChangeAuthorities(new_set));
+				Ok(ImportResult::Imported(aux))
+			}
+			Ok(r) => Ok(r),
+			Err(e) => Err(ConsensusError::ClientImport(e.to_string())),
+		}
+	}
 }
 
 #[async_trait::async_trait]
@@ -436,6 +510,7 @@ where
 	DigestFor<Block>: Encode,
 	BE: Backend<Block>,
 	Client: ClientForGrandpa<Block, BE>,
+	Client::Api: GrandpaApi<Block>,
 	for<'a> &'a Client:
 		BlockImport<Block, Error = ConsensusError, Transaction = TransactionFor<Client, Block>>,
 	TransactionFor<Client, Block>: 'static,
@@ -462,6 +537,27 @@ where
 			}
 			Ok(BlockStatus::Unknown) => {},
 			Err(e) => return Err(ConsensusError::ClientImport(e.to_string())),
+		}
+
+		if matches!(block.state_action, StateAction::ApplyChanges(sp_consensus::StorageChanges::Import(_))) {
+			return self.import_state(block, new_cache).await;
+		}
+
+		if number <= self.inner.info().finalized_number {
+			// Importing an old block. Just save justifications and authority set changes
+			if let Some(_) = self.check_new_change(&block.header, hash) {
+				assert!(block.justifications.is_some());
+				let mut authority_set = self.authority_set.inner_locked();
+				authority_set.authority_set_changes.insert(number);
+				crate::aux_schema::update_authority_set::<Block, _, _>(
+					&authority_set,
+					None,
+					|insert| block.auxiliary.extend(
+						insert.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec())))
+					)
+				);
+			}
+			return (&*self.inner).import_block(block, new_cache).await
 		}
 
 		// on initial sync we will restrict logging under info to avoid spam.

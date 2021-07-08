@@ -20,7 +20,7 @@
 
 pub mod migration;
 
-use std::{ops::Add, collections::BTreeMap, borrow::{Borrow, BorrowMut}};
+use std::{ops::{Add, Sub}, collections::BTreeMap, borrow::{Borrow, BorrowMut}};
 use codec::{Encode, Decode};
 use fork_tree::ForkTree;
 use sc_client_api::utils::is_descendent_of;
@@ -73,11 +73,11 @@ impl<'a, H, Block> IsDescendentOfBuilder<Block::Hash>
 ///
 /// Once an epoch is created, it must have a known `start_slot` and `end_slot`, which cannot be
 /// changed. Consensus engine may modify any other data in the epoch, if needed.
-pub trait Epoch {
+pub trait Epoch: std::fmt::Debug {
 	/// Descriptor for the next epoch.
 	type NextEpochDescriptor;
 	/// Type of the slot number.
-	type Slot: Ord + Copy;
+	type Slot: Ord + Copy + std::fmt::Debug;
 
 	/// The starting slot of the epoch.
 	fn start_slot(&self) -> Self::Slot;
@@ -249,9 +249,31 @@ impl<'a, E: Epoch> From<&'a PersistedEpoch<E>> for PersistedEpochHeader<E> {
 	}
 }
 
+impl<E: Epoch> PersistedEpoch<E> {
+	/// Map the epoch to a different type using a conversion function.
+	pub fn map<B, F, Hash, Number>(self, h: &Hash, n:& Number, f: &mut F) -> PersistedEpoch<B> where
+		B: Epoch<Slot=E::Slot>,
+		F: FnMut(&Hash, &Number, E) -> B,
+	{
+		match self {
+			PersistedEpoch::Genesis(epoch_0, epoch_1) => {
+				PersistedEpoch::Genesis(
+					f(h, n, epoch_0),
+					f(h, n, epoch_1),
+				)
+			},
+			PersistedEpoch::Regular(epoch_n) => {
+				PersistedEpoch::Regular(
+					f(h, n, epoch_n)
+				)
+			},
+		}
+	}
+}
+
 /// Persisted epoch header stored in ForkTree.
-#[derive(Encode, Decode, PartialEq, Eq)]
-pub enum PersistedEpochHeader<E: Epoch> {
+#[derive(Encode, Decode, PartialEq, Eq, Debug)]
+pub enum PersistedEpochHeader<E: Epoch + std::fmt::Debug> {
 	/// Genesis persisted epoch header. epoch_0, epoch_1.
 	Genesis(EpochHeader<E>, EpochHeader<E>),
 	/// Regular persisted epoch header. epoch_n.
@@ -263,6 +285,36 @@ impl<E: Epoch> Clone for PersistedEpochHeader<E> {
 		match self {
 			Self::Genesis(epoch_0, epoch_1) => Self::Genesis(epoch_0.clone(), epoch_1.clone()),
 			Self::Regular(epoch_n) => Self::Regular(epoch_n.clone()),
+		}
+	}
+}
+
+impl<E: Epoch> PersistedEpochHeader<E> {
+	/// Map the epoch header to a different type.
+	pub fn map<B>(self) -> PersistedEpochHeader<B> where
+		B: Epoch<Slot=E::Slot>,
+	{
+		match self {
+			PersistedEpochHeader::Genesis(epoch_0, epoch_1) => {
+				PersistedEpochHeader::Genesis(
+					EpochHeader {
+						start_slot: epoch_0.start_slot,
+						end_slot: epoch_0.end_slot,
+					},
+					EpochHeader {
+						start_slot: epoch_1.start_slot,
+						end_slot: epoch_1.end_slot,
+					},
+				)
+			},
+			PersistedEpochHeader::Regular(epoch_n) => {
+				PersistedEpochHeader::Regular(
+					EpochHeader {
+						start_slot: epoch_n.start_slot,
+						end_slot: epoch_n.end_slot,
+					},
+				)
+			},
 		}
 	}
 }
@@ -282,6 +334,94 @@ impl<E: Epoch> AsRef<E> for IncrementedEpoch<E> {
 	}
 }
 
+
+/// A pair of epochs for the gap block download validation.
+#[derive(Clone, Encode, Decode, Debug)]
+pub struct GapEpochs<Hash, Number, E:Epoch> {
+	current: (Hash, Number, PersistedEpoch<E>),
+	next: Option<(Hash, Number, PersistedEpoch<E>)>,
+}
+
+impl<Hash, Number, E> GapEpochs<Hash, Number, E>
+where
+	Hash: Copy + PartialEq + std::fmt::Debug,
+	Number: Copy + PartialEq + std::fmt::Debug,
+	E: Epoch,
+{
+	/// Check if given slot matches one of the gap epochs.
+	/// Returns epoch identifier if it does.
+	fn matches(&self, slot: E::Slot) -> Option<(Hash, Number, EpochHeader<E>, EpochIdentifierPosition)>{
+		match &self.current {
+			(_, _, PersistedEpoch::Genesis(epoch_0, _)) if
+				slot >= epoch_0.start_slot() && slot < epoch_0.end_slot() =>
+				return Some((self.current.0, self.current.1, epoch_0.into(), EpochIdentifierPosition::Genesis0)),
+			(_, _, PersistedEpoch::Genesis(_, epoch_1)) if
+				slot >= epoch_1.start_slot() && slot < epoch_1.end_slot() =>
+				return Some((self.current.0, self.current.1, epoch_1.into(), EpochIdentifierPosition::Genesis1)),
+			(_, _, PersistedEpoch::Regular(epoch_n)) if
+				slot >= epoch_n.start_slot() && slot < epoch_n.end_slot() =>
+				return Some((self.current.0, self.current.1, epoch_n.into(), EpochIdentifierPosition::Regular)),
+			_ => {},
+		};
+		match &self.next {
+			Some((h, n, PersistedEpoch::Genesis(epoch_0, _))) if
+				slot >= epoch_0.start_slot() && slot < epoch_0.end_slot() =>
+				Some((*h, *n, epoch_0.into(), EpochIdentifierPosition::Genesis0)),
+			Some((h, n, PersistedEpoch::Genesis(_, epoch_1))) if
+				slot >= epoch_1.start_slot() && slot < epoch_1.end_slot() =>
+				Some((*h, *n, epoch_1.into(), EpochIdentifierPosition::Genesis1)),
+			Some((h, n, PersistedEpoch::Regular(epoch_n))) if
+				slot >= epoch_n.start_slot() && slot < epoch_n.end_slot() =>
+				Some((*h, *n, epoch_n.into(), EpochIdentifierPosition::Regular)),
+			_ => None,
+		}
+	}
+
+	/// Returns epoch data if it matches gve identifier.
+	pub fn epoch(&self, id: &EpochIdentifier<Hash, Number>) -> Option<&E> {
+		let persistent = match (&self.current, &self.next) {
+			((h, n, e), _) if h == &id.hash && n == &id.number => Some(e),
+			(_, Some((h, n, e))) if h == &id.hash && n == &id.number => Some(e),
+			_ => None,
+		};
+		persistent.and_then(|v| {
+			match v {
+				PersistedEpoch::Genesis(ref epoch_0, _)
+					if id.position == EpochIdentifierPosition::Genesis0 => Some(epoch_0),
+				PersistedEpoch::Genesis(_, ref epoch_1)
+					if id.position == EpochIdentifierPosition::Genesis1 => Some(epoch_1),
+				PersistedEpoch::Regular(ref epoch_n)
+					if id.position == EpochIdentifierPosition::Regular => Some(epoch_n),
+				_ => None,
+			}
+		})
+	}
+
+	/// Import a new gap epoch, potentially replacing an old epoch.
+	fn import(
+		&mut self,
+		slot: E::Slot,
+		hash: Hash,
+		number: Number,
+		epoch: PersistedEpoch<E>
+	) -> Result<(), PersistedEpoch<E>> {
+		match (&mut self.current, &mut self.next) {
+			((_, _, PersistedEpoch::Genesis(_, epoch_1)), _) if slot == epoch_1.end_slot() => {
+				self.next = Some((hash, number, epoch));
+				Ok(())
+			},
+			(_, Some((_, _, PersistedEpoch::Regular(epoch_n)))) if slot == epoch_n.end_slot() => {
+				self.current = self.next.take().unwrap();
+				self.next = Some((hash, number, epoch));
+				Ok(())
+			},
+			_ => {
+				Err(epoch)
+			},
+		}
+	}
+}
+
 /// Tree of all epoch changes across all *seen* forks. Data stored in tree is
 /// the hash and block number of the block signaling the epoch change, and the
 /// epoch that was signalled at that block.
@@ -297,10 +437,13 @@ impl<E: Epoch> AsRef<E> for IncrementedEpoch<E> {
 /// same DAG entry, pinned to a specific block #1.
 ///
 /// Further epochs (epoch_2, ..., epoch_n) each get their own entry.
-#[derive(Clone, Encode, Decode)]
+///
+/// Also maintains gap epochs as long as there's an active gap download after a warp sync.
+#[derive(Clone, Encode, Decode, Debug)]
 pub struct EpochChanges<Hash, Number, E: Epoch> {
 	inner: ForkTree<Hash, Number, PersistedEpochHeader<E>>,
 	epochs: BTreeMap<(Hash, Number), PersistedEpoch<E>>,
+	gap: Option<GapEpochs<Hash, Number, E>>,
 }
 
 // create a fake header hash which hasn't been included in the chain.
@@ -317,13 +460,13 @@ impl<Hash, Number, E: Epoch> Default for EpochChanges<Hash, Number, E> where
 	Number: Ord,
 {
 	fn default() -> Self {
-		EpochChanges { inner: ForkTree::new(), epochs: BTreeMap::new() }
+		EpochChanges { inner: ForkTree::new(), epochs: BTreeMap::new(), gap: None, }
 	}
 }
 
 impl<Hash, Number, E: Epoch> EpochChanges<Hash, Number, E> where
-	Hash: PartialEq + Ord + AsRef<[u8]> + AsMut<[u8]> + Copy,
-	Number: Ord + One + Zero + Add<Output=Number> + Copy,
+	Hash: PartialEq + Ord + AsRef<[u8]> + AsMut<[u8]> + Copy + std::fmt::Debug,
+	Number: Ord + One + Zero + Add<Output=Number> + Sub<Output=Number> + Copy + std::fmt::Debug,
 {
 	/// Create a new epoch change.
 	pub fn new() -> Self {
@@ -336,52 +479,27 @@ impl<Hash, Number, E: Epoch> EpochChanges<Hash, Number, E> where
 		self.inner.rebalance()
 	}
 
+	/// Cear gap epochs if any.
+	pub fn clear_gap(&mut self) {
+		self.gap = None;
+	}
+
 	/// Map the epoch changes from one storing data to a different one.
 	pub fn map<B, F>(self, mut f: F) -> EpochChanges<Hash, Number, B> where
 		B: Epoch<Slot=E::Slot>,
 		F: FnMut(&Hash, &Number, E) -> B,
 	{
 		EpochChanges {
-			inner: self.inner.map(&mut |_, _, header| {
-				match header {
-					PersistedEpochHeader::Genesis(epoch_0, epoch_1) => {
-						PersistedEpochHeader::Genesis(
-							EpochHeader {
-								start_slot: epoch_0.start_slot,
-								end_slot: epoch_0.end_slot,
-							},
-							EpochHeader {
-								start_slot: epoch_1.start_slot,
-								end_slot: epoch_1.end_slot,
-							},
-						)
-					},
-					PersistedEpochHeader::Regular(epoch_n) => {
-						PersistedEpochHeader::Regular(
-							EpochHeader {
-								start_slot: epoch_n.start_slot,
-								end_slot: epoch_n.end_slot,
-							},
-						)
-					},
+			inner: self.inner.map(&mut |_, _, header: PersistedEpochHeader<E>| header.map()),
+			gap: self.gap.map(|GapEpochs { current: (h, n, header), next }|
+				GapEpochs {
+					current: (h, n, header.map(&h, &n, &mut f)),
+					next: next.map(|(h, n, header)| (h, n, header.map(&h, &n, &mut f))),
 				}
-			}),
-			epochs: self.epochs.into_iter().map(|((hash, number), epoch)| {
-				let bepoch = match epoch {
-					PersistedEpoch::Genesis(epoch_0, epoch_1) => {
-						PersistedEpoch::Genesis(
-							f(&hash, &number, epoch_0),
-							f(&hash, &number, epoch_1),
-						)
-					},
-					PersistedEpoch::Regular(epoch_n) => {
-						PersistedEpoch::Regular(
-							f(&hash, &number, epoch_n)
-						)
-					},
-				};
-				((hash, number), bepoch)
-			}).collect(),
+			),
+			epochs: self.epochs.into_iter().map(|((hash, number), epoch)|
+				((hash, number), epoch.map(&hash, &number, &mut f))
+			).collect(),
 		}
 	}
 
@@ -424,6 +542,9 @@ impl<Hash, Number, E: Epoch> EpochChanges<Hash, Number, E> where
 
 	/// Get a reference to an epoch with given identifier.
 	pub fn epoch(&self, id: &EpochIdentifier<Hash, Number>) -> Option<&E> {
+		if let Some(e) = &self.gap.as_ref().and_then(|gap| gap.epoch(id)) {
+			return Some(e);
+		}
 		self.epochs.get(&(id.hash, id.number))
 			.and_then(|v| {
 				match v {
@@ -563,6 +684,16 @@ impl<Hash, Number, E: Epoch> EpochChanges<Hash, Number, E> where
 			return Ok(Some(ViableEpochDescriptor::UnimportedGenesis(slot)))
 		}
 
+		if let Some(gap) = &self.gap {
+			if let Some((hash, number, hdr, position)) = gap.matches(slot) {
+				return Ok(Some(ViableEpochDescriptor::Signaled(EpochIdentifier {
+					position,
+					hash,
+					number,
+				}, hdr)))
+			}
+		}
+
 		// We want to find the deepest node in the tree which is an ancestor
 		// of our block and where the start slot of the epoch was before the
 		// slot of our block. The genesis special-case doesn't need to look
@@ -619,7 +750,24 @@ impl<Hash, Number, E: Epoch> EpochChanges<Hash, Number, E> where
 	) -> Result<(), fork_tree::Error<D::Error>> {
 		let is_descendent_of = descendent_of_builder
 			.build_is_descendent_of(Some((hash, parent_hash)));
-		let header = PersistedEpochHeader::<E>::from(&epoch.0);
+		let slot = epoch.as_ref().start_slot();
+		let IncrementedEpoch(mut epoch) = epoch;
+		let header = PersistedEpochHeader::<E>::from(&epoch);
+
+		if let Some(gap) = &mut self.gap {
+			epoch = match gap.import(slot, hash.clone(), number.clone(), epoch) {
+				Ok(()) => {
+					return Ok(())
+				},
+				Err(e) => e
+			}
+		} else if !self.epochs.is_empty() && matches!(epoch, PersistedEpoch::Genesis(_, _))  {
+			self.gap = Some(GapEpochs{
+				current: (hash, number, epoch),
+				next: None,
+			});
+			return Ok(())
+		}
 
 		let res = self.inner.import(
 			hash,
@@ -630,7 +778,7 @@ impl<Hash, Number, E: Epoch> EpochChanges<Hash, Number, E> where
 
 		match res {
 			Ok(_) | Err(fork_tree::Error::Duplicate) => {
-				self.epochs.insert((hash, number), epoch.0);
+				self.epochs.insert((hash, number), epoch);
 				Ok(())
 			},
 			Err(e) => Err(e),
@@ -640,6 +788,31 @@ impl<Hash, Number, E: Epoch> EpochChanges<Hash, Number, E> where
 	/// Return the inner fork tree.
 	pub fn tree(&self) -> &ForkTree<Hash, Number, PersistedEpochHeader<E>> {
 		&self.inner
+	}
+
+	/// Reset to a specified pair of epochs, as if they were announced at blocks `parent_hash` and `hash`.
+	pub fn reset(&mut self, parent_hash: Hash, hash: Hash, number: Number, current: E, next: E) {
+		self.inner = ForkTree::new();
+		self.epochs.clear();
+		let persisted = PersistedEpoch::Regular(current);
+		let header = PersistedEpochHeader::from(&persisted);
+		let _res = self.inner.import(
+			parent_hash,
+			number - One::one(),
+			header,
+			&|_, _| Ok(false) as Result<bool, fork_tree::Error<ClientError>>,
+		);
+		self.epochs.insert((parent_hash, number - One::one()), persisted);
+
+		let persisted = PersistedEpoch::Regular(next);
+		let header = PersistedEpochHeader::from(&persisted);
+		let _res = self.inner.import(
+			hash,
+			number,
+			header,
+			&|_, _| Ok(true) as Result<bool, fork_tree::Error<ClientError>>,
+		);
+		self.epochs.insert((hash, number), persisted);
 	}
 }
 

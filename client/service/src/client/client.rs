@@ -30,7 +30,10 @@ use codec::{Encode, Decode};
 use hash_db::Prefix;
 use sp_core::{
 	convert_hash,
-	storage::{well_known_keys, ChildInfo, PrefixedStorageKey, StorageData, StorageKey},
+	storage::{
+		well_known_keys, ChildInfo, ChildType, PrefixedStorageKey,
+		StorageData, StorageKey, StorageChild,
+	},
 	ChangesTrieConfiguration, ExecutionContext, NativeOrEncoded,
 };
 #[cfg(feature="test-helpers")]
@@ -52,7 +55,8 @@ use sp_state_machine::{
 	DBValue, Backend as StateBackend, ChangesTrieAnchorBlockId,
 	prove_read, prove_child_read, ChangesTrieRootsStorage, ChangesTrieStorage,
 	ChangesTrieConfigurationRange, key_changes, key_changes_proof,
-	prove_range_read_with_size, read_range_proof_check,
+	prove_range_read_with_child_with_size, KeyValueStates, KeyValueStorageLevel,
+	read_range_proof_check_with_child_on_proving_backend, MAX_NESTED_TRIE_DEPTH,
 };
 use sc_executor::RuntimeVersion;
 use sp_consensus::{
@@ -66,7 +70,7 @@ use sp_blockchain::{
 	well_known_cache_keys::Id as CacheKeyId,
 	HeaderMetadata, CachedHeaderMetadata,
 };
-use sp_trie::StorageProof;
+use sp_trie::{StorageProof, CompactProof};
 use sp_api::{
 	CallApiAt, ConstructRuntimeApi, Core as CoreApi, ApiExt, ApiRef, ProvideRuntimeApi,
 	CallApiAtParams,
@@ -665,8 +669,6 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 			..
 		} = import_block;
 
-		assert!(justifications.is_some() && finalized || justifications.is_none());
-
 		if !intermediates.is_empty() {
 			return Err(Error::IncompletePipeline)
 		}
@@ -747,6 +749,8 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 	{
 		let parent_hash = import_headers.post().parent_hash().clone();
 		let status = self.backend.blockchain().status(BlockId::Hash(hash))?;
+		let parent_exists = self.backend.blockchain().status(BlockId::Hash(parent_hash))?
+			== blockchain::BlockStatus::InChain;
 		match (import_existing, status) {
 			(false, blockchain::BlockStatus::InChain) => return Ok(ImportResult::AlreadyInChain),
 			(false, blockchain::BlockStatus::Unknown) => {},
@@ -755,11 +759,13 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		}
 
 		let info = self.backend.blockchain().info();
+		let gap_block = info.block_gap.map_or(false, |(start, _)| *import_headers.post().number() == start);
 
 		// the block is lower than our last finalized block so it must revert
 		// finality, refusing import.
 		if status == blockchain::BlockStatus::Unknown
 			&& *import_headers.post().number() <= info.finalized_number
+			&& !gap_block
 		{
 			return Err(sp_blockchain::Error::NotInFinalizedChain);
 		}
@@ -797,14 +803,33 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 						if let Some(changes_trie_transaction) = changes_trie_tx {
 							operation.op.update_changes_trie(changes_trie_transaction)?;
 						}
-
 						Some((main_sc, child_sc))
 					}
 					sp_consensus::StorageChanges::Import(changes) => {
-						let storage = sp_storage::Storage {
-							top: changes.state.into_iter().collect(),
-							children_default: Default::default(),
-						};
+						let mut storage = sp_storage::Storage::default();
+						for state in changes.state.0.into_iter() {
+							if state.parent_storage_keys.len() == 0 && state.state_root.len() == 0 {
+								for (key, value) in state.key_values.into_iter() {
+									storage.top.insert(key, value);
+								}
+							} else {
+								for parent_storage in state.parent_storage_keys {
+									let storage_key = PrefixedStorageKey::new_ref(&parent_storage);
+									let storage_key = match ChildType::from_prefixed_key(&storage_key) {
+										Some((ChildType::ParentKeyId, storage_key)) => storage_key,
+										None => return Err(Error::Backend("Invalid child storage key.".to_string())),
+									};
+									let entry = storage.children_default.entry(storage_key.to_vec())
+										.or_insert_with(|| StorageChild {
+											data: Default::default(),
+											child_info: ChildInfo::new_default(storage_key),
+										});
+									for (key, value) in state.key_values.iter() {
+										entry.data.insert(key.clone(), value.clone());
+									}
+								}
+							}
+						}
 
 						let state_root = operation.op.reset_storage(storage)?;
 						if state_root != *import_headers.post().state_root() {
@@ -817,18 +842,6 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 					}
 				};
 
-				// ensure parent block is finalized to maintain invariant that
-				// finality is called sequentially.
-				if finalized {
-					self.apply_finality_with_block_hash(
-						operation,
-						parent_hash,
-						None,
-						info.best_hash,
-						make_notifications,
-					)?;
-				}
-
 				operation.op.update_cache(new_cache);
 				storage_changes
 
@@ -836,10 +849,10 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 			None => None,
 		};
 
-		let is_new_best = finalized || match fork_choice {
+		let is_new_best = !gap_block && (finalized || match fork_choice {
 			ForkChoiceStrategy::LongestChain => import_headers.post().number() > &info.best_number,
 			ForkChoiceStrategy::Custom(v) => v,
-		};
+		});
 
 		let leaf_state = if finalized {
 			NewBlockState::Final
@@ -849,7 +862,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 			NewBlockState::Normal
 		};
 
-		let tree_route = if is_new_best && info.best_hash != parent_hash {
+		let tree_route = if is_new_best && info.best_hash != parent_hash && parent_exists {
 			let route_from_best = sp_blockchain::tree_route(
 				self.backend.blockchain(),
 				info.best_hash,
@@ -914,17 +927,17 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		let at = BlockId::Hash(*parent_hash);
 		let state_action = std::mem::replace(&mut import_block.state_action, StateAction::Skip);
 		let (enact_state, storage_changes) = match (self.block_status(&at)?, state_action) {
-			(BlockStatus::Unknown, _) => return Ok(PrepareStorageChangesResult::Discard(ImportResult::UnknownParent)),
 			(BlockStatus::KnownBad, _) => return Ok(PrepareStorageChangesResult::Discard(ImportResult::KnownBad)),
-			(_, StateAction::Skip) => (false, None),
 			(BlockStatus::InChainPruned, StateAction::ApplyChanges(sp_consensus::StorageChanges::Changes(_))) =>
-			 	return Ok(PrepareStorageChangesResult::Discard(ImportResult::MissingState)),
+				return Ok(PrepareStorageChangesResult::Discard(ImportResult::MissingState)),
+			(_, StateAction::ApplyChanges(changes)) => (true, Some(changes)),
+			(BlockStatus::Unknown, _) => return Ok(PrepareStorageChangesResult::Discard(ImportResult::UnknownParent)),
+			(_, StateAction::Skip) => (false, None),
 			(BlockStatus::InChainPruned, StateAction::Execute) =>
 				return Ok(PrepareStorageChangesResult::Discard(ImportResult::MissingState)),
 			(BlockStatus::InChainPruned, StateAction::ExecuteIfPossible) => (false, None),
 			(_, StateAction::Execute) => (true, None),
 			(_, StateAction::ExecuteIfPossible) => (true, None),
-			(_, StateAction::ApplyChanges(changes)) => (true, Some(changes)),
 		};
 
 		let storage_changes = match (enact_state, storage_changes, &import_block.body) {
@@ -1338,66 +1351,148 @@ impl<B, E, Block, RA> ProofProvider<Block> for Client<B, E, Block, RA> where
 	fn read_proof_collection(
 		&self,
 		id: &BlockId<Block>,
-		start_key: &[u8],
+		start_key: &[Vec<u8>],
 		size_limit: usize,
-	) -> sp_blockchain::Result<(StorageProof, u32)> {
+	) -> sp_blockchain::Result<(CompactProof, u32)> {
 		let state = self.state_at(id)?;
-		Ok(prove_range_read_with_size::<_, HashFor<Block>>(
-				state,
-				None,
-				None,
-				size_limit,
-				Some(start_key)
-		)?)
+		let root = state.storage_root(std::iter::empty()).0;
+
+		let (proof, count) = prove_range_read_with_child_with_size::<_, HashFor<Block>>(
+			state,
+			size_limit,
+			start_key,
+		)?;
+		let proof = sp_trie::encode_compact::<sp_trie::Layout<HashFor<Block>>>(proof, root)
+			.map_err(|e| sp_blockchain::Error::from_state(Box::new(e)))?;
+		Ok((proof, count))
 	}
 
 	fn storage_collection(
 		&self,
 		id: &BlockId<Block>,
-		start_key: &[u8],
+		start_key: &[Vec<u8>],
 		size_limit: usize,
-	) -> sp_blockchain::Result<Vec<(Vec<u8>, Vec<u8>)>> {
+	) -> sp_blockchain::Result<Vec<(KeyValueStorageLevel, bool)>> {
+		if start_key.len() > MAX_NESTED_TRIE_DEPTH {
+			return Err(Error::Backend("Invalid start key.".to_string()));
+		}
 		let state = self.state_at(id)?;
-		let mut current_key = start_key.to_vec();
+		let child_info = |storage_key: &Vec<u8>| -> sp_blockchain::Result<ChildInfo> {
+			let storage_key = PrefixedStorageKey::new_ref(&storage_key);
+			match ChildType::from_prefixed_key(&storage_key) {
+				Some((ChildType::ParentKeyId, storage_key)) => Ok(ChildInfo::new_default(storage_key)),
+				None => Err(Error::Backend("Invalid child storage key.".to_string())),
+			}
+		};
+		let mut current_child = if start_key.len() == 2 {
+			let start_key = start_key.get(0).expect("checked len");
+			if let Some(child_root) = state.storage(&start_key)
+				.map_err(|e| sp_blockchain::Error::from_state(Box::new(e)))? {
+				Some((child_info(start_key)?, child_root))
+			} else {
+				return Err(Error::Backend("Invalid root start key.".to_string()));
+			}
+		} else {
+			None
+		};
+		let mut current_key = start_key.last().map(Clone::clone).unwrap_or(Vec::new());
 		let mut total_size = 0;
-		let mut entries = Vec::new();
-		while let Some(next_key) = state
-			.next_storage_key(&current_key)
-			.map_err(|e| sp_blockchain::Error::from_state(Box::new(e)))?
-		{
-			let value = state
-				.storage(next_key.as_ref())
-				.map_err(|e| sp_blockchain::Error::from_state(Box::new(e)))?
-				.unwrap_or_default();
-			let size = value.len() + next_key.len();
-			if total_size + size > size_limit && !entries.is_empty() {
+		let mut result = vec![(KeyValueStorageLevel {
+			state_root: Vec::new(),
+			key_values: Vec::new(),
+			parent_storage_keys: Vec::new(),
+		}, false)];
+
+		let mut child_roots = HashSet::new();
+		loop {
+			let mut entries = Vec::new();
+			let mut complete = true;
+			let mut switch_child_key = None;
+			while let Some(next_key) = if let Some(child) = current_child.as_ref() {
+				state
+					.next_child_storage_key(&child.0, &current_key)
+					.map_err(|e| sp_blockchain::Error::from_state(Box::new(e)))?
+			} else {
+				state
+					.next_storage_key(&current_key)
+					.map_err(|e| sp_blockchain::Error::from_state(Box::new(e)))?
+			} {
+				let value = if let Some(child) = current_child.as_ref() {
+					state
+						.child_storage(&child.0, next_key.as_ref())
+						.map_err(|e| sp_blockchain::Error::from_state(Box::new(e)))?
+						.unwrap_or_default()
+				} else {
+					state
+						.storage(next_key.as_ref())
+						.map_err(|e| sp_blockchain::Error::from_state(Box::new(e)))?
+						.unwrap_or_default()
+				};
+				let size = value.len() + next_key.len();
+				if total_size + size > size_limit && !entries.is_empty() {
+					complete = false;
+					break;
+				}
+				total_size += size;
+
+				if current_child.is_none()
+					&& sp_core::storage::well_known_keys::is_child_storage_key(next_key.as_slice()) {
+					if !child_roots.contains(value.as_slice()) {
+						child_roots.insert(value.clone());
+						switch_child_key = Some((next_key.clone(), value.clone()));
+						entries.push((next_key.clone(), value));
+						break;
+					}
+				}
+				entries.push((next_key.clone(), value));
+				current_key = next_key;
+			}
+			if let Some((child, child_root)) = switch_child_key.take() {
+				result[0].0.key_values.extend(entries.into_iter());
+				current_child = Some((child_info(&child)?, child_root));
+				current_key = Vec::new();
+			} else if let Some((child, child_root)) = current_child.take() {
+				current_key = child.into_prefixed_storage_key().into_inner();
+				result.push((KeyValueStorageLevel {
+					state_root: child_root,
+					key_values: entries,
+					parent_storage_keys: Vec::new(),
+				}, complete));
+				if !complete {
+					break;
+				}
+			} else {
+				result[0].0.key_values.extend(entries.into_iter());
+				result[0].1 = complete;
 				break;
 			}
-			total_size += size;
-			entries.push((next_key.clone(), value));
-			current_key = next_key;
 		}
-		Ok(entries)
-
+		Ok(result)
 	}
 
 	fn verify_range_proof(
 		&self,
 		root: Block::Hash,
-		proof: StorageProof,
-		start_key: &[u8],
-	) -> sp_blockchain::Result<(Vec<(Vec<u8>, Vec<u8>)>, bool)> {
-		Ok(read_range_proof_check::<HashFor<Block>>(
-				root,
-				proof,
-				None,
-				None,
-				None,
-				Some(start_key),
-		)?)
+		proof: CompactProof,
+		start_key: &[Vec<u8>],
+	) -> sp_blockchain::Result<(KeyValueStates, usize)> {
+		let mut db = sp_state_machine::MemoryDB::<HashFor<Block>>::new(&[]);
+		let _ = sp_trie::decode_compact::<sp_state_machine::Layout<HashFor<Block>>, _, _>(
+			&mut db,
+			proof.iter_compact_encoded_nodes(),
+			Some(&root),
+		).map_err(|e| {
+			sp_blockchain::Error::from_state(Box::new(e))
+		})?;
+		let proving_backend = sp_state_machine::TrieBackend::new(db, root);
+		let state = read_range_proof_check_with_child_on_proving_backend::<HashFor<Block>>(
+				&proving_backend,
+				start_key,
+		)?;
+
+		Ok(state)
 	}
 }
-
 
 impl<B, E, Block, RA> BlockBuilderProvider<B, Block, Self> for Client<B, E, Block, RA>
 	where
@@ -1868,7 +1963,14 @@ impl<B, E, Block, RA> sp_consensus::BlockImport<Block> for &Client<B, E, Block, 
 		&mut self,
 		block: BlockCheckParams<Block>,
 	) -> Result<ImportResult, Self::Error> {
-		let BlockCheckParams { hash, number, parent_hash, allow_missing_state, import_existing } = block;
+		let BlockCheckParams {
+			hash,
+			number,
+			parent_hash,
+			allow_missing_state,
+			import_existing,
+			allow_missing_parent,
+		} = block;
 
 		// Check the block against white and black lists if any are defined
 		// (i.e. fork blocks and bad blocks respectively)
@@ -1914,6 +2016,7 @@ impl<B, E, Block, RA> sp_consensus::BlockImport<Block> for &Client<B, E, Block, 
 			.map_err(|e| ConsensusError::ClientImport(e.to_string()))?
 			{
 				BlockStatus::InChainWithState | BlockStatus::Queued => {},
+				BlockStatus::Unknown if allow_missing_parent => {},
 				BlockStatus::Unknown => return Ok(ImportResult::UnknownParent),
 				BlockStatus::InChainPruned if allow_missing_state => {},
 				BlockStatus::InChainPruned => return Ok(ImportResult::MissingState),
