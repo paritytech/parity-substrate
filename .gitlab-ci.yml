@@ -265,7 +265,7 @@ node-bench-regression-guard:
     CI_IMAGE:                      "paritytech/node-bench-regression-guard:latest"
   before_script: [""]
   script:
-    - 'node-bench-regression-guard --reference artifacts/benches/master-* 
+    - 'node-bench-regression-guard --reference artifacts/benches/master-*
        --compare-with artifacts/benches/$CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA'
 
 cargo-check-subkey:
@@ -428,18 +428,40 @@ check-polkadot-companion-status:
   script:
     - ./.maintain/gitlab/check_polkadot_companion_status.sh
 
-check-polkadot-companion-build:
-  stage:                           build
+.check-companion-build:            &check-companion-build
+  stage:                           test
   <<:                              *docker-env
   <<:                              *test-refs-no-trigger
-  needs:
-    - job:                         test-linux-stable-int
-      artifacts:                   false
   script:
-    - ./.maintain/gitlab/check_polkadot_companion_build.sh
+    - ./.maintain/gitlab/check_companion_build.sh "$COMPANION_ORG" "$COMPANION_REPO" "$COMPANION_BUILD" "$COMPANION_DEPENDENCY"
   after_script:
-    - cd polkadot && git rev-parse --abbrev-ref HEAD
+    - cd "$COMPANION_REPO" && git rev-parse --abbrev-ref HEAD
   allow_failure:                   true
+
+check-polkadot-companion-build:
+  <<: *check-companion-build
+  variables:
+    COMPANION_ORG: paritytech
+    COMPANION_REPO: polkadot
+    COMPANION_DEPENDENCY: paritytech/grandpa-bridge-gadget
+  allow_failure: true
+
+check-cumulus-companion-build:
+  <<: *check-companion-build
+  variables:
+    COMPANION_ORG: paritytech
+    COMPANION_REPO: cumulus
+    COMPANION_BUILD: "cargo check"
+    COMPANION_DEPENDENCY: paritytech/polkadot
+  allow_failure: true
+
+check-beefy-companion-build:
+  <<: *check-companion-build
+  variables:
+    COMPANION_ORG: paritytech
+    COMPANION_REPO: grandpa-bridge-gadget
+    COMPANION_BUILD: "cargo check"
+  allow_failure: true
 
 test-browser-node:
   stage:                           build
@@ -568,7 +590,7 @@ build-rust-doc:
     - buildah push --format=v2s2 "$IMAGE_NAME:latest"
   after_script:
     - buildah logout "$IMAGE_NAME"
-    # pass artifacts to the trigger-simnet job 
+    # pass artifacts to the trigger-simnet job
     - echo "IMAGE_NAME=${IMAGE_NAME}" | tee -a ./artifacts/$PRODUCT/build.env
     - IMAGE_TAG="$(cat ./artifacts/$PRODUCT/VERSION)"
     - echo "IMAGE_TAG=${IMAGE_TAG}"   | tee -a ./artifacts/$PRODUCT/build.env
@@ -702,7 +724,7 @@ trigger-simnet:
     - if: $CI_COMMIT_REF_NAME == "master"
   needs:
     - job:                         publish-docker-substrate
-  # `build.env` brings here `$IMAGE_NAME` and `$IMAGE_TAG` (`$VERSION` here, 
+  # `build.env` brings here `$IMAGE_NAME` and `$IMAGE_TAG` (`$VERSION` here,
   # i.e. `2643-0.8.29-5f689e0a-6b24dc54`).
   variables:
     TRGR_PROJECT:                  ${CI_PROJECT_NAME}
