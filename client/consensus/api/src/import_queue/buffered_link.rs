@@ -42,7 +42,7 @@ use futures::prelude::*;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_utils::mpsc::{TracingUnboundedSender, TracingUnboundedReceiver, tracing_unbounded};
 use std::{pin::Pin, task::Context, task::Poll};
-use crate::import_queue::{Origin, Link, BlockImportStatus, BlockImportError};
+use crate::import_queue::{Origin, Link};
 
 use super::BlockImportResult;
 
