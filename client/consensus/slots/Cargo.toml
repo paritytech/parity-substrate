@@ -27,6 +27,7 @@ sp-state-machine = { version = "0.9.0", path = "../../../primitives/state-machin
 sp-api = { version = "3.0.0", path = "../../../primitives/api" }
 sc-telemetry = { version = "3.0.0", path = "../../telemetry" }
 sp-consensus = { version = "0.9.0", path = "../../../primitives/consensus/common" }
+sc-consensus-api = { version = "0.9.0", path = "../../consensus/api" }
 sp-inherents = { version = "3.0.0", path = "../../../primitives/inherents" }
 sp-timestamp = { version = "3.0.0", path = "../../../primitives/timestamp" }
 futures = "0.3.9"

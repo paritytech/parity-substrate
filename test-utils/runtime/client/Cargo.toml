@@ -13,6 +13,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 sc-light = { version = "3.0.0", path = "../../../client/light" }
+sc-consensus-api = { version = "0.9.0", path = "../../../client/consensus/api" }
 sp-consensus = { version = "0.9.0", path = "../../../primitives/consensus/common" }
 sc-block-builder = { version = "0.9.0", path = "../../../client/block-builder" }
 substrate-test-client = { version = "2.0.0", path = "../../client" }

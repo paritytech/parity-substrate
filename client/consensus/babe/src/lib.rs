@@ -96,12 +96,16 @@ use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{
 	Error as ClientError, HeaderBackend, HeaderMetadata, ProvideCache, Result as ClientResult,
 };
-use sp_consensus::{import_queue::BoxJustificationImport, CanAuthorWith, ImportResult};
 use sp_consensus::{
-	import_queue::{BasicQueue, CacheKeyId, DefaultImportQueue, Verifier},
-	BlockCheckParams, BlockImport, BlockImportParams, BlockOrigin, Environment,
-	Error as ConsensusError, ForkChoiceStrategy, Proposer, SelectChain, SlotData,
-	StateAction,
+	import_queue::CacheKeyId, Environment, CanAuthorWith,
+	Error as ConsensusError, Proposer, SelectChain, SlotData,
+};
+use sc_consensus_api::{
+	import_queue::{BoxJustificationImport, BasicQueue, DefaultImportQueue, Verifier},
+	block_import::{
+		BlockCheckParams, BlockImport, BlockImportParams, BlockOrigin,
+		ForkChoiceStrategy, ImportResult,	StateAction
+	},
 };
 use sp_consensus_babe::inherents::BabeInherentData;
 use sp_consensus_slots::Slot;
@@ -461,7 +465,7 @@ where
 		+ Sync
 		+ 'static,
 	SO: SyncOracle + Send + Sync + Clone + 'static,
-	L: sp_consensus::JustificationSyncLink<B> + 'static,
+	L: sc_consensus_api::JustificationSyncLink<B> + 'static,
 	CIDP: CreateInherentDataProviders<B, ()> + Send + Sync + 'static,
 	CIDP::InherentDataProviders: InherentDataProviderExt + Send,
 	BS: BackoffAuthoringBlocksStrategy<NumberFor<B>> + Send + 'static,
@@ -502,7 +506,12 @@ where
 
 	let (worker_tx, worker_rx) = channel(HANDLE_BUFFER_SIZE);
 
-	let answer_requests = answer_requests(worker_rx, config.0, client, babe_link.epoch_changes.clone());
+	let answer_requests = answer_requests(
+		worker_rx,
+		config.0,
+		client,
+		babe_link.epoch_changes.clone());
+
 	Ok(BabeWorker {
 		inner: Box::pin(future::join(inner, answer_requests).map(|_| ())),
 		slot_notification_sinks,
@@ -654,7 +663,7 @@ where
 	E::Proposer: Proposer<B, Error = Error, Transaction = sp_api::TransactionFor<C, B>>,
 	I: BlockImport<B, Transaction = sp_api::TransactionFor<C, B>> + Send + Sync + 'static,
 	SO: SyncOracle + Send + Clone,
-	L: sp_consensus::JustificationSyncLink<B>,
+	L: sc_consensus_api::JustificationSyncLink<B>,
 	BS: BackoffAuthoringBlocksStrategy<NumberFor<B>>,
 	Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
@@ -761,7 +770,7 @@ where
 		Self::Claim,
 		Self::EpochData,
 	) -> Result<
-		sp_consensus::BlockImportParams<B, I::Transaction>,
+		sc_consensus_api::BlockImportParams<B, I::Transaction>,
 		sp_consensus::Error> + Send + 'static>
 	{
 		let keystore = self.keystore.clone();
@@ -792,7 +801,7 @@ where
 			import_block.post_digests.push(digest_item);
 			import_block.body = Some(body);
 			import_block.state_action = StateAction::ApplyChanges(
-				sp_consensus::StorageChanges::Changes(storage_changes)
+				sc_consensus_api::StorageChanges::Changes(storage_changes)
 			);
 			import_block.intermediates.insert(
 				Cow::from(INTERMEDIATE_KEY),
@@ -890,8 +899,10 @@ fn find_next_epoch_digest<B: BlockT>(header: &B::Header)
 		trace!(target: "babe", "Checking log {:?}, looking for epoch change digest.", log);
 		let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&BABE_ENGINE_ID));
 		match (log, epoch_digest.is_some()) {
-			(Some(ConsensusLog::NextEpochData(_)), true) => return Err(babe_err(Error::MultipleEpochChangeDigests)),
-			(Some(ConsensusLog::NextEpochData(epoch)), false) => epoch_digest = Some(epoch),
+			(Some(ConsensusLog::NextEpochData(_)), true) =>
+				return Err(babe_err(Error::MultipleEpochChangeDigests)),
+			(Some(ConsensusLog::NextEpochData(epoch)), false) =>
+				epoch_digest = Some(epoch),
 			_ => trace!(target: "babe", "Ignoring digest not meant for us"),
 		}
 	}
@@ -909,8 +920,10 @@ fn find_next_config_digest<B: BlockT>(header: &B::Header)
 		trace!(target: "babe", "Checking log {:?}, looking for epoch change digest.", log);
 		let log = log.try_to::<ConsensusLog>(OpaqueDigestItemId::Consensus(&BABE_ENGINE_ID));
 		match (log, config_digest.is_some()) {
-			(Some(ConsensusLog::NextConfigData(_)), true) => return Err(babe_err(Error::MultipleConfigChangeDigests)),
-			(Some(ConsensusLog::NextConfigData(config)), false) => config_digest = Some(config),
+			(Some(ConsensusLog::NextConfigData(_)), true) =>
+				return Err(babe_err(Error::MultipleConfigChangeDigests)),
+			(Some(ConsensusLog::NextConfigData(config)), false) =>
+				config_digest = Some(config),
 			_ => trace!(target: "babe", "Ignoring digest not meant for us"),
 		}
 	}
@@ -1630,8 +1643,11 @@ pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, CAW, CIDP>(
 	can_author_with: CAW,
 	telemetry: Option<TelemetryHandle>,
 ) -> ClientResult<DefaultImportQueue<Block, Client>> where
-	Inner: BlockImport<Block, Error = ConsensusError, Transaction = sp_api::TransactionFor<Client, Block>>
-		+ Send + Sync + 'static,
+	Inner: BlockImport<
+		Block,
+		Error = ConsensusError,
+		Transaction = sp_api::TransactionFor<Client, Block>
+	> + Send + Sync + 'static,
 	Client: ProvideRuntimeApi<Block> + ProvideCache<Block> + HeaderBackend<Block>
 		+ HeaderMetadata<Block, Error = sp_blockchain::Error> + AuxStore
 		+ Send + Sync + 'static,

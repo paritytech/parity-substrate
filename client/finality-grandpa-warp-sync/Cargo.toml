@@ -31,6 +31,7 @@ sp-runtime = { version = "3.0.0", path = "../../primitives/runtime" }
 finality-grandpa = { version = "0.14.1" }
 rand = "0.8"
 sc-block-builder = { version = "0.9.0", path = "../block-builder" }
+sc-consensus-api = { version = "0.9.0", path = "../../client/consensus/api" }
 sp-consensus = { version = "0.9.0", path = "../../primitives/consensus/common" }
 sp-keyring = { version = "3.0.0", path = "../../primitives/keyring" }
 substrate-test-runtime-client = { version = "2.0.0",  path = "../../test-utils/runtime/client" }

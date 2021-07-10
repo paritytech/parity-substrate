@@ -30,8 +30,8 @@ use sp_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use sc_chain_spec::get_extension;
 use sp_consensus::{
 	block_validation::{BlockAnnounceValidator, DefaultBlockAnnounceValidator, Chain},
-	import_queue::ImportQueue,
 };
+use sc_consensus_api::ImportQueue;
 use jsonrpc_pubsub::manager::SubscriptionManager;
 use futures::{
 	FutureExt, StreamExt,

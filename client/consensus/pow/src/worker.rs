@@ -18,8 +18,8 @@
 
 use std::{pin::Pin, time::Duration, collections::HashMap, borrow::Cow};
 use sc_client_api::ImportNotifications;
-use sp_consensus::{Proposal, BlockOrigin, BlockImportParams, StorageChanges,
-	StateAction, import_queue::BoxBlockImport};
+use sp_consensus::Proposal;
+use sc_consensus_api::{BlockOrigin, BlockImportParams, StorageChanges, StateAction, BoxBlockImport};
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, Header as HeaderT},
@@ -62,7 +62,7 @@ pub struct MiningWorker<
 	Block: BlockT,
 	Algorithm: PowAlgorithm<Block>,
 	C: sp_api::ProvideRuntimeApi<Block>,
-	L: sp_consensus::JustificationSyncLink<Block>,
+	L: sc_consensus_api::JustificationSyncLink<Block>,
 	Proof,
 > {
 	pub(crate) build: Option<MiningBuild<Block, Algorithm, C, Proof>>,
@@ -77,7 +77,7 @@ where
 	C: sp_api::ProvideRuntimeApi<Block>,
 	Algorithm: PowAlgorithm<Block>,
 	Algorithm::Difficulty: 'static + Send,
-	L: sp_consensus::JustificationSyncLink<Block>,
+	L: sc_consensus_api::JustificationSyncLink<Block>,
 	sp_api::TransactionFor<C, Block>: Send + 'static,
 {
 	/// Get the current best hash. `None` if the worker has just started or the client is doing

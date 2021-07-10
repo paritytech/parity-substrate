@@ -36,7 +36,7 @@ use libp2p::swarm::{
 };
 use log::debug;
 use prost::Message;
-use sp_consensus::{BlockOrigin, import_queue::{IncomingBlock, Origin}};
+use sc_consensus_api::{import_queue::{IncomingBlock, Origin}, block_import::BlockOrigin};
 use sp_runtime::{traits::{Block as BlockT, NumberFor}, Justifications};
 use std::{
 	borrow::Cow,

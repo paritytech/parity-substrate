@@ -59,10 +59,11 @@ use sp_api::ProvideRuntimeApi;
 use sp_consensus_pow::{Seal, TotalDifficulty, POW_ENGINE_ID};
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_consensus::{
-	BlockImportParams, BlockOrigin, ForkChoiceStrategy, SyncOracle, Environment, Proposer,
-	SelectChain, Error as ConsensusError, CanAuthorWith, BlockImport, BlockCheckParams, ImportResult,
+	SyncOracle, Environment, Proposer,
+	SelectChain, Error as ConsensusError, CanAuthorWith
 };
-use sp_consensus::import_queue::{
+use sc_consensus_api::{
+	BlockImportParams, BlockOrigin, ForkChoiceStrategy, BlockImport, BlockCheckParams, ImportResult,
 	BoxBlockImport, BasicQueue, Verifier, BoxJustificationImport,
 };
 use codec::{Encode, Decode};
@@ -557,7 +558,7 @@ where
 	E::Error: std::fmt::Debug,
 	E::Proposer: Proposer<Block, Transaction = sp_api::TransactionFor<C, Block>>,
 	SO: SyncOracle + Clone + Send + Sync + 'static,
-	L: sp_consensus::JustificationSyncLink<Block>,
+	L: sc_consensus_api::JustificationSyncLink<Block>,
 	CIDP: CreateInherentDataProviders<Block, ()>,
 	CAW: CanAuthorWith<Block> + Clone + Send + 'static,
 {

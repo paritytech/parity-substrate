@@ -30,6 +30,7 @@ sc-client-db = { version = "0.9.0", default-features = false, path = "../../db" 
 futures = { version = "0.3.1", features = ["compat"] }
 sc-service = { version = "0.9.0", features = ["test-helpers"], path = "../../service" }
 sc-network = { version = "0.9.0", path = "../../network" }
+sc-consensus-api = { version = "0.9.0", path = "../../../client/consensus/api" }
 sp-consensus = { version = "0.9.0", path = "../../../primitives/consensus/common" }
 sp-runtime = { version = "3.0.0", path = "../../../primitives/runtime" }
 sp-core = { version = "3.0.0", path = "../../../primitives/core" }

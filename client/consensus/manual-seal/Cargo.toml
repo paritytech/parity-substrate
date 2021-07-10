@@ -28,6 +28,7 @@ async-trait = "0.1.42"
 sc-client-api = { path = "../../api", version = "3.0.0"}
 sc-consensus-babe = { path = "../../consensus/babe", version = "0.9.0"}
 sc-consensus-epochs = { path = "../../consensus/epochs", version = "0.9.0"}
+sc-consensus-api = { path = "../../consensus/api", version = "0.9.0"}
 sp-consensus-babe = { path = "../../../primitives/consensus/babe", version = "0.9.0"}
 
 sc-transaction-pool = { path = "../../transaction-pool", version = "3.0.0"}

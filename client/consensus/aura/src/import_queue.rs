@@ -26,11 +26,14 @@ use log::{debug, info, trace};
 use prometheus_endpoint::Registry;
 use codec::{Encode, Decode, Codec};
 use sp_consensus::{
-	BlockImport, CanAuthorWith, ForkChoiceStrategy, BlockImportParams,
-	BlockOrigin, Error as ConsensusError,
+	CanAuthorWith,
+	Error as ConsensusError,
+};
+use sc_consensus_api::{
+	block_import::{BlockImport, ForkChoiceStrategy, BlockImportParams,BlockOrigin},
 	import_queue::{
 		Verifier, BasicQueue, DefaultImportQueue, BoxJustificationImport,
-	},
+	}
 };
 use sc_client_api::{BlockOf, UsageProvider, backend::AuxStore};
 use sp_blockchain::{well_known_cache_keys::{self, Id as CacheKeyId}, ProvideCache, HeaderBackend};

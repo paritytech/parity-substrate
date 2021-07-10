@@ -18,14 +18,17 @@
 use std::{pin::Pin, time::Duration, marker::PhantomData};
 use futures::{prelude::*, task::Context, task::Poll};
 use futures_timer::Delay;
-use sp_runtime::{Justification, Justifications, traits::{Block as BlockT, Header as HeaderT, NumberFor}};
+use sp_runtime::{
+	Justification, Justifications, 
+	traits::{Block as BlockT, Header as HeaderT, NumberFor}
+};
 use sp_utils::mpsc::{TracingUnboundedSender, tracing_unbounded, TracingUnboundedReceiver};
 use prometheus_endpoint::Registry;
 
 use crate::{
 	block_import::BlockOrigin,
 	import_queue::{
-		BlockImportResult, BlockImportError, Verifier, BoxBlockImport,
+		BlockImportStatus, BlockImportError, Verifier, BoxBlockImport,
 		BoxJustificationImport, ImportQueue, Link, Origin,
 		IncomingBlock, import_single_block_metered,
 		buffered_link::{self, BufferedLinkSender, BufferedLinkReceiver},
@@ -145,14 +148,18 @@ mod worker_messages {
 	use super::*;
 
 	pub struct ImportBlocks<B: BlockT>(pub BlockOrigin, pub Vec<IncomingBlock<B>>);
-	pub struct ImportJustification<B: BlockT>(pub Origin, pub B::Hash, pub NumberFor<B>, pub Justification);
+	pub struct ImportJustification<B: BlockT>(
+		pub Origin,
+		pub B::Hash,
+		pub NumberFor<B>,
+		pub Justification);
 }
 
 /// The process of importing blocks.
 ///
-/// This polls the `block_import_receiver` for new blocks to import and than awaits on importing these blocks.
-/// After each block is imported, this async function yields once to give other futures the possibility
-/// to be run.
+/// This polls the `block_import_receiver` for new blocks to import and than awaits on
+/// importing these blocks. After each block is imported, this async function yields once
+/// to give other futures the possibility to be run.
 ///
 /// Returns when `block_import` ended.
 async fn block_import_process<B: BlockT, Transaction: Send + 'static>(
@@ -327,12 +334,13 @@ struct ImportManyBlocksResult<B: BlockT> {
 	/// The total number of blocks processed.
 	block_count: usize,
 	/// The import results for each block.
-	results: Vec<(Result<BlockImportResult<NumberFor<B>>, BlockImportError>, B::Hash)>,
+	results: Vec<(Result<BlockImportStatus<NumberFor<B>>, BlockImportError>, B::Hash)>,
 }
 
 /// Import several blocks at once, returning import result for each block.
 ///
-/// This will yield after each imported block once, to ensure that other futures can be called as well.
+/// This will yield after each imported block once, to ensure that other futures can
+/// be called as well.
 async fn import_many_blocks<B: BlockT, V: Verifier<B>, Transaction: Send + 'static>(
 	import_handle: &mut BoxBlockImport<B, Transaction>,
 	blocks_origin: BlockOrigin,
@@ -411,11 +419,11 @@ async fn import_many_blocks<B: BlockT, V: Verifier<B>, Transaction: Send + 'stat
 	}
 }
 
-/// A future that will always `yield` on the first call of `poll` but schedules the current task for
-/// re-execution.
+/// A future that will always `yield` on the first call of `poll` but schedules the
+/// current task for re-execution.
 ///
-/// This is done by getting the waker and calling `wake_by_ref` followed by returning `Pending`.
-/// The next time the `poll` is called, it will return `Ready`.
+/// This is done by getting the waker and calling `wake_by_ref` followed by returning
+/// `Pending`. The next time the `poll` is called, it will return `Ready`.
 struct Yield(bool);
 
 impl Yield {
@@ -443,7 +451,9 @@ mod tests {
 	use super::*;
 	use crate::{
 		import_queue::{CacheKeyId, Verifier},
-		BlockCheckParams, BlockImport, BlockImportParams, ImportResult, JustificationImport,
+	};
+	use crate::block_import::{
+		BlockImportParams, ImportResult, BlockCheckParams, BlockImport, JustificationImport
 	};
 	use futures::{executor::block_on, Future};
 	use sp_test_primitives::{Block, BlockNumber, Extrinsic, Hash, Header};
@@ -464,7 +474,7 @@ mod tests {
 
 	#[async_trait::async_trait]
 	impl BlockImport<Block> for () {
-		type Error = crate::Error;
+		type Error = sp_consensus::Error;
 		type Transaction = Extrinsic;
 
 		async fn check_block(
@@ -485,7 +495,7 @@ mod tests {
 
 	#[async_trait::async_trait]
 	impl JustificationImport<Block> for () {
-		type Error = crate::Error;
+		type Error = sp_consensus::Error;
 
 		async fn on_start(&mut self) -> Vec<(Hash, BlockNumber)> {
 			Vec::new()
@@ -517,7 +527,7 @@ mod tests {
 			&mut self,
 			_imported: usize,
 			_count: usize,
-			results: Vec<(Result<BlockImportResult<BlockNumber>, BlockImportError>, Hash)>,
+			results: Vec<(Result<BlockImportStatus<BlockNumber>, BlockImportError>, Hash)>,
 		) {
 			if let Some(hash) = results.into_iter().find_map(|(r, h)| r.ok().map(|_| h)) {
 				self.events.push(Event::BlockImported(hash));

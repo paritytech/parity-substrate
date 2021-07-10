@@ -32,7 +32,7 @@ use sp_keystore::SyncCryptoStorePtr;
 
 use sp_api::{ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
-use sp_consensus::BlockImportParams;
+use sc_consensus_api::BlockImportParams;
 use sp_consensus_slots::Slot;
 use sp_consensus_babe::{
 	BabeApi, inherents::BabeInherentData, ConsensusLog, BABE_ENGINE_ID, AuthorityId,

@@ -224,7 +224,7 @@ mod tests {
 	use sc_block_builder::BlockBuilderProvider;
 	use sc_finality_grandpa::{AuthoritySetChanges, GrandpaJustification};
 	use sp_blockchain::HeaderBackend;
-	use sp_consensus::BlockOrigin;
+	use sc_consensus_api::BlockOrigin;
 	use sp_finality_grandpa::GRANDPA_ENGINE_ID;
 	use sp_keyring::Ed25519Keyring;
 	use sp_runtime::{generic::BlockId, traits::Header as _};

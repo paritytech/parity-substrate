@@ -37,7 +37,7 @@ use substrate_test_runtime_client::{
 	runtime::{Hash, Block, Header}, TestClient, ClientBlockImportExt,
 };
 use sp_api::{StorageTransactionCache, ProofRecorder};
-use sp_consensus::BlockOrigin;
+use sc_consensus_api::BlockOrigin;
 use sc_executor::{NativeExecutor, WasmExecutionMethod, RuntimeVersion, NativeVersion};
 use sp_core::{H256, NativeOrEncoded, testing::TaskExecutor};
 use sc_client_api::{

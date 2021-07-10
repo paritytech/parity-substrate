@@ -18,7 +18,7 @@
 
 //! RPC interface for the `ManualSeal` Engine.
 
-use sp_consensus::ImportedAux;
+use sc_consensus_api::ImportedAux;
 use jsonrpc_core::Error;
 use jsonrpc_derive::rpc;
 use futures::{

@@ -42,7 +42,9 @@ use futures::prelude::*;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_utils::mpsc::{TracingUnboundedSender, TracingUnboundedReceiver, tracing_unbounded};
 use std::{pin::Pin, task::Context, task::Poll};
-use crate::import_queue::{Origin, Link, BlockImportResult, BlockImportError};
+use crate::import_queue::{Origin, Link, BlockImportStatus, BlockImportError};
+
+use super::BlockImportResult;
 
 /// Wraps around an unbounded channel from the `futures` crate. The sender implements `Link` and
 /// can be used to buffer commands, and the receiver can be used to poll said commands and transfer
@@ -78,7 +80,11 @@ impl<B: BlockT> Clone for BufferedLinkSender<B> {
 
 /// Internal buffered message.
 enum BlockImportWorkerMsg<B: BlockT> {
-	BlocksProcessed(usize, usize, Vec<(Result<BlockImportResult<NumberFor<B>>, BlockImportError>, B::Hash)>),
+	BlocksProcessed(
+		usize,
+		usize,
+		Vec<(BlockImportResult<B>, B::Hash)>
+	),
 	JustificationImported(Origin, B::Hash, NumberFor<B>, bool),
 	RequestJustification(B::Hash, NumberFor<B>),
 }
@@ -88,7 +94,7 @@ impl<B: BlockT> Link<B> for BufferedLinkSender<B> {
 		&mut self,
 		imported: usize,
 		count: usize,
-		results: Vec<(Result<BlockImportResult<NumberFor<B>>, BlockImportError>, B::Hash)>
+		results: Vec<(BlockImportResult<B>, B::Hash)>
 	) {
 		let _ = self.tx.unbounded_send(BlockImportWorkerMsg::BlocksProcessed(imported, count, results));
 	}
