@@ -1,6 +1,6 @@
 [package]
 name = "pallet-collective"
-version = "3.0.0"
+version = "3.1.0"
 authors = ["Parity Technologies <admin@parity.io>"]
 edition = "2018"
 license = "Apache-2.0"
@@ -14,14 +14,16 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
+log = { version = "0.4.14", default-features = false }
+
 sp-core = { version = "3.0.0", default-features = false, path = "../../primitives/core" }
-sp-std = { version = "3.0.0", default-features = false, path = "../../primitives/std" }
 sp-io = { version = "3.0.0", default-features = false, path = "../../primitives/io" }
 sp-runtime = { version = "3.0.0", default-features = false, path = "../../primitives/runtime" }
+sp-std = { version = "3.0.0", default-features = false, path = "../../primitives/std" }
+
 frame-benchmarking = { version = "3.1.0", default-features = false, path = "../benchmarking", optional = true }
 frame-support = { version = "3.0.0", default-features = false, path = "../support" }
 frame-system = { version = "3.0.0", default-features = false, path = "../system" }
-log = { version = "0.4.14", default-features = false }
 
 [dev-dependencies]
 hex-literal = "0.3.1"
@@ -31,13 +33,13 @@ pallet-balances = { version = "3.0.0", path = "../balances" }
 default = ["std"]
 std = [
 	"codec/std",
-	"sp-core/std",
-	"sp-std/std",
-	"sp-io/std",
-	"frame-support/std",
-	"sp-runtime/std",
-	"frame-system/std",
 	"log/std",
+	"sp-core/std",
+	"sp-io/std",
+	"sp-runtime/std",
+	"sp-std/std",
+	"frame-support/std",
+	"frame-system/std",
 ]
 runtime-benchmarks = [
 	"frame-benchmarking",

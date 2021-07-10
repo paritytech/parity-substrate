@@ -42,27 +42,25 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![recursion_limit = "128"]
 
-use sp_std::{prelude::*, result};
+use codec::{Decode, Encode};
 use sp_core::u32_trait::Value as U32;
 use sp_io::storage;
 use sp_runtime::{RuntimeDebug, traits::Hash};
+use sp_std::{prelude::*, result, marker::PhantomData};
 
 use frame_support::{
-	decl_error, decl_event, decl_module, decl_storage, ensure, BoundedVec,
-	codec::{Decode, Encode},
-	dispatch::{
-		DispatchError, DispatchResult, DispatchResultWithPostInfo, Dispatchable, Parameter,
-		PostDispatchInfo,
-	},
+	ensure,
+	dispatch::{DispatchError, DispatchResultWithPostInfo, Dispatchable, PostDispatchInfo},
 	traits::{ChangeMembers, EnsureOrigin, Get, InitializeMembers, GetBacking, Backing},
-	weights::{DispatchClass, GetDispatchInfo, Weight, Pays},
+	weights::{GetDispatchInfo, Weight},
 };
-use frame_system::{self as system, ensure_signed, ensure_root};
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
-
+pub mod migrations;
 pub mod weights;
+
+pub use pallet::*;
 pub use weights::WeightInfo;
 
 /// Simple index type for proposal counting.
@@ -120,40 +118,7 @@ impl DefaultVote for MoreThanMajorityThenPrimeDefaultVote {
 	}
 }
 
-pub trait Config<I: Instance=DefaultInstance>: frame_system::Config {
-	/// The outer origin type.
-	type Origin: From<RawOrigin<Self::AccountId, I>>;
-
-	/// The outer call dispatch type.
-	type Proposal: Parameter
-		+ Dispatchable<Origin=<Self as Config<I>>::Origin, PostInfo=PostDispatchInfo>
-		+ From<frame_system::Call<Self>>
-		+ GetDispatchInfo;
-
-	/// The outer event type.
-	type Event: From<Event<Self, I>> + Into<<Self as frame_system::Config>::Event>;
-
-	/// The time-out for council motions.
-	type MotionDuration: Get<Self::BlockNumber>;
-
-	/// Maximum number of proposals allowed to be active in parallel.
-	type MaxProposals: Get<ProposalIndex>;
-
-	/// The maximum number of members supported by the pallet. Used for weight estimation.
-	///
-	/// NOTE:
-	/// + Benchmarks will need to be re-run and weights adjusted if this changes.
-	/// + This pallet assumes that dependents keep to the limit without enforcing it.
-	type MaxMembers: Get<MemberCount>;
-
-	/// Default vote strategy of this collective.
-	type DefaultVote: DefaultVote;
-
-	/// Weight information for extrinsics in this pallet.
-	type WeightInfo: WeightInfo;
-}
-
-/// Origin for the collective module.
+/// Origin for the collective pallet.
 #[derive(PartialEq, Eq, Clone, RuntimeDebug, Encode, Decode)]
 pub enum RawOrigin<AccountId, I> {
 	/// It has been condoned by a given number of members of the collective from a given total.
@@ -161,7 +126,7 @@ pub enum RawOrigin<AccountId, I> {
 	/// It has been condoned by a single member of the collective.
 	Member(AccountId),
 	/// Dummy to manage the fact we have instancing.
-	_Phantom(sp_std::marker::PhantomData<I>),
+	_Phantom(PhantomData<I>),
 }
 
 impl<AccountId, I> GetBacking for RawOrigin<AccountId, I> {
@@ -172,9 +137,6 @@ impl<AccountId, I> GetBacking for RawOrigin<AccountId, I> {
 		}
 	}
 }
-
-/// Origin for the collective module.
-pub type Origin<T, I=DefaultInstance> = RawOrigin<<T as frame_system::Config>::AccountId, I>;
 
 #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
 /// Info for keeping track of a motion being voted on.
@@ -191,63 +153,166 @@ pub struct Votes<AccountId, BlockNumber> {
 	end: BlockNumber,
 }
 
-decl_storage! {
-	trait Store for Module<T: Config<I>, I: Instance=DefaultInstance> as Collective {
-		/// The hashes of the active proposals.
-		pub Proposals get(fn proposals): BoundedVec<T::Hash, T::MaxProposals>;
-		/// Actual proposal for a given hash, if it's current.
-		pub ProposalOf get(fn proposal_of):
-			map hasher(identity) T::Hash => Option<<T as Config<I>>::Proposal>;
-		/// Votes on a given proposal, if it is ongoing.
-		pub Voting get(fn voting):
-			map hasher(identity) T::Hash => Option<Votes<T::AccountId, T::BlockNumber>>;
-		/// Proposals so far.
-		pub ProposalCount get(fn proposal_count): u32;
-		/// The current members of the collective. This is stored sorted (just by value).
-		pub Members get(fn members): Vec<T::AccountId>;
-		/// The prime member that helps determine the default vote behavior in case of absentations.
-		pub Prime get(fn prime): Option<T::AccountId>;
-	}
-	add_extra_genesis {
-		config(phantom): sp_std::marker::PhantomData<I>;
-		config(members): Vec<T::AccountId>;
-		build(|config| Module::<T, I>::initialize_members(&config.members))
-	}
-}
+#[frame_support::pallet]
+pub mod pallet {
+	use frame_support::pallet_prelude::*;
+	use frame_system::pallet_prelude::*;
+	use super::*;
 
-decl_event! {
-	pub enum Event<T, I=DefaultInstance> where
-		<T as frame_system::Config>::Hash,
-		<T as frame_system::Config>::AccountId,
-	{
+	#[pallet::pallet]
+	#[pallet::generate_store(pub(super) trait Store)]
+	pub struct Pallet<T, I = ()>(PhantomData<(T, I)>);
+
+	#[pallet::config]
+	pub trait Config<I: 'static = ()>: frame_system::Config {
+		/// The outer origin type.
+		type Origin: From<RawOrigin<Self::AccountId, I>>;
+
+		/// The outer call dispatch type.
+		type Proposal: Parameter
+			+ Dispatchable<Origin = <Self as Config<I>>::Origin, PostInfo = PostDispatchInfo>
+			+ From<frame_system::Call<Self>>
+			+ GetDispatchInfo;
+
+		/// The outer event type.
+		type Event: From<Event<Self, I>> + IsType<<Self as frame_system::Config>::Event>;
+
+		/// The time-out for council motions.
+		type MotionDuration: Get<Self::BlockNumber>;
+
+		/// Maximum number of proposals allowed to be active in parallel.
+		type MaxProposals: Get<ProposalIndex>;
+
+		/// The maximum number of members supported by the pallet. Used for weight estimation.
+		///
+		/// NOTE:
+		/// + Benchmarks will need to be re-run and weights adjusted if this changes.
+		/// + This pallet assumes that dependents keep to the limit without enforcing it.
+		type MaxMembers: Get<MemberCount>;
+
+		/// Default vote strategy of this collective.
+		type DefaultVote: DefaultVote;
+
+		/// Weight information for extrinsics in this pallet.
+		type WeightInfo: WeightInfo;
+	}
+
+	#[pallet::genesis_config]
+	pub struct GenesisConfig<T: Config<I>, I: 'static = ()> {
+		pub members: Vec<T::AccountId>,
+		pub phantom: PhantomData<I>,
+	}
+
+	#[cfg(feature = "std")]
+	impl<T: Config<I>, I: 'static> Default for GenesisConfig<T, I> {
+		fn default() -> Self {
+			Self {
+				members: Default::default(),
+				phantom: Default::default(),
+			}
+		}
+	}
+
+	#[pallet::genesis_build]
+	impl<T: Config<I>, I: 'static> GenesisBuild<T, I> for GenesisConfig<T, I> {
+		fn build(&self) {
+			Pallet::<T, I>::initialize_members(&self.members)
+		}
+	}
+
+	/// Origin for the collective pallet.
+	#[pallet::origin]
+	pub type Origin<T, I = ()> = RawOrigin<<T as frame_system::Config>::AccountId, I>;
+
+	/// The hashes of the active proposals.
+	#[pallet::storage]
+	#[pallet::getter(fn proposals)]
+	pub(super) type Proposals<T: Config<I>, I: 'static = ()> = StorageValue<
+		_,
+		BoundedVec<T::Hash, T::MaxProposals>,
+		ValueQuery
+	>;
+
+	/// Actual proposal for a given hash, if it's current.
+	#[pallet::storage]
+	#[pallet::getter(fn proposal_of)]
+	pub(super) type ProposalOf<T: Config<I>, I: 'static  = ()> = StorageMap<
+		_,
+		Identity,
+		T::Hash,
+		<T as Config<I>>::Proposal,
+		OptionQuery
+	>;
+
+	/// Votes on a given proposal, if it is ongoing.
+	#[pallet::storage]
+	#[pallet::getter(fn voting)]
+	pub(super) type Voting<T: Config<I>, I: 'static  = ()> = StorageMap<
+		_,
+		Identity,
+		T::Hash,
+		Votes<T::AccountId, T::BlockNumber>,
+		OptionQuery
+	>;
+
+	/// Proposals so far.
+	#[pallet::storage]
+	#[pallet::getter(fn proposal_count)]
+	pub(super) type ProposalCount<T: Config<I>, I: 'static = ()> = StorageValue<_, u32, ValueQuery>;
+
+	/// The current members of the collective. This is stored sorted (just by value).
+	#[pallet::storage]
+	#[pallet::getter(fn members)]
+	pub(super) type Members<T: Config<I>, I: 'static = ()> = StorageValue<
+		_,
+		Vec<T::AccountId>,
+		ValueQuery
+	>;
+
+	/// The prime member that helps determine the default vote behavior in case of absentations.
+	#[pallet::storage]
+	#[pallet::getter(fn prime)]
+	pub(super) type Prime<T: Config<I>, I: 'static = ()> = StorageValue<
+		_,
+		T::AccountId,
+		OptionQuery
+	>;
+
+	#[pallet::event]
+	#[pallet::generate_deposit(pub(super) fn deposit_event)]
+	#[pallet::metadata(T::AccountId = "AccountId", T::Hash = "Hash")]
+	pub enum Event<T: Config<I>, I: 'static = ()> {
 		/// A motion (given hash) has been proposed (by given account) with a threshold (given
 		/// `MemberCount`).
 		/// \[account, proposal_index, proposal_hash, threshold\]
-		Proposed(AccountId, ProposalIndex, Hash, MemberCount),
+		Proposed(T::AccountId, ProposalIndex, T::Hash, MemberCount),
 		/// A motion (given hash) has been voted on by given account, leaving
 		/// a tally (yes votes and no votes given respectively as `MemberCount`).
 		/// \[account, proposal_hash, voted, yes, no\]
-		Voted(AccountId, Hash, bool, MemberCount, MemberCount),
+		Voted(T::AccountId, T::Hash, bool, MemberCount, MemberCount),
 		/// A motion was approved by the required threshold.
 		/// \[proposal_hash\]
-		Approved(Hash),
+		Approved(T::Hash),
 		/// A motion was not approved by the required threshold.
 		/// \[proposal_hash\]
-		Disapproved(Hash),
+		Disapproved(T::Hash),
 		/// A motion was executed; result will be `Ok` if it returned without error.
 		/// \[proposal_hash, result\]
-		Executed(Hash, DispatchResult),
+		Executed(T::Hash, DispatchResult),
 		/// A single member did some action; result will be `Ok` if it returned without error.
 		/// \[proposal_hash, result\]
-		MemberExecuted(Hash, DispatchResult),
+		MemberExecuted(T::Hash, DispatchResult),
 		/// A proposal was closed because its threshold was reached or after its duration was up.
 		/// \[proposal_hash, yes, no\]
-		Closed(Hash, MemberCount, MemberCount),
+		Closed(T::Hash, MemberCount, MemberCount),
 	}
-}
 
-decl_error! {
-	pub enum Error for Module<T: Config<I>, I: Instance> {
+	/// Old name generated by `decl_event`.
+	#[deprecated(note = "use `Event` instead")]
+	pub type RawEvent<T, I = ()> = Event<T, I>;
+
+	#[pallet::error]
+	pub enum Error<T, I = ()> {
 		/// Account is not a member
 		NotMember,
 		/// Duplicate proposals not allowed
@@ -269,26 +334,10 @@ decl_error! {
 		/// The given length bound for the proposal was too low.
 		WrongProposalLength,
 	}
-}
 
-/// Return the weight of a dispatch call result as an `Option`.
-///
-/// Will return the weight regardless of what the state of the result is.
-fn get_result_weight(result: DispatchResultWithPostInfo) -> Option<Weight> {
-	match result {
-		Ok(post_info) => post_info.actual_weight,
-		Err(err) => err.post_info.actual_weight,
-	}
-}
-
-
-// Note that councillor operations are assigned to the operational class.
-decl_module! {
-	pub struct Module<T: Config<I>, I: Instance=DefaultInstance> for enum Call where origin: <T as frame_system::Config>::Origin {
-		type Error = Error<T, I>;
-
-		fn deposit_event() = default;
-
+	// Note that councillor operations are assigned to the operational class.
+	#[pallet::call]
+	impl<T: Config<I>, I: 'static> Pallet<T, I> {
 		/// Set the collective's membership.
 		///
 		/// - `new_members`: The new member list. Be nice to the chain and provide it sorted.
@@ -313,15 +362,16 @@ decl_module! {
 		///   - `P` storage mutations (codec `O(M)`) for updating the votes for each proposal
 		///   - 1 storage write (codec `O(1)`) for deleting the old `prime` and setting the new one
 		/// # </weight>
-		#[weight = (
+		#[pallet::weight((
 			T::WeightInfo::set_members(
 				*old_count, // M
 				new_members.len() as u32, // N
 				T::MaxProposals::get() // P
 			),
 			DispatchClass::Operational
-		)]
-		fn set_members(origin,
+		))]
+		pub fn set_members(
+			origin: OriginFor<T>,
 			new_members: Vec<T::AccountId>,
 			prime: Option<T::AccountId>,
 			old_count: MemberCount,
@@ -367,16 +417,17 @@ decl_module! {
 		/// - DB: 1 read (codec `O(M)`) + DB access of `proposal`
 		/// - 1 event
 		/// # </weight>
-		#[weight = (
+		#[pallet::weight((
 			T::WeightInfo::execute(
 				*length_bound, // B
 				T::MaxMembers::get(), // M
 			).saturating_add(proposal.get_dispatch_info().weight), // P
 			DispatchClass::Operational
-		)]
-		fn execute(origin,
+		))]
+		pub fn execute(
+			origin: OriginFor<T>,
 			proposal: Box<<T as Config<I>>::Proposal>,
-			#[compact] length_bound: u32,
+			#[pallet::compact] length_bound: u32,
 		) -> DispatchResultWithPostInfo {
 			let who = ensure_signed(origin)?;
 			let members = Self::members();
@@ -387,7 +438,7 @@ decl_module! {
 			let proposal_hash = T::Hashing::hash_of(&proposal);
 			let result = proposal.dispatch(RawOrigin::Member(who).into());
 			Self::deposit_event(
-				RawEvent::MemberExecuted(proposal_hash, result.map(|_| ()).map_err(|e| e.error))
+				Event::MemberExecuted(proposal_hash, result.map(|_| ()).map_err(|e| e.error))
 			);
 
 			Ok(get_result_weight(result).map(|w| {
@@ -425,7 +476,7 @@ decl_module! {
 		///       - 1 storage write `Voting` (codec `O(M)`)
 		///   - 1 event
 		/// # </weight>
-		#[weight = (
+		#[pallet::weight((
 			if *threshold < 2 {
 				T::WeightInfo::propose_execute(
 					*length_bound, // B
@@ -439,11 +490,12 @@ decl_module! {
 				)
 			},
 			DispatchClass::Operational
-		)]
-		fn propose(origin,
-			#[compact] threshold: MemberCount,
+		))]
+		pub fn propose(
+			origin: OriginFor<T>,
+			#[pallet::compact] threshold: MemberCount,
 			proposal: Box<<T as Config<I>>::Proposal>,
-			#[compact] length_bound: u32
+			#[pallet::compact] length_bound: u32,
 		) -> DispatchResultWithPostInfo {
 			let who = ensure_signed(origin)?;
 			let members = Self::members();
@@ -458,7 +510,7 @@ decl_module! {
 				let seats = Self::members().len() as MemberCount;
 				let result = proposal.dispatch(RawOrigin::Members(1, seats).into());
 				Self::deposit_event(
-					RawEvent::Executed(proposal_hash, result.map(|_| ()).map_err(|e| e.error))
+					Event::Executed(proposal_hash, result.map(|_| ()).map_err(|e| e.error))
 				);
 
 				Ok(get_result_weight(result).map(|w| {
@@ -474,13 +526,13 @@ decl_module! {
 						Ok(proposals.len())
 					})?;
 				let index = Self::proposal_count();
-				<ProposalCount<I>>::mutate(|i| *i += 1);
+				<ProposalCount<T, I>>::mutate(|i| *i += 1);
 				<ProposalOf<T, I>>::insert(proposal_hash, *proposal);
-				let end = system::Pallet::<T>::block_number() + T::MotionDuration::get();
+				let end = frame_system::Pallet::<T>::block_number() + T::MotionDuration::get();
 				let votes = Votes { index, threshold, ayes: vec![who.clone()], nays: vec![], end };
 				<Voting<T, I>>::insert(proposal_hash, votes);
 
-				Self::deposit_event(RawEvent::Proposed(who, index, proposal_hash, threshold));
+				Self::deposit_event(Event::Proposed(who, index, proposal_hash, threshold));
 
 				Ok(Some(T::WeightInfo::propose_proposed(
 					proposal_len as u32, // B
@@ -504,13 +556,11 @@ decl_module! {
 		///   - 1 storage mutation `Voting` (codec `O(M)`)
 		/// - 1 event
 		/// # </weight>
-		#[weight = (
-			T::WeightInfo::vote(T::MaxMembers::get()),
-			DispatchClass::Operational
-		)]
-		fn vote(origin,
+		#[pallet::weight((T::WeightInfo::vote(T::MaxMembers::get()), DispatchClass::Operational))]
+		pub fn vote(
+			origin: OriginFor<T>,
 			proposal: T::Hash,
-			#[compact] index: ProposalIndex,
+			#[pallet::compact] index: ProposalIndex,
 			approve: bool,
 		) -> DispatchResultWithPostInfo {
 			let who = ensure_signed(origin)?;
@@ -530,7 +580,7 @@ decl_module! {
 				if position_yes.is_none() {
 					voting.ayes.push(who.clone());
 				} else {
-					Err(Error::<T, I>::DuplicateVote)?
+					return Err(Error::<T, I>::DuplicateVote.into());
 				}
 				if let Some(pos) = position_no {
 					voting.nays.swap_remove(pos);
@@ -539,7 +589,7 @@ decl_module! {
 				if position_no.is_none() {
 					voting.nays.push(who.clone());
 				} else {
-					Err(Error::<T, I>::DuplicateVote)?
+					return Err(Error::<T, I>::DuplicateVote.into());
 				}
 				if let Some(pos) = position_yes {
 					voting.ayes.swap_remove(pos);
@@ -548,7 +598,7 @@ decl_module! {
 
 			let yes_votes = voting.ayes.len() as MemberCount;
 			let no_votes = voting.nays.len() as MemberCount;
-			Self::deposit_event(RawEvent::Voted(who, proposal, approve, yes_votes, no_votes));
+			Self::deposit_event(Event::Voted(who, proposal, approve, yes_votes, no_votes));
 
 			Voting::<T, I>::insert(&proposal, voting);
 
@@ -595,7 +645,7 @@ decl_module! {
 		///  - any mutations done while executing `proposal` (`P1`)
 		/// - up to 3 events
 		/// # </weight>
-		#[weight = (
+		#[pallet::weight((
 			{
 				let b = *length_bound;
 				let m = T::MaxMembers::get();
@@ -608,12 +658,13 @@ decl_module! {
 					.saturating_add(p1)
 			},
 			DispatchClass::Operational
-		)]
-		fn close(origin,
+		))]
+		pub fn close(
+			origin: OriginFor<T>,
 			proposal_hash: T::Hash,
-			#[compact] index: ProposalIndex,
-			#[compact] proposal_weight_bound: Weight,
-			#[compact] length_bound: u32
+			#[pallet::compact] index: ProposalIndex,
+			#[pallet::compact] proposal_weight_bound: Weight,
+			#[pallet::compact] length_bound: u32,
 		) -> DispatchResultWithPostInfo {
 			let _ = ensure_signed(origin)?;
 
@@ -632,17 +683,17 @@ decl_module! {
 					length_bound,
 					proposal_weight_bound,
 				)?;
-				Self::deposit_event(RawEvent::Closed(proposal_hash, yes_votes, no_votes));
+				Self::deposit_event(Event::Closed(proposal_hash, yes_votes, no_votes));
 				let (proposal_weight, proposal_count) =
 					Self::do_approve_proposal(seats, voting, proposal_hash, proposal);
 				return Ok((
 					Some(T::WeightInfo::close_early_approved(len as u32, seats, proposal_count)
-					.saturating_add(proposal_weight)),
+						.saturating_add(proposal_weight)),
 					Pays::Yes,
 				).into());
 
 			} else if disapproved {
-				Self::deposit_event(RawEvent::Closed(proposal_hash, yes_votes, no_votes));
+				Self::deposit_event(Event::Closed(proposal_hash, yes_votes, no_votes));
 				let proposal_count = Self::do_disapprove_proposal(proposal_hash);
 				return Ok((
 					Some(T::WeightInfo::close_early_disapproved(seats, proposal_count)),
@@ -651,7 +702,7 @@ decl_module! {
 			}
 
 			// Only allow actual closing of the proposal after the voting period has ended.
-			ensure!(system::Pallet::<T>::block_number() >= voting.end, Error::<T, I>::TooEarly);
+			ensure!(frame_system::Pallet::<T>::block_number() >= voting.end, Error::<T, I>::TooEarly);
 
 			let prime_vote = Self::prime().map(|who| voting.ayes.iter().any(|a| a == &who));
 
@@ -671,21 +722,21 @@ decl_module! {
 					length_bound,
 					proposal_weight_bound,
 				)?;
-				Self::deposit_event(RawEvent::Closed(proposal_hash, yes_votes, no_votes));
+				Self::deposit_event(Event::Closed(proposal_hash, yes_votes, no_votes));
 				let (proposal_weight, proposal_count) =
 					Self::do_approve_proposal(seats, voting, proposal_hash, proposal);
-				return Ok((
+				Ok((
 					Some(T::WeightInfo::close_approved(len as u32, seats, proposal_count)
-					.saturating_add(proposal_weight)),
+						.saturating_add(proposal_weight)),
 					Pays::Yes,
-				).into());
+				).into())
 			} else {
-				Self::deposit_event(RawEvent::Closed(proposal_hash, yes_votes, no_votes));
+				Self::deposit_event(Event::Closed(proposal_hash, yes_votes, no_votes));
 				let proposal_count = Self::do_disapprove_proposal(proposal_hash);
-				return Ok((
+				Ok((
 					Some(T::WeightInfo::close_disapproved(seats, proposal_count)),
 					Pays::No,
-				).into());
+				).into())
 			}
 		}
 
@@ -702,8 +753,11 @@ decl_module! {
 		/// * Reads: Proposals
 		/// * Writes: Voting, Proposals, ProposalOf
 		/// # </weight>
-		#[weight = T::WeightInfo::disapprove_proposal(T::MaxProposals::get())]
-		fn disapprove_proposal(origin, proposal_hash: T::Hash) -> DispatchResultWithPostInfo {
+		#[pallet::weight(T::WeightInfo::disapprove_proposal(T::MaxProposals::get()))]
+		pub fn disapprove_proposal(
+			origin: OriginFor<T>,
+			proposal_hash: T::Hash,
+		) -> DispatchResultWithPostInfo {
 			ensure_root(origin)?;
 			let proposal_count = Self::do_disapprove_proposal(proposal_hash);
 			Ok(Some(T::WeightInfo::disapprove_proposal(proposal_count)).into())
@@ -711,7 +765,17 @@ decl_module! {
 	}
 }
 
-impl<T: Config<I>, I: Instance> Module<T, I> {
+/// Return the weight of a dispatch call result as an `Option`.
+///
+/// Will return the weight regardless of what the state of the result is.
+fn get_result_weight(result: DispatchResultWithPostInfo) -> Option<Weight> {
+	match result {
+		Ok(post_info) => post_info.actual_weight,
+		Err(err) => err.post_info.actual_weight,
+	}
+}
+
+impl<T: Config<I>, I: 'static> Pallet<T, I> {
 	/// Check whether `who` is a member of the collective.
 	pub fn is_member(who: &T::AccountId) -> bool {
 		// Note: The dispatchables *do not* use this to check membership so make sure
@@ -726,7 +790,7 @@ impl<T: Config<I>, I: Instance> Module<T, I> {
 	fn validate_and_get_proposal(
 		hash: &T::Hash,
 		length_bound: u32,
-		weight_bound: Weight
+		weight_bound: Weight,
 	) -> Result<(<T as Config<I>>::Proposal, usize), DispatchError> {
 		let key = ProposalOf::<T, I>::hashed_key_for(hash);
 		// read the length of the proposal storage entry directly
@@ -759,13 +823,13 @@ impl<T: Config<I>, I: Instance> Module<T, I> {
 		proposal_hash: T::Hash,
 		proposal: <T as Config<I>>::Proposal,
 	) -> (Weight, u32) {
-		Self::deposit_event(RawEvent::Approved(proposal_hash));
+		Self::deposit_event(Event::Approved(proposal_hash));
 
 		let dispatch_weight = proposal.get_dispatch_info().weight;
 		let origin = RawOrigin::Members(voting.threshold, seats).into();
 		let result = proposal.dispatch(origin);
 		Self::deposit_event(
-			RawEvent::Executed(proposal_hash, result.map(|_| ()).map_err(|e| e.error))
+			Event::Executed(proposal_hash, result.map(|_| ()).map_err(|e| e.error))
 		);
 		// default to the dispatch info weight for safety
 		let proposal_weight = get_result_weight(result).unwrap_or(dispatch_weight); // P1
@@ -776,7 +840,7 @@ impl<T: Config<I>, I: Instance> Module<T, I> {
 
 	fn do_disapprove_proposal(proposal_hash: T::Hash) -> u32 {
 		// disapproved
-		Self::deposit_event(RawEvent::Disapproved(proposal_hash));
+		Self::deposit_event(Event::Disapproved(proposal_hash));
 		Self::remove_proposal(proposal_hash)
 	}
 
@@ -793,7 +857,7 @@ impl<T: Config<I>, I: Instance> Module<T, I> {
 	}
 }
 
-impl<T: Config<I>, I: Instance> ChangeMembers<T::AccountId> for Module<T, I> {
+impl<T: Config<I>, I: 'static> ChangeMembers<T::AccountId> for Pallet<T, I> {
 	/// Update the members of the collective. Votes are updated and the prime is reset.
 	///
 	/// NOTE: Does not enforce the expected `MaxMembers` limit on the amount of members, but
@@ -853,7 +917,7 @@ impl<T: Config<I>, I: Instance> ChangeMembers<T::AccountId> for Module<T, I> {
 	}
 }
 
-impl<T: Config<I>, I: Instance> InitializeMembers<T::AccountId> for Module<T, I> {
+impl<T: Config<I>, I: 'static> InitializeMembers<T::AccountId> for Pallet<T, I> {
 	fn initialize_members(members: &[T::AccountId]) {
 		if !members.is_empty() {
 			assert!(<Members<T, I>>::get().is_empty(), "Members are already initialized!");
@@ -864,8 +928,10 @@ impl<T: Config<I>, I: Instance> InitializeMembers<T::AccountId> for Module<T, I>
 
 /// Ensure that the origin `o` represents at least `n` members. Returns `Ok` or an `Err`
 /// otherwise.
-pub fn ensure_members<OuterOrigin, AccountId, I>(o: OuterOrigin, n: MemberCount)
-	-> result::Result<MemberCount, &'static str>
+pub fn ensure_members<OuterOrigin, AccountId, I>(
+	o: OuterOrigin,
+	n: MemberCount,
+) -> result::Result<MemberCount, &'static str>
 where
 	OuterOrigin: Into<result::Result<RawOrigin<AccountId, I>, OuterOrigin>>
 {
@@ -875,7 +941,7 @@ where
 	}
 }
 
-pub struct EnsureMember<AccountId, I=DefaultInstance>(sp_std::marker::PhantomData<(AccountId, I)>);
+pub struct EnsureMember<AccountId, I: 'static>(PhantomData<(AccountId, I)>);
 impl<
 	O: Into<Result<RawOrigin<AccountId, I>, O>> + From<RawOrigin<AccountId, I>>,
 	AccountId: Default,
@@ -895,7 +961,7 @@ impl<
 	}
 }
 
-pub struct EnsureMembers<N: U32, AccountId, I=DefaultInstance>(sp_std::marker::PhantomData<(N, AccountId, I)>);
+pub struct EnsureMembers<N: U32, AccountId, I: 'static>(PhantomData<(N, AccountId, I)>);
 impl<
 	O: Into<Result<RawOrigin<AccountId, I>, O>> + From<RawOrigin<AccountId, I>>,
 	N: U32,
@@ -916,8 +982,8 @@ impl<
 	}
 }
 
-pub struct EnsureProportionMoreThan<N: U32, D: U32, AccountId, I=DefaultInstance>(
-	sp_std::marker::PhantomData<(N, D, AccountId, I)>
+pub struct EnsureProportionMoreThan<N: U32, D: U32, AccountId, I: 'static>(
+	PhantomData<(N, D, AccountId, I)>,
 );
 impl<
 	O: Into<Result<RawOrigin<AccountId, I>, O>> + From<RawOrigin<AccountId, I>>,
@@ -940,8 +1006,8 @@ impl<
 	}
 }
 
-pub struct EnsureProportionAtLeast<N: U32, D: U32, AccountId, I=DefaultInstance>(
-	sp_std::marker::PhantomData<(N, D, AccountId, I)>
+pub struct EnsureProportionAtLeast<N: U32, D: U32, AccountId, I: 'static>(
+	PhantomData<(N, D, AccountId, I)>,
 );
 impl<
 	O: Into<Result<RawOrigin<AccountId, I>, O>> + From<RawOrigin<AccountId, I>>,
@@ -966,16 +1032,19 @@ impl<
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use frame_support::{Hashable, assert_ok, assert_noop, parameter_types};
-	use frame_system::{self as system, EventRecord, Phase};
+	use super::{*, Event as CollectiveEvent};
+	use crate as pallet_collective;
+
 	use hex_literal::hex;
+
 	use sp_core::H256;
 	use sp_runtime::{
 		traits::{BlakeTwo256, IdentityLookup}, testing::Header,
 		BuildStorage,
 	};
-	use crate as collective;
+
+	use frame_support::{Hashable, assert_ok, assert_noop, parameter_types, weights::Pays};
+	use frame_system::{EventRecord, Phase};
 
 	parameter_types! {
 		pub const BlockHashCount: u64 = 250;
@@ -1010,7 +1079,7 @@ mod tests {
 		type SS58Prefix = ();
 		type OnSetCode = ();
 	}
-	impl Config<Instance1> for Test {
+	impl Config<pallet_collective::Instance1> for Test {
 		type Origin = Origin;
 		type Proposal = Call;
 		type Event = Event;
@@ -1020,7 +1089,7 @@ mod tests {
 		type DefaultVote = PrimeDefaultVote;
 		type WeightInfo = ();
 	}
-	impl Config<Instance2> for Test {
+	impl Config<pallet_collective::Instance2> for Test {
 		type Origin = Origin;
 		type Proposal = Call;
 		type Event = Event;
@@ -1050,20 +1119,20 @@ mod tests {
 			NodeBlock = Block,
 			UncheckedExtrinsic = UncheckedExtrinsic
 		{
-			System: system::{Pallet, Call, Event<T>},
-			Collective: collective::<Instance1>::{Pallet, Call, Event<T>, Origin<T>, Config<T>},
-			CollectiveMajority: collective::<Instance2>::{Pallet, Call, Event<T>, Origin<T>, Config<T>},
-			DefaultCollective: collective::{Pallet, Call, Event<T>, Origin<T>, Config<T>},
+			System: frame_system::{Pallet, Call, Event<T>},
+			Collective: pallet_collective::<Instance1>::{Pallet, Call, Event<T>, Origin<T>, Config<T>},
+			CollectiveMajority: pallet_collective::<Instance2>::{Pallet, Call, Event<T>, Origin<T>, Config<T>},
+			DefaultCollective: pallet_collective::{Pallet, Call, Event<T>, Origin<T>, Config<T>},
 		}
 	);
 
 	pub fn new_test_ext() -> sp_io::TestExternalities {
 		let mut ext: sp_io::TestExternalities = GenesisConfig {
-			collective: collective::GenesisConfig {
+			collective: pallet_collective::GenesisConfig {
 				members: vec![1, 2, 3],
 				phantom: Default::default(),
 			},
-			collective_majority: collective::GenesisConfig {
+			collective_majority: pallet_collective::GenesisConfig {
 				members: vec![1, 2, 3, 4, 5],
 				phantom: Default::default(),
 			},
@@ -1107,10 +1176,10 @@ mod tests {
 
 			let record = |event| EventRecord { phase: Phase::Initialization, event, topics: vec![] };
 			assert_eq!(System::events(), vec![
-				record(Event::Collective(RawEvent::Proposed(1, 0, hash.clone(), 3))),
-				record(Event::Collective(RawEvent::Voted(2, hash.clone(), true, 2, 0))),
-				record(Event::Collective(RawEvent::Closed(hash.clone(), 2, 1))),
-				record(Event::Collective(RawEvent::Disapproved(hash.clone())))
+				record(Event::Collective(CollectiveEvent::Proposed(1, 0, hash.clone(), 3))),
+				record(Event::Collective(CollectiveEvent::Voted(2, hash.clone(), true, 2, 0))),
+				record(Event::Collective(CollectiveEvent::Closed(hash.clone(), 2, 1))),
+				record(Event::Collective(CollectiveEvent::Disapproved(hash.clone())))
 			]);
 		});
 	}
@@ -1169,10 +1238,10 @@ mod tests {
 
 			let record = |event| EventRecord { phase: Phase::Initialization, event, topics: vec![] };
 			assert_eq!(System::events(), vec![
-				record(Event::Collective(RawEvent::Proposed(1, 0, hash.clone(), 3))),
-				record(Event::Collective(RawEvent::Voted(2, hash.clone(), true, 2, 0))),
-				record(Event::Collective(RawEvent::Closed(hash.clone(), 2, 1))),
-				record(Event::Collective(RawEvent::Disapproved(hash.clone())))
+				record(Event::Collective(CollectiveEvent::Proposed(1, 0, hash.clone(), 3))),
+				record(Event::Collective(CollectiveEvent::Voted(2, hash.clone(), true, 2, 0))),
+				record(Event::Collective(CollectiveEvent::Closed(hash.clone(), 2, 1))),
+				record(Event::Collective(CollectiveEvent::Disapproved(hash.clone())))
 			]);
 		});
 	}
@@ -1194,11 +1263,11 @@ mod tests {
 
 			let record = |event| EventRecord { phase: Phase::Initialization, event, topics: vec![] };
 			assert_eq!(System::events(), vec![
-				record(Event::Collective(RawEvent::Proposed(1, 0, hash.clone(), 3))),
-				record(Event::Collective(RawEvent::Voted(2, hash.clone(), true, 2, 0))),
-				record(Event::Collective(RawEvent::Closed(hash.clone(), 3, 0))),
-				record(Event::Collective(RawEvent::Approved(hash.clone()))),
-				record(Event::Collective(RawEvent::Executed(hash.clone(), Err(DispatchError::BadOrigin))))
+				record(Event::Collective(CollectiveEvent::Proposed(1, 0, hash.clone(), 3))),
+				record(Event::Collective(CollectiveEvent::Voted(2, hash.clone(), true, 2, 0))),
+				record(Event::Collective(CollectiveEvent::Closed(hash.clone(), 3, 0))),
+				record(Event::Collective(CollectiveEvent::Approved(hash.clone()))),
+				record(Event::Collective(CollectiveEvent::Executed(hash.clone(), Err(DispatchError::BadOrigin))))
 			]);
 		});
 	}
@@ -1221,12 +1290,12 @@ mod tests {
 
 			let record = |event| EventRecord { phase: Phase::Initialization, event, topics: vec![] };
 			assert_eq!(System::events(), vec![
-				record(Event::CollectiveMajority(RawEvent::Proposed(1, 0, hash.clone(), 5))),
-				record(Event::CollectiveMajority(RawEvent::Voted(2, hash.clone(), true, 2, 0))),
-				record(Event::CollectiveMajority(RawEvent::Voted(3, hash.clone(), true, 3, 0))),
-				record(Event::CollectiveMajority(RawEvent::Closed(hash.clone(), 5, 0))),
-				record(Event::CollectiveMajority(RawEvent::Approved(hash.clone()))),
-				record(Event::CollectiveMajority(RawEvent::Executed(hash.clone(), Err(DispatchError::BadOrigin))))
+				record(Event::CollectiveMajority(CollectiveEvent::Proposed(1, 0, hash.clone(), 5))),
+				record(Event::CollectiveMajority(CollectiveEvent::Voted(2, hash.clone(), true, 2, 0))),
+				record(Event::CollectiveMajority(CollectiveEvent::Voted(3, hash.clone(), true, 3, 0))),
+				record(Event::CollectiveMajority(CollectiveEvent::Closed(hash.clone(), 5, 0))),
+				record(Event::CollectiveMajority(CollectiveEvent::Approved(hash.clone()))),
+				record(Event::CollectiveMajority(CollectiveEvent::Executed(hash.clone(), Err(DispatchError::BadOrigin))))
 			]);
 		});
 	}
@@ -1321,7 +1390,7 @@ mod tests {
 			assert_eq!(System::events(), vec![
 				EventRecord {
 					phase: Phase::Initialization,
-					event: Event::Collective(RawEvent::Proposed(
+					event: Event::Collective(CollectiveEvent::Proposed(
 						1,
 						0,
 						hex!["68eea8f20b542ec656c6ac2d10435ae3bd1729efc34d1354ab85af840aad2d35"].into(),
@@ -1449,7 +1518,7 @@ mod tests {
 			assert_eq!(System::events(), vec![
 				EventRecord {
 					phase: Phase::Initialization,
-					event: Event::Collective(RawEvent::Proposed(
+					event: Event::Collective(CollectiveEvent::Proposed(
 						1,
 						0,
 						hex!["68eea8f20b542ec656c6ac2d10435ae3bd1729efc34d1354ab85af840aad2d35"].into(),
@@ -1459,7 +1528,7 @@ mod tests {
 				},
 				EventRecord {
 					phase: Phase::Initialization,
-					event: Event::Collective(RawEvent::Voted(
+					event: Event::Collective(CollectiveEvent::Voted(
 						1,
 						hex!["68eea8f20b542ec656c6ac2d10435ae3bd1729efc34d1354ab85af840aad2d35"].into(),
 						false,
@@ -1593,7 +1662,7 @@ mod tests {
 				EventRecord {
 					phase: Phase::Initialization,
 					event: Event::Collective(
-						RawEvent::Proposed(
+						CollectiveEvent::Proposed(
 							1,
 							0,
 							hex!["68eea8f20b542ec656c6ac2d10435ae3bd1729efc34d1354ab85af840aad2d35"].into(),
@@ -1603,7 +1672,7 @@ mod tests {
 				},
 				EventRecord {
 					phase: Phase::Initialization,
-					event: Event::Collective(RawEvent::Voted(
+					event: Event::Collective(CollectiveEvent::Voted(
 						2,
 						hex!["68eea8f20b542ec656c6ac2d10435ae3bd1729efc34d1354ab85af840aad2d35"].into(),
 						false,
@@ -1614,14 +1683,14 @@ mod tests {
 				},
 				EventRecord {
 					phase: Phase::Initialization,
-					event: Event::Collective(RawEvent::Closed(
+					event: Event::Collective(CollectiveEvent::Closed(
 						hex!["68eea8f20b542ec656c6ac2d10435ae3bd1729efc34d1354ab85af840aad2d35"].into(), 1, 1,
 					)),
 					topics: vec![],
 				},
 				EventRecord {
 					phase: Phase::Initialization,
-					event: Event::Collective(RawEvent::Disapproved(
+					event: Event::Collective(CollectiveEvent::Disapproved(
 						hex!["68eea8f20b542ec656c6ac2d10435ae3bd1729efc34d1354ab85af840aad2d35"].into(),
 					)),
 					topics: vec![],
@@ -1644,7 +1713,7 @@ mod tests {
 			assert_eq!(System::events(), vec![
 				EventRecord {
 					phase: Phase::Initialization,
-					event: Event::Collective(RawEvent::Proposed(
+					event: Event::Collective(CollectiveEvent::Proposed(
 						1,
 						0,
 						hex!["68eea8f20b542ec656c6ac2d10435ae3bd1729efc34d1354ab85af840aad2d35"].into(),
@@ -1654,7 +1723,7 @@ mod tests {
 				},
 				EventRecord {
 					phase: Phase::Initialization,
-					event: Event::Collective(RawEvent::Voted(
+					event: Event::Collective(CollectiveEvent::Voted(
 						2,
 						hex!["68eea8f20b542ec656c6ac2d10435ae3bd1729efc34d1354ab85af840aad2d35"].into(),
 						true,
@@ -1665,21 +1734,21 @@ mod tests {
 				},
 				EventRecord {
 					phase: Phase::Initialization,
-					event: Event::Collective(RawEvent::Closed(
+					event: Event::Collective(CollectiveEvent::Closed(
 						hex!["68eea8f20b542ec656c6ac2d10435ae3bd1729efc34d1354ab85af840aad2d35"].into(), 2, 0,
 					)),
 					topics: vec![],
 				},
 				EventRecord {
 					phase: Phase::Initialization,
-					event: Event::Collective(RawEvent::Approved(
+					event: Event::Collective(CollectiveEvent::Approved(
 						hex!["68eea8f20b542ec656c6ac2d10435ae3bd1729efc34d1354ab85af840aad2d35"].into(),
 					)),
 					topics: vec![],
 				},
 				EventRecord {
 					phase: Phase::Initialization,
-					event: Event::Collective(RawEvent::Executed(
+					event: Event::Collective(CollectiveEvent::Executed(
 						hex!["68eea8f20b542ec656c6ac2d10435ae3bd1729efc34d1354ab85af840aad2d35"].into(),
 						Err(DispatchError::BadOrigin),
 					)),
@@ -1731,9 +1800,9 @@ mod tests {
 			assert_ok!(Collective::disapprove_proposal(Origin::root(), hash.clone()));
 			let record = |event| EventRecord { phase: Phase::Initialization, event, topics: vec![] };
 			assert_eq!(System::events(), vec![
-				record(Event::Collective(RawEvent::Proposed(1, 0, hash.clone(), 2))),
-				record(Event::Collective(RawEvent::Voted(2, hash.clone(), true, 2, 0))),
-				record(Event::Collective(RawEvent::Disapproved(hash.clone()))),
+				record(Event::Collective(CollectiveEvent::Proposed(1, 0, hash.clone(), 2))),
+				record(Event::Collective(CollectiveEvent::Voted(2, hash.clone(), true, 2, 0))),
+				record(Event::Collective(CollectiveEvent::Disapproved(hash.clone()))),
 			]);
 		})
 	}
