@@ -31,6 +31,7 @@ sc-consensus-aura = { version = "0.9.0", path = "../../../client/consensus/aura"
 sp-consensus-aura = { version = "0.9.0", path = "../../../primitives/consensus/aura" }
 sp-consensus = { version = "0.9.0", path = "../../../primitives/consensus/common" }
 sc-consensus = { version = "0.9.0", path = "../../../client/consensus/common" }
+sc-consensus-api = { version = "0.9.0", path = "../../../client/consensus/api" }
 sc-finality-grandpa = { version = "0.9.0", path = "../../../client/finality-grandpa" }
 sp-finality-grandpa = { version = "3.0.0", path = "../../../primitives/finality-grandpa" }
 sc-client-api = { version = "3.0.0", path = "../../../client/api" }

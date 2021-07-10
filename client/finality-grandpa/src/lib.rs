@@ -72,7 +72,8 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, Error as ClientError, HeaderMetadata};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{NumberFor, Block as BlockT, DigestFor, Zero};
-use sp_consensus::{SelectChain, BlockImport};
+use sp_consensus::{SelectChain};
+use sc_consensus_api::BlockImport;
 use sp_core::{
 	crypto::Public,
 };

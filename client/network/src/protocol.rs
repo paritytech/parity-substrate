@@ -40,9 +40,11 @@ use message::generic::{Message as GenericMessage, Roles};
 use prometheus_endpoint::{Registry, Gauge, GaugeVec, PrometheusError, Opts, register, U64};
 use prost::Message as _;
 use sp_consensus::{
-	BlockOrigin,
 	block_validation::BlockAnnounceValidator,
-	import_queue::{BlockImportResult, BlockImportError, IncomingBlock, Origin}
+};
+use sc_consensus_api::{
+	import_queue::{BlockImportStatus, BlockImportError, IncomingBlock, Origin},
+	block_import::BlockOrigin
 };
 use sp_runtime::{
 	Justifications,
@@ -1028,7 +1030,7 @@ impl<B: BlockT> Protocol<B> {
 		&mut self,
 		imported: usize,
 		count: usize,
-		results: Vec<(Result<BlockImportResult<NumberFor<B>>, BlockImportError>, B::Hash)>
+		results: Vec<(Result<BlockImportStatus<NumberFor<B>>, BlockImportError>, B::Hash)>
 	) {
 		let results = self.sync.on_blocks_processed(
 			imported,

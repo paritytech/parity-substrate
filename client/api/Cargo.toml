@@ -16,6 +16,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
 sp-consensus = { version = "0.9.0", path = "../../primitives/consensus/common" }
+sc-consensus-api = { version = "0.9.0", path = "../consensus/api" }
 derive_more = "0.99.2"
 sc-executor = { version = "0.9.0", path = "../executor" }
 sp-externalities = { version = "0.9.0", path = "../../primitives/externalities" }

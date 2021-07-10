@@ -53,6 +53,7 @@ smallvec = "1.5.0"
 sp-arithmetic = { version = "3.0.0", path = "../../primitives/arithmetic" }
 sp-blockchain = { version = "3.0.0", path = "../../primitives/blockchain" }
 sp-consensus = { version = "0.9.0", path = "../../primitives/consensus/common" }
+sc-consensus-api = { version = "0.9.0", path = "../consensus/api" }
 sp-core = { version = "3.0.0", path = "../../primitives/core" }
 sp-runtime = { version = "3.0.0", path = "../../primitives/runtime" }
 sp-utils = { version = "3.0.0", path = "../../primitives/utils" }

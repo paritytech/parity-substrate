@@ -34,9 +34,9 @@ use sp_keyring::Ed25519Keyring;
 use sp_blockchain::Result;
 use sp_api::{ApiRef, ProvideRuntimeApi};
 use substrate_test_runtime_client::runtime::BlockNumber;
-use sp_consensus::{
-	BlockOrigin, ForkChoiceStrategy, ImportedAux, BlockImportParams, ImportResult, BlockImport,
-	import_queue::BoxJustificationImport,
+use sc_consensus_api::{
+	BlockOrigin, ForkChoiceStrategy, ImportedAux, BlockImportParams,
+	ImportResult, BlockImport, BoxJustificationImport
 };
 use std::{collections::{HashMap, HashSet}, pin::Pin};
 use sp_runtime::{Justifications, traits::{Block as BlockT, Header as HeaderT}};
@@ -243,7 +243,11 @@ fn create_keystore(authority: Ed25519Keyring) -> (SyncCryptoStorePtr, tempfile::
 	(keystore, keystore_path)
 }
 
-fn block_until_complete(future: impl Future + Unpin, net: &Arc<Mutex<GrandpaTestNet>>, runtime: &mut Runtime) {
+fn block_until_complete(
+	future: impl Future + Unpin,
+	net: &Arc<Mutex<GrandpaTestNet>>,
+	runtime: &mut Runtime)
+{
 	let drive_to_completion = futures::future::poll_fn(|cx| {
 		net.lock().poll(cx); Poll::<()>::Pending
 	});
@@ -547,7 +551,8 @@ fn transition_3_voters_twice_1_full_observer() {
 		assert_eq!(full_client.chain_info().best_number, 1,
 					"Peer #{} failed to sync", i);
 
-		let set: AuthoritySet<Hash, BlockNumber> = crate::aux_schema::load_authorities(&*full_client).unwrap();
+		let set: AuthoritySet<Hash, BlockNumber> =
+			crate::aux_schema::load_authorities(&*full_client).unwrap();
 
 		assert_eq!(set.current(), (0, make_ids(peers_a).as_slice()));
 		assert_eq!(set.pending_changes().count(), 0);
@@ -616,8 +621,10 @@ fn transition_3_voters_twice_1_full_observer() {
 				.take_while(|n| future::ready(n.header.number() < &30))
 				.for_each(move |_| future::ready(()))
 				.map(move |()| {
-					let full_client = client.as_full().expect("only full clients are used in test");
-					let set: AuthoritySet<Hash, BlockNumber> = crate::aux_schema::load_authorities(&*full_client).unwrap();
+					let full_client = client.as_full()
+						.expect("only full clients are used in test");
+					let set: AuthoritySet<Hash, BlockNumber> =
+						crate::aux_schema::load_authorities(&*full_client).unwrap();
 
 					assert_eq!(set.current(), (2, make_ids(peers_c).as_slice()));
 					assert_eq!(set.pending_changes().count(), 0);
@@ -815,8 +822,10 @@ fn force_change_to_new_set() {
 		assert_eq!(peer.client().info().best_number, 26,
 				"Peer #{} failed to sync", i);
 
-		let full_client = peer.client().as_full().expect("only full clients are used in test");
-		let set: AuthoritySet<Hash, BlockNumber> = crate::aux_schema::load_authorities(&*full_client).unwrap();
+		let full_client = peer.client().as_full()
+			.expect("only full clients are used in test");
+		let set: AuthoritySet<Hash, BlockNumber> =
+			crate::aux_schema::load_authorities(&*full_client).unwrap();
 
 		assert_eq!(set.current(), (1, voters.as_slice()));
 		assert_eq!(set.pending_changes().count(), 0);
@@ -1144,7 +1153,8 @@ fn voter_persists_its_votes() {
 					// by `Sink::poll_complete` to make sure items are being flushed. Given that
 					// we send in a loop including a delay until items are received, this can be
 					// ignored for the sake of reduced complexity.
-					Pin::new(&mut *round_tx.lock()).start_send(finality_grandpa::Message::Prevote(prevote)).unwrap();
+					Pin::new(&mut *round_tx.lock())
+						.start_send(finality_grandpa::Message::Prevote(prevote)).unwrap();
 				} else if state.compare_exchange(1, 2, Ordering::SeqCst, Ordering::SeqCst).unwrap() == 1 {
 					// the next message we receive should be our own prevote
 					let prevote = match signed.message {
@@ -1231,7 +1241,9 @@ fn voter_catches_up_to_latest_round_when_behind() {
 	let net = Arc::new(Mutex::new(net));
 	let mut finality_notifications = Vec::new();
 
-	let voter = |keystore, peer_id, link, net: Arc<Mutex<GrandpaTestNet>>| -> Pin<Box<dyn Future<Output = ()> + Send>> {
+	let voter = |keystore, peer_id, link, net: Arc<Mutex<GrandpaTestNet>>|
+		-> Pin<Box<dyn Future<Output = ()> + Send>>
+	{
 		let grandpa_params = GrandpaParams {
 			config: Config {
 				gossip_duration: TEST_GOSSIP_DURATION,

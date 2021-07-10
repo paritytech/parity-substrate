@@ -78,7 +78,7 @@ pub use sc_network::config::{
 pub use sc_tracing::TracingReceiver;
 pub use task_manager::SpawnTaskHandle;
 pub use task_manager::TaskManager;
-pub use sp_consensus::import_queue::ImportQueue;
+pub use sc_consensus_api::ImportQueue;
 pub use self::client::{LocalCallExecutor, ClientConfig};
 use sc_client_api::{blockchain::HeaderBackend, BlockchainEvents};
 

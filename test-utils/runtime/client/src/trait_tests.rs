@@ -27,7 +27,7 @@ use crate::{
 };
 use sc_client_api::backend;
 use sc_client_api::blockchain::{Backend as BlockChainBackendT, HeaderBackend};
-use sp_consensus::BlockOrigin;
+use sc_consensus_api::BlockOrigin;
 use substrate_test_runtime::{self, Transfer};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;

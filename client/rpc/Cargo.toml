@@ -52,6 +52,7 @@ sp-io = { version = "3.0.0", path = "../../primitives/io" }
 substrate-test-runtime-client = { version = "2.0.0", path = "../../test-utils/runtime/client" }
 tokio = "0.1.22"
 sc-transaction-pool = { version = "3.0.0", path = "../transaction-pool" }
+sc-consensus-api = { version = "0.9.0", path = "../consensus/api" }
 sc-cli = { version = "0.9.0", path = "../cli" }
 
 [features]

@@ -25,8 +25,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::any::Any;
 
-use crate::Error;
-use crate::import_queue::CacheKeyId;
+use sp_consensus::Error;
+use sp_consensus::import_queue::CacheKeyId;
 
 /// Block import result.
 #[derive(Debug, PartialEq, Eq)]
@@ -268,9 +268,11 @@ impl<Block: BlockT, Transaction> BlockImportParams<Block, Transaction> {
 
 	/// Auxiliary function for "converting" the transaction type.
 	///
-	/// Actually this just sets `StorageChanges::Changes` to `None` and makes rustc think that `Self` now
-	/// uses a different transaction type.
-	pub fn clear_storage_changes_and_mutate<Transaction2>(self) -> BlockImportParams<Block, Transaction2> {
+	/// Actually this just sets `StorageChanges::Changes` to `None` and makes rustc
+	/// think that `Self` now uses a different transaction type.
+	pub fn clear_storage_changes_and_mutate<Transaction2>(self)
+		-> BlockImportParams<Block, Transaction2>
+	{
 		// Preserve imported state.
 		let state_action = match self.state_action {
 			StateAction::ApplyChanges(StorageChanges::Import(state)) =>
@@ -352,7 +354,7 @@ impl<B: BlockT, Transaction> BlockImport<B> for crate::import_queue::BoxBlockImp
 	where
 		Transaction: Send + 'static,
 {
-	type Error = crate::error::Error;
+	type Error = sp_consensus::error::Error;
 	type Transaction = Transaction;
 
 	/// Check block preconditions.

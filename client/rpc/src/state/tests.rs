@@ -29,9 +29,9 @@ use sc_block_builder::BlockBuilderProvider;
 use sp_io::hashing::blake2_256;
 use substrate_test_runtime_client::{
 	prelude::*,
-	sp_consensus::BlockOrigin,
 	runtime,
 };
+use sc_consensus_api::BlockOrigin;
 use sc_rpc_api::DenyUnsafe;
 use sp_runtime::generic::BlockId;
 use crate::testing::TaskExecutor;

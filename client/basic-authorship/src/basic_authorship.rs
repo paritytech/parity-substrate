@@ -468,7 +468,8 @@ mod tests {
 	use super::*;
 
 	use parking_lot::Mutex;
-	use sp_consensus::{BlockOrigin, Proposer};
+	use sp_consensus::Proposer;
+	use sc_consensus_api::BlockOrigin;
 	use substrate_test_runtime_client::{
 		prelude::*, TestClientBuilder, runtime::{Extrinsic, Transfer}, TestClientBuilderExt,
 	};

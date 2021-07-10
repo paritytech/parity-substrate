@@ -46,9 +46,10 @@ use sp_api::ProvideRuntimeApi;
 use sp_core::{H256, ChangesTrieConfiguration, blake2_256, testing::TaskExecutor};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use sp_consensus::{
-	BlockOrigin, SelectChain, BlockImport, Error as ConsensusError, BlockCheckParams, ImportResult,
-	BlockStatus, BlockImportParams, ForkChoiceStrategy,
+use sp_consensus::{SelectChain,  Error as ConsensusError, BlockStatus};
+use sc_consensus_api::{
+	BlockOrigin, BlockImport, BlockCheckParams, ImportResult,
+	BlockImportParams, ForkChoiceStrategy,
 };
 use sp_storage::{StorageKey, ChildInfo};
 use sp_trie::{TrieConfiguration, trie_types::Layout};

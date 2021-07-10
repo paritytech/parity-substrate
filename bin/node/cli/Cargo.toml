@@ -64,6 +64,7 @@ sc-consensus = { version = "0.9.0", path = "../../../client/consensus/common" }
 sc-transaction-pool = { version = "3.0.0", path = "../../../client/transaction-pool" }
 sc-transaction-pool-api = { version = "3.0.0", path = "../../../client/transaction-pool/api" }
 sc-network = { version = "0.9.0", path = "../../../client/network" }
+sc-consensus-api = { version = "0.9.0", path = "../../../client/consensus/api" }
 sc-consensus-slots = { version = "0.9.0", path = "../../../client/consensus/slots" }
 sc-consensus-babe = { version = "0.9.0", path = "../../../client/consensus/babe" }
 sc-consensus-uncles = { version = "0.9.0", path = "../../../client/consensus/uncles" }

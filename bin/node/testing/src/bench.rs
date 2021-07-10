@@ -29,7 +29,7 @@ use crate::client::{Client, Backend};
 use crate::keyring::*;
 use sc_client_db::PruningMode;
 use sc_executor::{NativeExecutor, WasmExecutionMethod};
-use sp_consensus::{
+use sc_consensus_api::{
 	BlockOrigin, BlockImport, BlockImportParams,
 	ForkChoiceStrategy, ImportResult, ImportedAux
 };

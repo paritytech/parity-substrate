@@ -13,32 +13,20 @@ readme = "README.md"
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
 
-
 [dependencies]
-thiserror = "1.0.21"
-libp2p = { version = "0.37.1", default-features = false }
+async-trait = "0.1.42"
+codec = { package = "parity-scale-codec", version = "2.0.0", features = ["derive"] }
+futures = { version = "0.3.1", features = ["thread-pool"] }
 log = "0.4.8"
-sp-core = { path= "../../core", version = "3.0.0"}
+thiserror = "1.0.21"
+
+sp-api = { version = "3.0.0", path = "../../api" }
+sp-core = { version = "3.0.0", path = "../../core"}
 sp-inherents = { version = "3.0.0", path = "../../inherents" }
 sp-state-machine = { version = "0.9.0", path = "../../state-machine" }
-futures = { version = "0.3.1", features = ["thread-pool"] }
-futures-timer = "3.0.1"
 sp-std = { version = "3.0.0", path = "../../std" }
 sp-version = { version = "3.0.0", path = "../../version" }
 sp-runtime = { version = "3.0.0", path = "../../runtime" }
-sp-utils = { version = "3.0.0", path = "../../utils" }
-sp-trie = { version = "3.0.0", path = "../../trie" }
-sp-api = { version = "3.0.0", path = "../../api" }
-codec = { package = "parity-scale-codec", version = "2.0.0", features = ["derive"] }
-parking_lot = "0.11.1"
-serde = { version = "1.0", features = ["derive"] }
-prometheus-endpoint = { package = "substrate-prometheus-endpoint", path = "../../../utils/prometheus", version = "0.9.0"}
-wasm-timer = "0.2.5"
-async-trait = "0.1.42"
-
-[dev-dependencies]
-futures = "0.3.9"
-sp-test-primitives = { version = "2.0.0", path = "../../test-primitives" }
 
 [features]
 default = []

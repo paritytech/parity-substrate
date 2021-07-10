@@ -36,8 +36,8 @@ use sc_consensus_slots::BackoffAuthoringOnFinalizedHeadLagging;
 use sc_block_builder::{BlockBuilder, BlockBuilderProvider};
 use sp_consensus::{
 	NoNetwork as DummyOracle, Proposal, DisableProofRecording, AlwaysCanAuthor,
-	import_queue::{BoxBlockImport, BoxJustificationImport},
 };
+use sc_consensus_api::{BoxBlockImport, BoxJustificationImport};
 use sc_network_test::{Block as TestBlock, *};
 use sc_network::config::ProtocolConfig;
 use sp_runtime::{generic::DigestItem, traits::{Block as BlockT, DigestFor}};

@@ -22,6 +22,7 @@ serde_json = "1.0.55"
 sc-client-api = { version = "3.0.0", path = "../../client/api" }
 sc-client-db = { version = "0.9.0", features = ["test-helpers"], path = "../../client/db" }
 sc-consensus = { version = "0.9.0", path = "../../client/consensus/common" }
+sc-consensus-api = { version = "0.9.0", path = "../../client/consensus/api" }
 sc-executor = { version = "0.9.0", path = "../../client/executor" }
 sc-light = { version = "3.0.0", path = "../../client/light" }
 sc-offchain = { version = "3.0.0", path = "../../client/offchain" }

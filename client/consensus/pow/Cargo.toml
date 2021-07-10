@@ -23,6 +23,7 @@ sp-block-builder = { version = "3.0.0", path = "../../../primitives/block-builde
 sp-inherents = { version = "3.0.0", path = "../../../primitives/inherents" }
 sp-consensus-pow = { version = "0.9.0", path = "../../../primitives/consensus/pow" }
 sp-consensus = { version = "0.9.0", path = "../../../primitives/consensus/common" }
+sc-consensus-api = { version = "0.9.0", path = "../../consensus/api" }
 log = "0.4.8"
 futures = { version = "0.3.1", features = ["compat"] }
 futures-timer = "3.0.1"

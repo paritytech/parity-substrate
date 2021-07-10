@@ -53,6 +53,7 @@ sp-keystore = { version = "0.9.0", path = "../../primitives/keystore" }
 sp-session = { version = "3.0.0", path = "../../primitives/session" }
 sp-state-machine = { version = "0.9.0", path = "../../primitives/state-machine" }
 sp-application-crypto = { version = "3.0.0", path = "../../primitives/application-crypto" }
+sc-consensus-api = { version = "0.9.0", path = "../consensus/api" }
 sp-consensus = { version = "0.9.0", path = "../../primitives/consensus/common" }
 sp-inherents = { version = "3.0.0", path = "../../primitives/inherents" }
 sp-storage = { version = "3.0.0", path = "../../primitives/storage" }

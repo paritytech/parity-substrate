@@ -25,7 +25,7 @@ use sp_runtime::{
 	generic::{BlockId, SignedBlock},
 	Justifications,
 };
-use sp_consensus::BlockOrigin;
+use sc_consensus_api::BlockOrigin;
 
 use crate::blockchain::Info;
 use crate::notifications::StorageEventStream;
