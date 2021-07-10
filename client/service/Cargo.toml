@@ -54,6 +54,7 @@ sp-session = { version = "4.0.0-dev", path = "../../primitives/session" }
 sp-state-machine = { version = "0.10.0-dev", path = "../../primitives/state-machine" }
 sp-application-crypto = { version = "4.0.0-dev", path = "../../primitives/application-crypto" }
 sp-consensus = { version = "0.10.0-dev", path = "../../primitives/consensus/common" }
+sc-consensus-api = { version = "0.10.0-dev", path = "../../client/consensus/api" }
 sp-inherents = { version = "4.0.0-dev", path = "../../primitives/inherents" }
 sp-storage = { version = "4.0.0-dev", path = "../../primitives/storage" }
 sc-network = { version = "0.10.0-dev", path = "../network" }

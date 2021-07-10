@@ -83,7 +83,7 @@ use log::{error, info, trace, debug, warn};
 use metrics::{Metrics, MetricSources, Histogram, HistogramVec};
 use parking_lot::Mutex;
 use sc_peerset::PeersetHandle;
-use sp_consensus::import_queue::{BlockImportError, BlockImportResult, ImportQueue, Link};
+use sc_consensus_api::{BlockImportError, BlockImportStatus, ImportQueue, Link};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use std::{
@@ -1230,7 +1230,7 @@ impl<'a, B: BlockT + 'static, H: ExHashT> sp_consensus::SyncOracle
 	}
 }
 
-impl<B: BlockT, H: ExHashT> sp_consensus::JustificationSyncLink<B> for NetworkService<B, H> {
+impl<B: BlockT, H: ExHashT> sc_consensus_api::JustificationSyncLink<B> for NetworkService<B, H> {
 	fn request_justification(&self, hash: &B::Hash, number: NumberFor<B>) {
 		NetworkService::request_justification(self, hash, number);
 	}
@@ -1927,7 +1927,7 @@ impl<'a, B: BlockT> Link<B> for NetworkLink<'a, B> {
 		&mut self,
 		imported: usize,
 		count: usize,
-		results: Vec<(Result<BlockImportResult<NumberFor<B>>, BlockImportError>, B::Hash)>
+		results: Vec<(Result<BlockImportStatus<NumberFor<B>>, BlockImportError>, B::Hash)>
 	) {
 		self.protocol.behaviour_mut().user_protocol_mut().on_blocks_processed(imported, count, results)
 	}

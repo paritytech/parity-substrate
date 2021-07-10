@@ -324,7 +324,7 @@ impl<Block, B> VotingRule<Block, B> for Box<dyn VotingRule<Block, B>> where
 mod tests {
 	use super::*;
 	use sc_block_builder::BlockBuilderProvider;
-	use sp_consensus::BlockOrigin;
+	use sc_consensus_api::BlockOrigin;
 	use sp_runtime::traits::Header as _;
 
 	use substrate_test_runtime_client::{

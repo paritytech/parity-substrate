@@ -21,7 +21,7 @@ use super::Error;
 
 use sp_runtime::traits::{Block as BlockT, DigestFor};
 use sp_inherents::InherentData;
-use sp_consensus::BlockImportParams;
+use sc_consensus_api::BlockImportParams;
 
 pub mod babe;
 

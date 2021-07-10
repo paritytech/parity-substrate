@@ -26,6 +26,7 @@ assert_matches = "1.3.0"
 async-trait = "0.1.42"
 
 sc-client-api = { path = "../../api", version = "4.0.0-dev"}
+sc-consensus-api = { version = "0.10.0-dev", path = "../../consensus/api" }
 sc-consensus-babe = { path = "../../consensus/babe", version = "0.10.0-dev"}
 sc-consensus-epochs = { path = "../../consensus/epochs", version = "0.10.0-dev"}
 sp-consensus-babe = { path = "../../../primitives/consensus/babe", version = "0.10.0-dev"}

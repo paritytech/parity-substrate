@@ -52,6 +52,7 @@ serde = { version = "1.0.101", optional = true, features = ["derive"] }
 [dev-dependencies]
 sc-block-builder = { version = "0.10.0-dev", path = "../../client/block-builder" }
 sc-executor = { version = "0.10.0-dev", path = "../../client/executor" }
+sc-consensus-api = { version = "0.10.0-dev", path = "../../client/consensus/api" }
 substrate-test-runtime-client = { version = "2.0.0", path = "./client" }
 futures = "0.3.9"
 

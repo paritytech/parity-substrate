@@ -16,6 +16,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0", features = ["derive"] }
 sp-consensus-babe = { version = "0.10.0-dev", path = "../../../primitives/consensus/babe" }
+sc-consensus-api = { version = "0.10.0-dev", path = "../../../client/consensus/api" }
 sp-core = { version = "4.0.0-dev", path = "../../../primitives/core" }
 sp-application-crypto = { version = "4.0.0-dev", path = "../../../primitives/application-crypto" }
 sp-keystore = { version = "0.10.0-dev", path = "../../../primitives/keystore" }

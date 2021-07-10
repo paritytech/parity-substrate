@@ -50,16 +50,16 @@ fn build_test_full_node(network_config: config::NetworkConfiguration)
 	struct PassThroughVerifier(bool);
 
 	#[async_trait::async_trait]
-	impl<B: BlockT> sp_consensus::import_queue::Verifier<B> for PassThroughVerifier {
+	impl<B: BlockT> sc_consensus_api::Verifier<B> for PassThroughVerifier {
 		async fn verify(
 			&mut self,
-			origin: sp_consensus::BlockOrigin,
+			origin: sc_consensus_api::BlockOrigin,
 			header: B::Header,
 			justifications: Option<sp_runtime::Justifications>,
 			body: Option<Vec<B::Extrinsic>>,
 		) -> Result<
 			(
-				sp_consensus::BlockImportParams<B, ()>,
+				sc_consensus_api::BlockImportParams<B, ()>,
 				Option<Vec<(sp_blockchain::well_known_cache_keys::Id, Vec<u8>)>>,
 			),
 			String,
@@ -79,16 +79,16 @@ fn build_test_full_node(network_config: config::NetworkConfiguration)
 					)]
 				});
 
-			let mut import = sp_consensus::BlockImportParams::new(origin, header);
+			let mut import = sc_consensus_api::BlockImportParams::new(origin, header);
 			import.body = body;
 			import.finalized = self.0;
 			import.justifications = justifications;
-			import.fork_choice = Some(sp_consensus::ForkChoiceStrategy::LongestChain);
+			import.fork_choice = Some(sc_consensus_api::ForkChoiceStrategy::LongestChain);
 			Ok((import, maybe_keys))
 		}
 	}
 
-	let import_queue = Box::new(sp_consensus::import_queue::BasicQueue::new(
+	let import_queue = Box::new(sc_consensus_api::BasicQueue::new(
 		PassThroughVerifier(false),
 		Box::new(client.clone()),
 		None,

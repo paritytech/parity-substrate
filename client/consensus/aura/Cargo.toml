@@ -20,6 +20,7 @@ sc-block-builder = { version = "0.10.0-dev", path = "../../block-builder" }
 sc-client-api = { version = "4.0.0-dev", path = "../../api" }
 codec = { package = "parity-scale-codec", version = "2.0.0" }
 sp-consensus = { version = "0.10.0-dev", path = "../../../primitives/consensus/common" }
+sc-consensus-api = { version = "0.10.0-dev", path = "../../../client/consensus/api" }
 sp-consensus-slots = { version = "0.10.0-dev", path = "../../../primitives/consensus/slots" }
 derive_more = "0.99.2"
 futures = "0.3.9"

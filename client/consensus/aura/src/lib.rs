@@ -41,8 +41,11 @@ use log::{debug, trace};
 use codec::{Encode, Decode, Codec};
 
 use sp_consensus::{
-	BlockImport, Environment, Proposer, CanAuthorWith, ForkChoiceStrategy, BlockImportParams,
-	BlockOrigin, Error as ConsensusError, SelectChain, StateAction,
+	Environment, Proposer, CanAuthorWith,
+	Error as ConsensusError, SelectChain,
+};
+use sc_consensus_api::{
+	BlockImport,BlockOrigin, StateAction,ForkChoiceStrategy, BlockImportParams
 };
 use sc_client_api::{backend::AuxStore, BlockOf, UsageProvider};
 use sp_blockchain::{Result as CResult, ProvideCache, HeaderBackend};
@@ -179,7 +182,7 @@ where
 	PF: Environment<B, Error = Error> + Send + Sync + 'static,
 	PF::Proposer: Proposer<B, Error = Error, Transaction = sp_api::TransactionFor<C, B>>,
 	SO: SyncOracle + Send + Sync + Clone,
-	L: sp_consensus::JustificationSyncLink<B>,
+	L: sc_consensus_api::JustificationSyncLink<B>,
 	CIDP: CreateInherentDataProviders<B, ()> + Send,
 	CIDP::InherentDataProviders: InherentDataProviderExt + Send,
 	BS: BackoffAuthoringBlocksStrategy<NumberFor<B>> + Send + 'static,
@@ -271,7 +274,7 @@ where
 	I: BlockImport<B, Transaction = sp_api::TransactionFor<C, B>> + Send + Sync + 'static,
 	Error: std::error::Error + Send + From<sp_consensus::Error> + 'static,
 	SO: SyncOracle + Send + Sync + Clone,
-	L: sp_consensus::JustificationSyncLink<B>,
+	L: sc_consensus_api::JustificationSyncLink<B>,
 	BS: BackoffAuthoringBlocksStrategy<NumberFor<B>> + Send + 'static,
 {
 	AuraWorker {
@@ -318,7 +321,7 @@ where
 	P::Public: AppPublic + Public + Member + Encode + Decode + Hash,
 	P::Signature: TryFrom<Vec<u8>> + Member + Encode + Decode + Hash + Debug,
 	SO: SyncOracle + Send + Clone,
-	L: sp_consensus::JustificationSyncLink<B>,
+	L: sc_consensus_api::JustificationSyncLink<B>,
 	BS: BackoffAuthoringBlocksStrategy<NumberFor<B>> + Send + 'static,
 	Error: std::error::Error + Send + From<sp_consensus::Error> + 'static,
 {
@@ -389,7 +392,7 @@ where
 		Self::Claim,
 		Self::EpochData,
 	) -> Result<
-		sp_consensus::BlockImportParams<B, sp_api::TransactionFor<C, B>>,
+		sc_consensus_api::BlockImportParams<B, sp_api::TransactionFor<C, B>>,
 		sp_consensus::Error> + Send + 'static>
 	{
 		let keystore = self.keystore.clone();
@@ -422,7 +425,7 @@ where
 			import_block.post_digests.push(signature_digest_item);
 			import_block.body = Some(body);
 			import_block.state_action = StateAction::ApplyChanges(
-				sp_consensus::StorageChanges::Changes(storage_changes)
+				sc_consensus_api::StorageChanges::Changes(storage_changes)
 			);
 			import_block.fork_choice = Some(ForkChoiceStrategy::LongestChain);
 
@@ -547,8 +550,9 @@ mod tests {
 	use super::*;
 	use sp_consensus::{
 		NoNetwork as DummyOracle, Proposal, AlwaysCanAuthor, DisableProofRecording,
-		import_queue::BoxJustificationImport, SlotData,
+		SlotData,
 	};
+	use sc_consensus_api::BoxJustificationImport;
 	use sc_network_test::{Block as TestBlock, *};
 	use sp_runtime::traits::{Block as BlockT, DigestFor};
 	use sc_network::config::ProtocolConfig;

@@ -251,7 +251,7 @@ pub(crate) mod tests {
 	use futures::executor::block_on;
 	use sc_block_builder::BlockBuilderProvider;
 	use sc_client_api::{apply_aux, LockImportRun};
-	use sp_consensus::BlockOrigin;
+	use sc_consensus_api::BlockOrigin;
 	use sp_core::crypto::Public;
 	use sp_finality_grandpa::{AuthorityId, GRANDPA_ENGINE_ID as ID};
 	use sp_keyring::Ed25519Keyring;

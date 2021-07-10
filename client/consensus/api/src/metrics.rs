@@ -23,7 +23,7 @@ use prometheus_endpoint::{
 
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 
-use crate::import_queue::{BlockImportResult, BlockImportError};
+use crate::import_queue::{BlockImportStatus, BlockImportError};
 
 /// Generic Prometheus metrics for common consensus functionality.
 #[derive(Clone)]
@@ -77,7 +77,7 @@ impl Metrics {
 
 	pub fn report_import<B: BlockT>(
 		&self,
-		result: &Result<BlockImportResult<NumberFor<B>>, BlockImportError>,
+		result: &Result<BlockImportStatus<NumberFor<B>>, BlockImportError>,
 	) {
 		let label = match result {
 			Ok(_) => "success",

@@ -23,6 +23,7 @@ rand = "0.7.2"
 libp2p = { version = "0.37.1", default-features = false }
 sp-consensus = { version = "0.10.0-dev", path = "../../../primitives/consensus/common" }
 sc-consensus = { version = "0.10.0-dev", path = "../../consensus/common" }
+sc-consensus-api = { version = "0.10.0-dev", path = "../../../client/consensus/api" }
 sc-client-api = { version = "4.0.0-dev", path = "../../api" }
 sp-blockchain = { version = "4.0.0-dev", path = "../../../primitives/blockchain" }
 sp-runtime = { version = "4.0.0-dev", path = "../../../primitives/runtime" }

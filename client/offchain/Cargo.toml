@@ -44,6 +44,7 @@ sc-transaction-pool = { version = "4.0.0-dev", path = "../transaction-pool" }
 sc-transaction-pool-api = { version = "4.0.0-dev", path = "../transaction-pool/api" }
 sp-tracing = { version = "4.0.0-dev", path = "../../primitives/tracing" }
 sp-consensus = { version = "0.10.0-dev", path = "../../primitives/consensus/common" }
+sc-consensus-api = { version = "0.10.0-dev", path = "../../client/consensus/api" }
 substrate-test-runtime-client = { version = "2.0.0", path = "../../test-utils/runtime/client" }
 tokio = "0.2"
 lazy_static = "1.4.0"

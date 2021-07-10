@@ -37,11 +37,11 @@ use crate::{
 	UsageInfo,
 };
 use sp_blockchain;
-use sp_consensus::BlockOrigin;
+use sc_consensus_api::BlockOrigin;
 use parking_lot::RwLock;
 
 pub use sp_state_machine::Backend as StateBackend;
-pub use sp_consensus::ImportedState;
+pub use sc_consensus_api::ImportedState;
 use std::marker::PhantomData;
 
 /// Extracts the state backend type for the given backend.

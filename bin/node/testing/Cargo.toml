@@ -34,6 +34,7 @@ sp-runtime = { version = "4.0.0-dev", path = "../../../primitives/runtime" }
 pallet-staking = { version = "4.0.0-dev", path = "../../../frame/staking" }
 sc-executor = { version = "0.10.0-dev", path = "../../../client/executor", features = ["wasmtime"] }
 sp-consensus = { version = "0.10.0-dev", path = "../../../primitives/consensus/common" }
+sc-consensus-api = { version = "0.10.0-dev", path = "../../../client/consensus/api" }
 frame-system = { version = "4.0.0-dev", path = "../../../frame/system" }
 substrate-test-client = { version = "2.0.0", path = "../../../test-utils/client" }
 pallet-timestamp = { version = "4.0.0-dev", path = "../../../frame/timestamp" }

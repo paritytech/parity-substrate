@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use sp_consensus::BlockOrigin;
+use sc_consensus_api::BlockOrigin;
 use std::time::Duration;
 use futures::{Future, executor::block_on};
 use super::*;
@@ -1126,4 +1126,3 @@ fn syncs_state() {
 		}));
 	}
 }
-

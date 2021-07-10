@@ -836,8 +836,8 @@ fn full_wasm_block_import_works_with_changes_trie() {
 fn should_import_block_with_test_client() {
 	use node_testing::client::{
 		ClientBlockImportExt, TestClientBuilderExt, TestClientBuilder,
-		sp_consensus::BlockOrigin,
 	};
+	use sc_consensus_api::BlockOrigin;
 
 	let mut client = TestClientBuilder::new().build();
 	let block1 = changes_trie_block();

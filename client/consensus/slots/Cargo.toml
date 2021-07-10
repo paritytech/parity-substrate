@@ -21,6 +21,7 @@ sp-trie = { version = "4.0.0-dev", path = "../../../primitives/trie" }
 sp-application-crypto = { version = "4.0.0-dev", path = "../../../primitives/application-crypto" }
 sp-arithmetic = { version = "4.0.0-dev", path = "../../../primitives/arithmetic" }
 sp-blockchain = { version = "4.0.0-dev", path = "../../../primitives/blockchain" }
+sc-consensus-api = { version = "0.10.0-dev", path = "../../../client/consensus/api" }
 sp-consensus-slots = { version = "0.10.0-dev", path = "../../../primitives/consensus/slots" }
 sp-runtime = { version = "4.0.0-dev", path = "../../../primitives/runtime" }
 sp-state-machine = { version = "0.10.0-dev", path = "../../../primitives/state-machine" }

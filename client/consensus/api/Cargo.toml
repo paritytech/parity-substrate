@@ -1,0 +1,39 @@
+[package]
+name = "sc-consensus-api"
+version = "0.10.0-dev"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2018"
+license = "Apache-2.0"
+homepage = "https://substrate.dev"
+repository = "https://github.com/paritytech/substrate/"
+description = "Minimal interface for client's consensus api."
+documentation = "https://docs.rs/sc-consensus-api/"
+readme = "README.md"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+
+[dependencies]
+thiserror = "1.0.21"
+libp2p = { version = "0.37.1", default-features = false }
+log = "0.4.8"
+futures = { version = "0.3.1", features = ["thread-pool"] }
+futures-timer = "3.0.1"
+sp-core = { path = "../../../primitives/core", version = "4.0.0-dev"}
+sp-consensus = { path = "../../../primitives/consensus/common", version = "0.10.0-dev"}
+sp-state-machine = { version = "0.10.0-dev", path = "../../../primitives/state-machine" }
+sp-runtime = { version = "4.0.0-dev", path = "../../../primitives/runtime" }
+sp-utils = { version = "4.0.0-dev", path = "../../../primitives/utils" }
+sp-api = { version = "4.0.0-dev", path = "../../../primitives/api" }
+parking_lot = "0.11.1"
+serde = { version = "1.0", features = ["derive"] }
+prometheus-endpoint = { package = "substrate-prometheus-endpoint", path = "../../../utils/prometheus", version = "0.9.0"}
+wasm-timer = "0.2.5"
+async-trait = "0.1.42"
+
+[dev-dependencies]
+sp-test-primitives = { version = "2.0.0", path = "../../../primitives/test-primitives" }
+
+[features]
+default = []

@@ -18,9 +18,8 @@
 
 //! Testing block import logic.
 
-use sp_consensus::ImportedAux;
-use sp_consensus::import_queue::{
-	import_single_block, BasicQueue, BlockImportError, BlockImportResult, IncomingBlock,
+use sc_consensus_api::{
+	ImportedAux, import_single_block, BasicQueue, BlockImportError, BlockImportStatus, IncomingBlock,
 };
 use substrate_test_runtime_client::{self, prelude::*};
 use substrate_test_runtime_client::runtime::{Block, Hash};
@@ -64,7 +63,7 @@ fn import_single_good_block_works() {
 		block,
 		&mut PassThroughVerifier::new(true)
 	)) {
-		Ok(BlockImportResult::ImportedUnknown(ref num, ref aux, ref org))
+		Ok(BlockImportStatus::ImportedUnknown(ref num, ref aux, ref org))
 			if *num == number && *aux == expected_aux && *org == Some(peer_id) => {}
 		r @ _ => panic!("{:?}", r)
 	}
@@ -79,7 +78,7 @@ fn import_single_good_known_block_is_ignored() {
 		block,
 		&mut PassThroughVerifier::new(true)
 	)) {
-		Ok(BlockImportResult::ImportedKnown(ref n, _)) if *n == number => {}
+		Ok(BlockImportStatus::ImportedKnown(ref n, _)) if *n == number => {}
 		_ => panic!()
 	}
 }

@@ -237,7 +237,7 @@ mod tests {
 	};
 	use sc_transaction_pool::{BasicPool, FullChainApi};
 	use sc_transaction_pool_api::{TransactionPool, InPoolTransaction};
-	use sp_consensus::BlockOrigin;
+	use sc_consensus_api::BlockOrigin;
 	use sc_client_api::Backend as _;
 	use sc_block_builder::BlockBuilderProvider as _;
 	use futures::executor::block_on;

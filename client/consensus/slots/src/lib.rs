@@ -40,8 +40,9 @@ use log::{debug, error, info, warn};
 use sp_api::{ProvideRuntimeApi, ApiRef};
 use sp_arithmetic::traits::BaseArithmetic;
 use sp_consensus::{
-	BlockImport, CanAuthorWith, JustificationSyncLink, Proposer, SelectChain, SlotData, SyncOracle,
+	CanAuthorWith, Proposer, SelectChain, SlotData, SyncOracle,
 };
+use sc_consensus_api::{BlockImport, JustificationSyncLink};
 use sp_consensus_slots::Slot;
 use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::{
@@ -163,7 +164,7 @@ pub trait SimpleSlotWorker<B: BlockT> {
 			Self::Claim,
 			Self::EpochData,
 		) -> Result<
-				sp_consensus::BlockImportParams<B, <Self::BlockImport as BlockImport<B>>::Transaction>,
+				sc_consensus_api::BlockImportParams<B, <Self::BlockImport as BlockImport<B>>::Transaction>,
 				sp_consensus::Error
 			> + Send + 'static
 	>;

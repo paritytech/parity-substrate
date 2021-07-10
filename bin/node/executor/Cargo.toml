@@ -40,6 +40,7 @@ pallet-transaction-payment = { version = "4.0.0-dev", path = "../../../frame/tra
 pallet-treasury = { version = "4.0.0-dev", path = "../../../frame/treasury" }
 sp-application-crypto = { version = "4.0.0-dev", path = "../../../primitives/application-crypto" }
 sp-consensus-babe = { version = "0.10.0-dev", path = "../../../primitives/consensus/babe" }
+sc-consensus-api = { version = "0.10.0-dev", path = "../../../client/consensus/api" }
 sp-runtime = { version = "4.0.0-dev", path = "../../../primitives/runtime" }
 sp-externalities = { version = "0.10.0-dev", path = "../../../primitives/externalities" }
 substrate-test-client = { version = "2.0.0", path = "../../../test-utils/client" }

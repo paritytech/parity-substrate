@@ -18,6 +18,7 @@ sc-transaction-pool = { version = "4.0.0-dev", path = "../../client/transaction-
 sc-transaction-pool-api = { version = "4.0.0-dev", path = "../../client/transaction-pool/api" }
 sc-client-api = { version = "4.0.0-dev", path = "../../client/api" }
 sc-rpc-server = { version = "4.0.0-dev", path = "../../client/rpc-servers" }
+sc-consensus-api = { version = "0.10.0-dev", path = "../../client/consensus/api" }
 manual-seal = { package = "sc-consensus-manual-seal", version = "0.10.0-dev", path = "../../client/consensus/manual-seal" }
 
 # primitive deps

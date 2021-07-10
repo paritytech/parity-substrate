@@ -30,6 +30,7 @@ sp-runtime = { version = "4.0.0-dev", path = "../../primitives/runtime" }
 sp-utils = { version = "4.0.0-dev", path = "../../primitives/utils" }
 sp-consensus = { version = "0.10.0-dev", path = "../../primitives/consensus/common" }
 sc-consensus = { version = "0.10.0-dev", path = "../consensus/common" }
+sc-consensus-api = { version = "0.10.0-dev", path = "../consensus/api" }
 sp-core = { version = "4.0.0-dev", path = "../../primitives/core" }
 sp-keystore = { version = "0.10.0-dev", path = "../../primitives/keystore" }
 sp-api = { version = "4.0.0-dev", path = "../../primitives/api" }

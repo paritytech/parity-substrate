@@ -32,5 +32,6 @@ finality-grandpa = { version = "0.14.1" }
 rand = "0.8"
 sc-block-builder = { version = "0.10.0-dev", path = "../block-builder" }
 sp-consensus = { version = "0.10.0-dev", path = "../../primitives/consensus/common" }
+sc-consensus-api = { version = "0.10.0-dev", path = "../../client/consensus/api" }
 sp-keyring = { version = "4.0.0-dev", path = "../../primitives/keyring" }
 substrate-test-runtime-client = { version = "2.0.0",  path = "../../test-utils/runtime/client" }

@@ -14,6 +14,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 sc-light = { version = "4.0.0-dev", path = "../../../client/light" }
 sp-consensus = { version = "0.10.0-dev", path = "../../../primitives/consensus/common" }
+sc-consensus-api = { version = "0.10.0-dev", path = "../../../client/consensus/api" }
 sc-block-builder = { version = "0.10.0-dev", path = "../../../client/block-builder" }
 substrate-test-client = { version = "2.0.0", path = "../../client" }
 sp-core = { version = "4.0.0-dev", path = "../../../primitives/core" }

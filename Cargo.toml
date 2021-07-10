@@ -24,6 +24,7 @@ members = [
 	"client/chain-spec",
 	"client/chain-spec/derive",
 	"client/cli",
+	"client/consensus/api",
 	"client/consensus/aura",
 	"client/consensus/babe",
 	"client/consensus/babe/rpc",

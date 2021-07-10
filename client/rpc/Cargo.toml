@@ -53,6 +53,7 @@ substrate-test-runtime-client = { version = "2.0.0", path = "../../test-utils/ru
 tokio = "0.1.22"
 sc-transaction-pool = { version = "4.0.0-dev", path = "../transaction-pool" }
 sc-cli = { version = "0.10.0-dev", path = "../cli" }
+sc-consensus-api = { version = "0.10.0-dev", path = "../../client/consensus/api" }
 
 [features]
 test-helpers = ["lazy_static"]

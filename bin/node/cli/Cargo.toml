@@ -62,6 +62,7 @@ sp-transaction-pool = { version = "4.0.0-dev", path = "../../../primitives/trans
 sc-client-api = { version = "4.0.0-dev", path = "../../../client/api" }
 sc-chain-spec = { version = "4.0.0-dev", path = "../../../client/chain-spec" }
 sc-consensus = { version = "0.10.0-dev", path = "../../../client/consensus/common" }
+sc-consensus-api = { version = "0.10.0-dev", path = "../../../client/consensus/api" }
 sc-transaction-pool = { version = "4.0.0-dev", path = "../../../client/transaction-pool" }
 sc-transaction-pool-api = { version = "4.0.0-dev", path = "../../../client/transaction-pool/api" }
 sc-network = { version = "0.10.0-dev", path = "../../../client/network" }
