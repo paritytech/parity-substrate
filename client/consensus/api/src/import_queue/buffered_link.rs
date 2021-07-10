@@ -22,8 +22,8 @@
 //! # Example
 //!
 //! ```
-//! use sp_consensus::import_queue::Link;
-//! # use sp_consensus::import_queue::buffered_link::buffered_link;
+//! use sc_consensus_api::import_queue::Link;
+//! # use sc_consensus_api::import_queue::buffered_link::buffered_link;
 //! # use sp_test_primitives::Block;
 //! # struct DummyLink; impl Link<Block> for DummyLink {}
 //! # let mut my_link = DummyLink;
