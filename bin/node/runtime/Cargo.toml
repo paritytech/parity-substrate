@@ -65,7 +65,7 @@ pallet-im-online = { version = "3.0.0", default-features = false, path = "../../
 pallet-indices = { version = "3.0.0", default-features = false, path = "../../../frame/indices" }
 pallet-identity = { version = "3.0.0", default-features = false, path = "../../../frame/identity" }
 pallet-lottery = { version = "3.0.0", default-features = false, path = "../../../frame/lottery" }
-pallet-membership = { version = "3.0.0", default-features = false, path = "../../../frame/membership" }
+pallet-membership = { version = "3.1.0", default-features = false, path = "../../../frame/membership" }
 pallet-mmr = { version = "3.0.0", default-features = false, path = "../../../frame/merkle-mountain-range" }
 pallet-multisig = { version = "3.0.0", default-features = false, path = "../../../frame/multisig" }
 pallet-offences = { version = "3.0.0", default-features = false, path = "../../../frame/offences" }
