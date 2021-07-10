@@ -1,0 +1,16 @@
+[package]
+name = "node-runtime-voter-bags"
+version = "3.0.0"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2018"
+license = "Apache-2.0"
+homepage = "https://substrate.dev"
+repository = "https://github.com/paritytech/substrate/"
+description = "Voter Bag generation script for pallet-staking and node-runtime."
+readme = "README.md"
+
+[dependencies]
+node-runtime = { version = "2.0.0", path = ".." }
+pallet-staking = { version = "3.0.0", path = "../../../../frame/staking", features = ["make-bags"] }
+sp-io = { version = "3.0.0", path = "../../../../primitives/io" }
+structopt = "0.3.21"

@@ -14,6 +14,7 @@ members = [
 	"bin/node/rpc",
 	"bin/node/rpc-client",
 	"bin/node/runtime",
+	"bin/node/runtime/voter-bags",
 	"bin/node/testing",
 	"bin/utils/chain-spec-builder",
 	"bin/utils/subkey",

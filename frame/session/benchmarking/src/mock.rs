@@ -185,6 +185,7 @@ impl pallet_staking::Config for Test {
 	type ElectionProvider = onchain::OnChainSequentialPhragmen<Self>;
 	type GenesisElectionProvider = Self::ElectionProvider;
 	type WeightInfo = ();
+	type VoterBagThresholds = ();
 }
 
 impl crate::Config for Test {}

@@ -93,6 +93,9 @@ pub mod constants;
 use constants::{time::*, currency::*};
 use sp_runtime::generic::Era;
 
+/// Generated voter bag information.
+mod voter_bags;
+
 // Make the WASM binary available.
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
@@ -481,6 +484,7 @@ parameter_types! {
 	pub const RewardCurve: &'static PiecewiseLinear<'static> = &REWARD_CURVE;
 	pub const MaxNominatorRewardedPerValidator: u32 = 256;
 	pub OffchainRepeat: BlockNumber = 5;
+	pub const VoterBagThresholds: &'static [u64] = &voter_bags::THRESHOLDS;
 }
 
 use frame_election_provider_support::onchain;
@@ -510,6 +514,7 @@ impl pallet_staking::Config for Runtime {
 	type GenesisElectionProvider =
 		onchain::OnChainSequentialPhragmen<pallet_election_provider_multi_phase::OnChainConfig<Self>>;
 	type WeightInfo = pallet_staking::weights::SubstrateWeight<Runtime>;
+	type VoterBagThresholds = VoterBagThresholds;
 }
 
 parameter_types! {

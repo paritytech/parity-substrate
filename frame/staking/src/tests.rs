@@ -19,6 +19,7 @@
 
 use super::{*, Event};
 use mock::*;
+use sp_npos_elections::supports_eq_unordered;
 use sp_runtime::{
 	assert_eq_error_rate,
 	traits::{BadOrigin, Dispatchable},
@@ -146,6 +147,17 @@ fn basic_setup_works() {
 
 		// New era is not being forced
 		assert_eq!(Staking::force_era(), Forcing::NotForcing);
+
+		// genesis accounts must exist in the proper bags
+		let weight_of = Staking::weight_of_fn();
+		// for these stash ids, see
+		// https://github.com/paritytech/substrate/
+		//   blob/631d4cdbcad438248c2597213918d8207d85bf6e/frame/staking/src/mock.rs#L435-L441
+		for genesis_stash_account_id in [11, 21, 31, 101] {
+			let node = crate::voter_bags::Node::<Test>::from_id(&genesis_stash_account_id)
+				.expect(&format!("node was created for account {}", genesis_stash_account_id));
+			assert!(!node.is_misplaced(&weight_of));
+		}
 	});
 }
 
@@ -513,8 +525,8 @@ fn nominating_and_rewards_should_work() {
 					total: 1000 + 800,
 					own: 1000,
 					others: vec![
-						IndividualExposure { who: 3, value: 400 },
 						IndividualExposure { who: 1, value: 400 },
+						IndividualExposure { who: 3, value: 400 },
 					]
 				},
 			);
@@ -524,8 +536,8 @@ fn nominating_and_rewards_should_work() {
 					total: 1000 + 1200,
 					own: 1000,
 					others: vec![
-						IndividualExposure { who: 3, value: 600 },
 						IndividualExposure { who: 1, value: 600 },
+						IndividualExposure { who: 3, value: 600 },
 					]
 				},
 			);
@@ -1859,13 +1871,13 @@ fn bond_with_duplicate_vote_should_be_ignored_by_election_provider() {
 			// winners should be 21 and 31. Otherwise this election is taking duplicates into
 			// account.
 			let supports = <Test as Config>::ElectionProvider::elect().unwrap().0;
-			assert_eq!(
-				supports,
-				vec![
+			assert!(supports_eq_unordered(
+				&supports,
+				&vec![
 					(21, Support { total: 1800, voters: vec![(21, 1000), (3, 400), (1, 400)] }),
 					(31, Support { total: 2200, voters: vec![(31, 1000), (3, 600), (1, 600)] })
 				],
-			);
+			));
 		});
 }
 
@@ -1905,13 +1917,13 @@ fn bond_with_duplicate_vote_should_be_ignored_by_election_provider_elected() {
 
 			// winners should be 21 and 11.
 			let supports = <Test as Config>::ElectionProvider::elect().unwrap().0;
-			assert_eq!(
-				supports,
-				vec![
+			assert!(supports_eq_unordered(
+				&supports,
+				&vec![
 					(11, Support { total: 1500, voters: vec![(11, 1000), (1, 500)] }),
 					(21, Support { total: 2500, voters: vec![(21, 1000), (3, 1000), (1, 500)] })
 				],
-			);
+			));
 		});
 }
 
@@ -3859,6 +3871,78 @@ fn on_finalize_weight_is_nonzero() {
 	})
 }
 
+#[test]
+fn test_rebag() {
+	use crate::{
+		testing_utils::create_stash_controller,
+		voter_bags::{Bag, Node},
+	};
+	use frame_system::RawOrigin;
+
+	/// Make a validator and return its stash
+	fn make_validator(n: u32, balance_factor: u32) -> Result<AccountIdOf<Test>, &'static str> {
+		let (stash, controller) = create_stash_controller::<Test>(n, balance_factor, Default::default()).unwrap();
+
+		// Bond the full value of the stash
+		//
+		// By default, `create_stash_controller` only bonds 10% of the stash. However, we're going
+		// to want to edit one account's bonded value to match another's, so it's simpler if 100% of
+		// the balance is bonded.
+		let balance = <Test as Config>::Currency::free_balance(&stash);
+		Staking::bond_extra(RawOrigin::Signed(stash.clone()).into(), balance).unwrap();
+		Staking::validate(
+			RawOrigin::Signed(controller.clone()).into(),
+			ValidatorPrefs::default(),
+		).unwrap();
+
+		Ok(stash)
+	}
+
+	ExtBuilder::default().build_and_execute(|| {
+		// We want to have two validators: one, `stash`, is the one we will rebag.
+		// The other, `other_stash`, exists only so that the destination bag is not empty.
+		let stash = make_validator(0, 100).unwrap();
+		let other_stash = make_validator(1, 300).unwrap();
+
+		// verify preconditions
+		let weight_of = Staking::weight_of_fn();
+		let node = Node::<Test>::from_id(&stash).unwrap();
+		assert_eq!(
+			{
+				let origin_bag = Bag::<Test>::get(node.bag_upper).unwrap();
+				origin_bag.iter().count()
+			},
+			1,
+			"stash should be the only node in origin bag",
+		);
+		let other_node = Node::<Test>::from_id(&other_stash).unwrap();
+		assert!(!other_node.is_misplaced(&weight_of), "other stash balance never changed");
+		assert_ne!(
+			{
+				let destination_bag = Bag::<Test>::get(other_node.bag_upper);
+				destination_bag.iter().count()
+			},
+			0,
+			"destination bag should not be empty",
+		);
+
+		// Update `stash`'s value to match `other_stash`, and bond extra to update its weight.
+		//
+		// This implicitly calls rebag, so the user stays in the best bag they qualify for.
+		let new_balance = <Test as Config>::Currency::free_balance(&other_stash);
+		<Test as Config>::Currency::make_free_balance_be(&stash, new_balance);
+		Staking::bond_extra(
+			RawOrigin::Signed(stash.clone()).into(),
+			new_balance,
+		).unwrap();
+
+		// node should no longer be misplaced
+		// note that we refresh the node, in case the storage value has changed
+		let node = Node::<Test>::from_id(&stash).unwrap();
+		assert!(!node.is_misplaced(&weight_of), "node must be in proper place after rebag");
+	});
+}
+
 mod election_data_provider {
 	use super::*;
 	use frame_election_provider_support::ElectionDataProvider;
@@ -3957,7 +4041,7 @@ mod election_data_provider {
 	#[test]
 	fn respects_len_limits() {
 		ExtBuilder::default().build_and_execute(|| {
-			assert_eq!(Staking::voters(Some(1)).unwrap_err(), "Voter snapshot too big");
+			assert_eq!(Staking::voters(Some(1)).unwrap().0.len(), 1);
 			assert_eq!(Staking::targets(Some(1)).unwrap_err(), "Target snapshot too big");
 		});
 	}

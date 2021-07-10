@@ -476,12 +476,36 @@ pub struct Support<AccountId> {
 	pub voters: Vec<(AccountId, ExtendedBalance)>,
 }
 
+#[cfg(feature = "mocks")]
+impl<AccountId: Ord + Clone> Support<AccountId> {
+	/// `true` when the support is identical except for the ordering of the voters.
+	pub fn eq_unordered(&self, other: &Self) -> bool {
+		self.total == other.total && {
+			let my_voters: BTreeMap<_, _> = self.voters.iter().cloned().collect();
+			let other_voters: BTreeMap<_, _> = other.voters.iter().cloned().collect();
+			my_voters == other_voters
+		}
+	}
+}
+
 /// A target-major representation of the the election outcome.
 ///
 /// Essentially a flat variant of [`SupportMap`].
 ///
 /// The main advantage of this is that it is encodable.
 pub type Supports<A> = Vec<(A, Support<A>)>;
+
+#[cfg(feature = "mocks")]
+pub fn supports_eq_unordered<AccountId: Ord + Clone>(a: &Supports<AccountId>, b: &Supports<AccountId>) -> bool {
+	let map: BTreeMap<_, _> = a.iter().cloned().collect();
+	b.iter().all(|(id, b_support)| {
+		let a_support = match map.get(id) {
+			Some(support) => support,
+			None => return false,
+		};
+		a_support.eq_unordered(b_support)
+	})
+}
 
 /// Linkage from a winner to their [`Support`].
 ///
@@ -504,12 +528,12 @@ impl<A> FlattenSupportMap<A> for SupportMap<A> {
 ///
 /// The list of winners is basically a redundancy for error checking only; It ensures that all the
 /// targets pointed to by the [`Assignment`] are present in the `winners`.
-pub fn to_support_map<A: IdentifierT>(
-	winners: &[A],
-	assignments: &[StakedAssignment<A>],
-) -> Result<SupportMap<A>, Error> {
+pub fn to_support_map<AccountId: IdentifierT>(
+	winners: &[AccountId],
+	assignments: &[StakedAssignment<AccountId>],
+) -> Result<SupportMap<AccountId>, Error> {
 	// Initialize the support of each candidate.
-	let mut supports = <SupportMap<A>>::new();
+	let mut supports = <SupportMap<AccountId>>::new();
 	winners.iter().for_each(|e| {
 		supports.insert(e.clone(), Default::default());
 	});
@@ -532,10 +556,10 @@ pub fn to_support_map<A: IdentifierT>(
 /// flat vector.
 ///
 /// Similar to [`to_support_map`], `winners` is used for error checking.
-pub fn to_supports<A: IdentifierT>(
-	winners: &[A],
-	assignments: &[StakedAssignment<A>],
-) -> Result<Supports<A>, Error> {
+pub fn to_supports<AccountId: IdentifierT>(
+	winners: &[AccountId],
+	assignments: &[StakedAssignment<AccountId>],
+) -> Result<Supports<AccountId>, Error> {
 	to_support_map(winners, assignments).map(FlattenSupportMap::flatten)
 }
 

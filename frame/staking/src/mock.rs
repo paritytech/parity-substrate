@@ -17,6 +17,12 @@
 
 //! Test utilities
 
+// This module needs to exist when the `make-bags` feature is enabled so that we can generate the
+// appropriate thresholds, but we don't care if it's mostly unused in that case.
+#![cfg_attr(feature = "make-bags", allow(unused))]
+
+mod voter_bags;
+
 use crate::*;
 use crate as staking;
 use frame_support::{
@@ -243,6 +249,10 @@ impl onchain::Config for Test {
 	type DataProvider = Staking;
 }
 
+parameter_types! {
+	pub const VoterBagThresholds: &'static [VoteWeight] = &voter_bags::THRESHOLDS;
+}
+
 impl Config for Test {
 	const MAX_NOMINATIONS: u32 = 16;
 	type Currency = Balances;
@@ -263,6 +273,7 @@ impl Config for Test {
 	type ElectionProvider = onchain::OnChainSequentialPhragmen<Self>;
 	type GenesisElectionProvider = Self::ElectionProvider;
 	type WeightInfo = ();
+	type VoterBagThresholds = VoterBagThresholds;
 }
 
 impl<LocalCall> frame_system::offchain::SendTransactionTypes<LocalCall> for Test

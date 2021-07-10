@@ -16,14 +16,19 @@ targets = ["x86_64-unknown-linux-gnu"]
 static_assertions = "1.1.0"
 serde = { version = "1.0.101", optional = true }
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
+sp-core = { version = "3.0.0", path = "../../primitives/core", optional = true }
 sp-std = { version = "3.0.0", default-features = false, path = "../../primitives/std" }
 sp-io ={ version = "3.0.0", default-features = false, path = "../../primitives/io" }
 sp-runtime = { version = "3.0.0", default-features = false, path = "../../primitives/runtime" }
 sp-staking = { version = "3.0.0", default-features = false, path = "../../primitives/staking" }
+sp-tracing = { version = "3.0.0", path = "../../primitives/tracing", optional = true }
 frame-support = { version = "3.0.0", default-features = false, path = "../support" }
 frame-system = { version = "3.0.0", default-features = false, path = "../system" }
-pallet-session = { version = "3.0.0", default-features = false, features = ["historical"], path = "../session" }
 pallet-authorship = { version = "3.0.0", default-features = false, path = "../authorship" }
+pallet-balances = { version = "3.0.0", path = "../balances", optional = true }
+pallet-session = { version = "3.0.0", default-features = false, features = ["historical"], path = "../session" }
+pallet-staking-reward-curve = { version = "3.0.0", path = "../staking/reward-curve", optional = true }
+pallet-timestamp = { version = "3.0.0", path = "../timestamp", optional = true }
 sp-application-crypto = { version = "3.0.0", default-features = false, path = "../../primitives/application-crypto" }
 frame-election-provider-support = { version = "3.0.0", default-features = false, path = "../election-provider-support" }
 log = { version = "0.4.14", default-features = false }
@@ -33,16 +38,23 @@ paste = "1.0"
 frame-benchmarking = { version = "3.1.0", default-features = false, path = "../benchmarking", optional = true }
 rand_chacha = { version = "0.2", default-features = false, optional = true }
 
+# Optional imports for making voter bags lists
+chrono = { version = "0.4.19", optional = true }
+git2 = { version = "0.13.20", default-features = false, optional = true }
+num-format = { version = "0.4.0", optional = true }
+
 [dev-dependencies]
 sp-storage = { version = "3.0.0", path = "../../primitives/storage" }
 sp-tracing = { version = "3.0.0", path = "../../primitives/tracing" }
 sp-core = { version = "3.0.0", path = "../../primitives/core" }
+sp-npos-elections = { version = "3.0.0", path = "../../primitives/npos-elections", features = ["mocks"] }
 pallet-balances = { version = "3.0.0", path = "../balances" }
 pallet-timestamp = { version = "3.0.0", path = "../timestamp" }
-pallet-staking-reward-curve = { version = "3.0.0",  path = "../staking/reward-curve" }
+pallet-staking-reward-curve = { version = "3.0.0", path = "../staking/reward-curve" }
 substrate-test-utils = { version = "3.0.0", path = "../../test-utils" }
 frame-benchmarking = { version = "3.1.0", path = "../benchmarking" }
 frame-election-provider-support = { version = "3.0.0", features = ["runtime-benchmarks"], path = "../election-provider-support" }
+rand = "0.8.4"
 rand_chacha = { version = "0.2" }
 parking_lot = "0.11.1"
 hex = "0.4"
@@ -70,3 +82,14 @@ runtime-benchmarks = [
 	"rand_chacha",
 ]
 try-runtime = ["frame-support/try-runtime"]
+make-bags = [
+	"chrono",
+	"git2",
+	"num-format",
+	"pallet-staking-reward-curve",
+	"pallet-balances",
+	"pallet-timestamp",
+	"sp-core",
+	"sp-tracing",
+	"std",
+]

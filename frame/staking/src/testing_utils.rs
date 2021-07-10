@@ -33,6 +33,7 @@ pub fn clear_validators_and_nominators<T: Config>() {
 	CounterForValidators::<T>::kill();
 	Nominators::<T>::remove_all(None);
 	CounterForNominators::<T>::kill();
+	VoterList::<T>::clear();
 }
 
 /// Grab a funded user.

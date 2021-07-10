@@ -100,6 +100,13 @@
 //!
 //! An account can become a nominator via the [`nominate`](Call::nominate) call.
 //!
+//! #### Voting
+//!
+//! Staking is closely related to elections; actual validators are chosen from among all potential
+//! validators by election by the potential validators and nominators. To reduce use of the phrase
+//! "potential validators and nominators", we often use the term **voters**, who are simply
+//! the union of potential validators and nominators.
+//!
 //! #### Rewards and Slash
 //!
 //! The **reward and slashing** procedure is the core of the Staking pallet, attempting to _embrace
@@ -267,8 +274,8 @@
 #![recursion_limit = "128"]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(test)]
-mod mock;
+#[cfg(any(test, feature = "make-bags"))]
+pub mod mock;
 #[cfg(test)]
 mod tests;
 #[cfg(any(feature = "runtime-benchmarks", test))]
@@ -276,8 +283,9 @@ pub mod testing_utils;
 #[cfg(any(feature = "runtime-benchmarks", test))]
 pub mod benchmarking;
 
-pub mod slashing;
 pub mod inflation;
+pub mod slashing;
+pub mod voter_bags;
 pub mod weights;
 
 use sp_std::{
@@ -300,22 +308,20 @@ use frame_support::{
 };
 use pallet_session::historical;
 use sp_runtime::{
-	Percent, Perbill, RuntimeDebug, DispatchError,
+	DispatchError, Perbill, Percent, RuntimeDebug,
 	curve::PiecewiseLinear,
 	traits::{
-		Convert, Zero, StaticLookup, CheckedSub, Saturating, SaturatedConversion,
-		AtLeast32BitUnsigned, Bounded,
+		AtLeast32BitUnsigned, Bounded, CheckedSub, Convert, SaturatedConversion, Saturating,
+		StaticLookup, Zero,
 	},
 };
 use sp_staking::{
 	SessionIndex,
 	offence::{OnOffenceHandler, OffenceDetails, Offence, ReportOffence, OffenceError},
 };
-use frame_system::{
-	ensure_signed, ensure_root, pallet_prelude::*,
-	offchain::SendTransactionTypes,
-};
+use frame_system::{ensure_signed, ensure_root, pallet_prelude::*, offchain::SendTransactionTypes};
 use frame_election_provider_support::{ElectionProvider, VoteWeight, Supports, data_provider};
+use voter_bags::{VoterList, VoterType};
 pub use weights::WeightInfo;
 pub use pallet::*;
 
@@ -351,6 +357,9 @@ type PositiveImbalanceOf<T> = <<T as Config>::Currency as Currency<
 type NegativeImbalanceOf<T> = <<T as Config>::Currency as Currency<
 	<T as frame_system::Config>::AccountId,
 >>::NegativeImbalance;
+
+type AccountIdOf<T> = <T as frame_system::Config>::AccountId;
+type VotingDataOf<T> = (AccountIdOf<T>, VoteWeight, Vec<AccountIdOf<T>>);
 
 /// Information regarding the active era (era in used in session).
 #[derive(Encode, Decode, RuntimeDebug)]
@@ -746,16 +755,45 @@ enum Releases {
 	V5_0_0, // blockable validators.
 	V6_0_0, // removal of all storage associated with offchain phragmen.
 	V7_0_0, // keep track of number of nominators / validators in map
+	V8_0_0, // VoterList and efficient semi-sorted iteration
 }
 
 impl Default for Releases {
 	fn default() -> Self {
-		Releases::V7_0_0
+		Releases::V8_0_0
 	}
 }
 
 pub mod migrations {
 	use super::*;
+
+	pub mod v8 {
+		use super::*;
+
+		pub fn pre_migrate<T: Config>() -> Result<(), &'static str> {
+			ensure!(StorageVersion::<T>::get() == Releases::V7_0_0, "must upgrade linearly");
+			ensure!(VoterList::<T>::decode_len().unwrap_or_default() == 0, "voter list already exists");
+			Ok(())
+		}
+
+		pub fn migrate<T: Config>() -> Weight {
+			log!(info, "Migrating staking to Releases::V8_0_0");
+
+			let migrated = VoterList::<T>::regenerate();
+
+			StorageVersion::<T>::put(Releases::V8_0_0);
+			log!(
+				info,
+				"Completed staking migration to Releases::V8_0_0 with {} voters migrated",
+				migrated,
+			);
+
+			T::WeightInfo::regenerate(
+				CounterForValidators::<T>::get(),
+				CounterForNominators::<T>::get(),
+			).saturating_add(T::DbWeight::get().reads(2))
+		}
+	}
 
 	pub mod v7 {
 		use super::*;
@@ -922,6 +960,56 @@ pub mod pallet {
 
 		/// Weight information for extrinsics in this pallet.
 		type WeightInfo: WeightInfo;
+
+		/// The list of thresholds separating the various voter bags.
+		///
+		/// Voters are separated into unsorted bags according to their vote weight. This specifies
+		/// the thresholds separating the bags. A voter's bag is the largest bag for which the
+		/// voter's weight is less than or equal to its upper threshold.
+		///
+		/// When voters are iterated, higher bags are iterated completely before lower bags. This
+		/// means that iteration is _semi-sorted_: voters of higher weight tend to come before
+		/// voters of lower weight, but peer voters within a particular bag are sorted in insertion
+		/// order.
+		///
+		/// # Expressing the constant
+		///
+		/// This constant must be sorted in strictly increasing order. Duplicate items are not
+		/// permitted.
+		///
+		/// There is an implied upper limit of `VoteWeight::MAX`; that value does not need to be
+		/// specified within the bag. For any two threshold lists, if one ends with
+		/// `VoteWeight::MAX`, the other one does not, and they are otherwise equal, the two lists
+		/// will behave identically.
+		///
+		/// # Calculation
+		///
+		/// It is recommended to generate the set of thresholds in a geometric series, such that
+		/// there exists some constant ratio such that `threshold[k + 1] == (threshold[k] *
+		/// constant_ratio).max(threshold[k] + 1)` for all `k`.
+		///
+		/// The helpers in the `voter_bags::make_bags` module can simplify this calculation. To use
+		/// them, the `make-bags` feature must be enabled.
+		///
+		/// # Examples
+		///
+		/// - If `VoterBagThresholds::get().is_empty()`, then all voters are put into the same bag,
+		///   and iteration is strictly in insertion order.
+		/// - If `VoterBagThresholds::get().len() == 64`, and the thresholds are determined
+		///   according to the procedure given above, then the constant ratio is equal to 2.
+		/// - If `VoterBagThresholds::get().len() == 200`, and the thresholds are determined
+		///   according to the procedure given above, then the constant ratio is approximately equal
+		///   to 1.248.
+		/// - If the threshold list begins `[1, 2, 3, ...]`, then a voter with weight 0 or 1 will
+		///   fall into bag 0, a voter with weight 2 will fall into bag 1, etc.
+		///
+		/// # Migration
+		///
+		/// In the event that this list ever changes, a copy of the old bags list must be retained.
+		/// With that `VoterList::migrate` can be called, which will perform the appropriate
+		/// migration.
+		#[pallet::constant]
+		type VoterBagThresholds: Get<&'static [VoteWeight]>;
 	}
 
 	#[pallet::extra_constants]
@@ -1216,6 +1304,47 @@ pub mod pallet {
 	#[pallet::storage]
 	pub(crate) type StorageVersion<T: Config> = StorageValue<_, Releases, ValueQuery>;
 
+
+	// The next storage items collectively comprise the voter bags: a composite data structure
+	// designed to allow efficient iteration of the top N voters by stake, mostly. See
+	// `mod voter_bags` for details.
+	//
+	// In each of these items, voter bags are indexed by their upper weight threshold.
+
+	/// How many voters are registered.
+	#[pallet::storage]
+	pub(crate) type VoterCount<T> = StorageValue<_, u32, ValueQuery>;
+
+	/// Which bag currently contains a particular voter.
+	///
+	/// This may not be the appropriate bag for the voter's weight if they have been rewarded or
+	/// slashed.
+	#[pallet::storage]
+	pub(crate) type VoterBagFor<T: Config> = StorageMap<_, Twox64Concat, AccountIdOf<T>, VoteWeight>;
+
+	/// This storage item maps a bag (identified by its upper threshold) to the `Bag` struct, which
+	/// mainly exists to store head and tail pointers to the appropriate nodes.
+	#[pallet::storage]
+	pub(crate) type VoterBags<T: Config> = StorageMap<
+		_,
+		Twox64Concat, VoteWeight,
+		voter_bags::Bag<T>,
+	>;
+
+	/// Voter nodes store links forward and back within their respective bags, the stash id, and
+	/// whether the voter is a validator or nominator.
+	///
+	/// There is nothing in this map directly identifying to which bag a particular node belongs.
+	/// However, the `Node` data structure has helpers which can provide that information.
+	#[pallet::storage]
+	pub(crate) type VoterNodes<T: Config> = StorageMap<
+		_,
+		Twox64Concat, AccountIdOf<T>,
+		voter_bags::Node<T>,
+	>;
+
+	// End of voter bags data.
+
 	/// The threshold for when users can start calling `chill_other` for other validators / nominators.
 	/// The threshold is compared to the actual number of validators / nominators (`CountFor*`) in
 	/// the system compared to the configured max (`Max*Count`).
@@ -1332,6 +1461,8 @@ pub mod pallet {
 		/// An account has stopped participating as either a validator or nominator.
 		/// \[stash\]
 		Chilled(T::AccountId),
+		/// Moved an account from one bag to another. \[who, from, to\].
+		Rebagged(T::AccountId, VoteWeight, VoteWeight),
 	}
 
 	#[pallet::error]
@@ -1425,14 +1556,30 @@ pub mod pallet {
 
 		fn integrity_test() {
 			sp_std::if_std! {
-				sp_io::TestExternalities::new_empty().execute_with(||
+				sp_io::TestExternalities::new_empty().execute_with(|| {
 					assert!(
 						T::SlashDeferDuration::get() < T::BondingDuration::get() || T::BondingDuration::get() == 0,
 						"As per documentation, slash defer duration ({}) should be less than bonding duration ({}).",
 						T::SlashDeferDuration::get(),
 						T::BondingDuration::get(),
-					)
-				);
+					);
+
+					assert!(
+						T::VoterBagThresholds::get().windows(2).all(|window| window[1] > window[0]),
+						"Voter bag thresholds must strictly increase",
+					);
+
+					assert!(
+						{
+							let existential_weight = voter_bags::existential_weight::<T>();
+							T::VoterBagThresholds::get()
+								.first()
+								.map(|&lowest_threshold| lowest_threshold >= existential_weight)
+								.unwrap_or(true)
+						},
+						"Smallest bag should not be smaller than existential weight",
+					);
+				});
 			}
 		}
 	}
@@ -1538,8 +1685,9 @@ pub mod pallet {
 				// Last check: the new active amount of ledger must be more than ED.
 				ensure!(ledger.active >= T::Currency::minimum_balance(), Error::<T>::InsufficientBond);
 
-				Self::deposit_event(Event::<T>::Bonded(stash, extra));
+				Self::deposit_event(Event::<T>::Bonded(stash.clone(), extra));
 				Self::update_ledger(&controller, &ledger);
+				Self::do_rebag(&stash);
 			}
 			Ok(())
 		}
@@ -2282,6 +2430,23 @@ pub mod pallet {
 			Self::chill_stash(&stash);
 			Ok(())
 		}
+
+		/// Declare that some `stash` has, through rewards or penalties, sufficiently changed its
+		/// stake that it should properly fall into a different bag than its current position.
+		///
+		/// This will adjust its position into the appropriate bag. This will affect its position
+		/// among the nominator/validator set once the snapshot is prepared for the election.
+		///
+		/// Anyone can call this function about any stash.
+		#[pallet::weight(T::WeightInfo::rebag())]
+		pub fn rebag(
+			origin: OriginFor<T>,
+			stash: AccountIdOf<T>,
+		) -> DispatchResult {
+			ensure_signed(origin)?;
+			Pallet::<T>::do_rebag(&stash);
+			Ok(())
+		}
 	}
 }
 
@@ -2304,7 +2469,7 @@ impl<T: Config> Pallet<T> {
 	///
 	/// This prevents call sites from repeatedly requesting `total_issuance` from backend. But it is
 	/// important to be only used while the total issuance is not changing.
-	pub fn slashable_balance_of_fn() -> Box<dyn Fn(&T::AccountId) -> VoteWeight> {
+	pub fn weight_of_fn() -> Box<dyn Fn(&T::AccountId) -> VoteWeight> {
 		// NOTE: changing this to unboxed `impl Fn(..)` return type and the pallet will still
 		// compile, while some types in mock fail to resolve.
 		let issuance = T::Currency::total_issuance();
@@ -2878,6 +3043,9 @@ impl<T: Config> Pallet<T> {
 
 	/// Get all of the voters that are eligible for the npos election.
 	///
+	/// `voter_count` imposes an implicit cap on the number of voters returned; care should be taken
+	/// to ensure that it is accurate.
+	///
 	/// This will use all on-chain nominators, and all the validators will inject a self vote.
 	///
 	/// ### Slashing
@@ -2885,38 +3053,28 @@ impl<T: Config> Pallet<T> {
 	/// All nominations that have been submitted before the last non-zero slash of the validator are
 	/// auto-chilled.
 	///
-	/// Note that this is VERY expensive. Use with care.
-	pub fn get_npos_voters() -> Vec<(T::AccountId, VoteWeight, Vec<T::AccountId>)> {
-		let weight_of = Self::slashable_balance_of_fn();
-		let mut all_voters = Vec::new();
+	/// Note that this is fairly expensive: it must iterate over the min of `maybe_max_len` and
+	/// `voter_count` voters. Use with care.
+	pub fn get_npos_voters(
+		maybe_max_len: Option<usize>,
+		voter_count: usize,
+	) -> Vec<VotingDataOf<T>> {
+		debug_assert_eq!(
+			voter_count,
+			VoterList::<T>::decode_len().unwrap_or_default(),
+			"voter_count must be accurate",
+		);
 
-		for (validator, _) in <Validators<T>>::iter() {
-			// Append self vote.
-			let self_vote = (validator.clone(), weight_of(&validator), vec![validator.clone()]);
-			all_voters.push(self_vote);
-		}
+		let wanted_voters = maybe_max_len.unwrap_or(voter_count).min(voter_count);
 
-		// Collect all slashing spans into a BTreeMap for further queries.
+		let weight_of = Self::weight_of_fn();
+		// collect all slashing spans into a BTreeMap for further queries.
 		let slashing_spans = <SlashingSpans<T>>::iter().collect::<BTreeMap<_, _>>();
 
-		for (nominator, nominations) in Nominators::<T>::iter() {
-			let Nominations { submitted_in, mut targets, suppressed: _ } = nominations;
-
-			// Filter out nomination targets which were nominated before the most recent
-			// slashing span.
-			targets.retain(|stash| {
-				slashing_spans
-					.get(stash)
-					.map_or(true, |spans| submitted_in >= spans.last_nonzero_slash())
-			});
-
-			if !targets.is_empty() {
-				let vote_weight = weight_of(&nominator);
-				all_voters.push((nominator, vote_weight, targets))
-			}
-		}
-
-		all_voters
+		VoterList::<T>::iter()
+			.filter_map(|node| node.voting_data(&weight_of, &slashing_spans))
+			.take(wanted_voters)
+			.collect()
 	}
 
 	/// This is a very expensive function and result should be cached versus being called multiple times.
@@ -2928,54 +3086,95 @@ impl<T: Config> Pallet<T> {
 	/// and keep track of the `CounterForNominators`.
 	///
 	/// If the nominator already exists, their nominations will be updated.
+	///
+	/// NOTE: you must ALWAYS use this function to add a nominator to the system. Any access to
+	/// `Nominators`, its counter, or `VoterList` outside of this function is almost certainly
+	/// wrong.
 	pub fn do_add_nominator(who: &T::AccountId, nominations: Nominations<T::AccountId>) {
 		if !Nominators::<T>::contains_key(who) {
 			CounterForNominators::<T>::mutate(|x| x.saturating_inc())
 		}
 		Nominators::<T>::insert(who, nominations);
+		VoterList::<T>::insert_as(who, VoterType::Nominator);
+		debug_assert!(VoterCount::<T>::get() == CounterForNominators::<T>::get() + CounterForValidators::<T>::get());
 	}
 
 	/// This function will remove a nominator from the `Nominators` storage map,
 	/// and keep track of the `CounterForNominators`.
 	///
 	/// Returns true if `who` was removed from `Nominators`, otherwise false.
+	///
+	/// NOTE: you must ALWAYS use this function to remove a nominator from the system. Any access to
+	/// `Nominators`, its counter, or `VoterList` outside of this function is almost certainly
+	/// wrong.
 	pub fn do_remove_nominator(who: &T::AccountId) -> bool {
 		if Nominators::<T>::contains_key(who) {
 			Nominators::<T>::remove(who);
 			CounterForNominators::<T>::mutate(|x| x.saturating_dec());
+			VoterList::<T>::remove(who);
+			debug_assert!(VoterCount::<T>::get() == CounterForNominators::<T>::get() + CounterForValidators::<T>::get());
 			true
 		} else {
 			false
 		}
 	}
 
-	/// This function will add a validator to the `Validators` storage map,
-	/// and keep track of the `CounterForValidators`.
+	/// This function will add a validator to the `Validators` storage map, and keep track of the
+	/// `CounterForValidators`.
 	///
 	/// If the validator already exists, their preferences will be updated.
+	///
+	/// NOTE: you must ALWAYS use this function to add a validator to the system. Any access to
+	/// `Validators`, its counter, or `VoterList` outside of this function is almost certainly
+	/// wrong.
 	pub fn do_add_validator(who: &T::AccountId, prefs: ValidatorPrefs) {
 		if !Validators::<T>::contains_key(who) {
 			CounterForValidators::<T>::mutate(|x| x.saturating_inc())
 		}
 		Validators::<T>::insert(who, prefs);
+		VoterList::<T>::insert_as(who, VoterType::Validator);
+		debug_assert!(VoterCount::<T>::get() == CounterForNominators::<T>::get() + CounterForValidators::<T>::get());
 	}
 
 	/// This function will remove a validator from the `Validators` storage map,
 	/// and keep track of the `CounterForValidators`.
 	///
 	/// Returns true if `who` was removed from `Validators`, otherwise false.
+	///
+	/// NOTE: you must ALWAYS use this function to remove a validator from the system. Any access to
+	/// `Validators`, its counter, or `VoterList` outside of this function is almost certainly
+	/// wrong.
 	pub fn do_remove_validator(who: &T::AccountId) -> bool {
 		if Validators::<T>::contains_key(who) {
 			Validators::<T>::remove(who);
 			CounterForValidators::<T>::mutate(|x| x.saturating_dec());
+			VoterList::<T>::remove(who);
+			debug_assert!(VoterCount::<T>::get() == CounterForNominators::<T>::get() + CounterForValidators::<T>::get());
 			true
 		} else {
 			false
 		}
 	}
+
+	/// Move a stash account from one bag to another, depositing an event on success.
+	///
+	/// If the stash changed bags, returns `Some((from, to))`.
+	pub fn do_rebag(stash: &T::AccountId) -> Option<(VoteWeight, VoteWeight)> {
+		// if no voter at that node, don't do anything.
+		// the caller just wasted the fee to call this.
+		let maybe_movement = voter_bags::Node::<T>::from_id(&stash).and_then(|node| {
+			let weight_of = Self::weight_of_fn();
+			VoterList::update_position_for(node, weight_of)
+		});
+		if let Some((from, to)) = maybe_movement {
+			Self::deposit_event(Event::<T>::Rebagged(stash.clone(), from, to));
+		};
+		maybe_movement
+	}
 }
 
-impl<T: Config> frame_election_provider_support::ElectionDataProvider<T::AccountId, T::BlockNumber>
+impl<T: Config>
+	frame_election_provider_support::ElectionDataProvider<T::AccountId, BlockNumberFor<T>>
 	for Pallet<T>
 {
 	const MAXIMUM_VOTES_PER_VOTER: u32 = T::MAX_NOMINATIONS;
@@ -2992,17 +3191,13 @@ impl<T: Config> frame_election_provider_support::ElectionDataProvider<T::Account
 		debug_assert!(<Nominators<T>>::iter().count() as u32 == CounterForNominators::<T>::get());
 		debug_assert!(<Validators<T>>::iter().count() as u32 == CounterForValidators::<T>::get());
 
-		if maybe_max_len.map_or(false, |max_len| voter_count > max_len) {
-			return Err("Voter snapshot too big");
-		}
-
 		let slashing_span_count = <SlashingSpans<T>>::iter().count();
 		let weight = T::WeightInfo::get_npos_voters(
 			nominator_count,
 			validator_count,
 			slashing_span_count as u32,
 		);
-		Ok((Self::get_npos_voters(), weight))
+		Ok((Self::get_npos_voters(maybe_max_len, voter_count), weight))
 	}
 
 	fn targets(maybe_max_len: Option<usize>) -> data_provider::Result<(Vec<T::AccountId>, Weight)> {
