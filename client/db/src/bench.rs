@@ -103,7 +103,11 @@ impl<B: BlockT> BenchmarkingState<B> {
 			genesis: Default::default(),
 			genesis_root: Default::default(),
 			record: Default::default(),
-			shared_cache: new_shared_cache(0, (1, 10)),
+			shared_cache: new_shared_cache(0, crate::CacheRatios {
+				values_top: 8,
+				values_children: 1,
+				ordered_keys: 1,
+			}),
 			main_key_tracker: Default::default(),
 			child_key_tracker: Default::default(),
 			whitelist: Default::default(),

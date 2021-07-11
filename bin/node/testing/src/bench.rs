@@ -409,7 +409,11 @@ impl BenchDb {
 	) -> (Client, std::sync::Arc<Backend>, TaskExecutor) {
 		let db_config = sc_client_db::DatabaseSettings {
 			state_cache_size: 16*1024*1024,
-			state_cache_child_ratio: Some((0, 100)),
+			state_cache_ratios: Some(sc_client_db::CacheRatios {
+				values_top: 1,
+				values_children: 0,
+				ordered_keys: 0,
+			}), // all in top, no for child or key iteration.
 			state_pruning: PruningMode::ArchiveAll,
 			source: database_type.into_settings(dir.into()),
 			keep_blocks: sc_client_db::KeepBlocks::All,

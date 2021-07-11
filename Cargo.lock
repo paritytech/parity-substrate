@@ -7186,6 +7186,7 @@ dependencies = [
  "parity-util-mem",
  "parking_lot 0.11.1",
  "quickcheck",
+ "rand 0.7.3",
  "sc-client-api",
  "sc-executor",
  "sc-state-db",

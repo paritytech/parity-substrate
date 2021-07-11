@@ -20,7 +20,9 @@
 //! Tracks changes over the span of a few recent blocks and handles forks
 //! by tracking/removing cache entries for conflicting changes.
 
-use std::collections::{VecDeque, HashSet, HashMap};
+mod key_next;
+
+use std::collections::{VecDeque, HashSet, BTreeSet, HashMap};
 use std::sync::Arc;
 use std::hash::Hash as StdHash;
 use parking_lot::{Mutex, RwLock, RwLockUpgradableReadGuard};
@@ -35,6 +37,7 @@ use sp_state_machine::{
 };
 use log::trace;
 use crate::{utils::Meta, stats::StateUsageStats};
+use key_next::{LocalOrderedKeys, LRUOrderedKeys};
 
 const STATE_CACHE_BLOCKS: usize = 12;
 
@@ -48,6 +51,9 @@ pub struct Cache<B: BlockT> {
 	lru_hashes: LRUMap<StorageKey, OptionHOut<B::Hash>>,
 	/// Storage cache for child trie. `None` indicates that key is known to be missing.
 	lru_child_storage: LRUMap<ChildStorageKey, Option<StorageValue>>,
+	/// Next key storage cache. Contains ordered mapping of existing key and their next and
+	/// previous element state.
+	lru_next_keys: LRUOrderedKeys<StorageKey>,
 	/// Information on the modifications in recently committed blocks; specifically which keys
 	/// changed in which block. Ordered by block number.
 	modifications: VecDeque<BlockChanges<B::Header>>,
@@ -65,6 +71,12 @@ trait EstimateSize {
 	/// Return a size estimation of additional size needed
 	/// to cache this struct (in bytes).
 	fn estimate_size(&self) -> usize;
+}
+
+impl EstimateSize for u32 {
+	fn estimate_size(&self) -> usize {
+		4
+	}
 }
 
 impl EstimateSize for Vec<u8> {
@@ -157,6 +169,7 @@ impl<B: BlockT> Cache<B> {
 	pub fn used_storage_cache_size(&self) -> usize {
 		self.lru_storage.used_size()
 			+ self.lru_child_storage.used_size()
+			+ self.lru_next_keys.used_size()
 			//  ignore small hashes storage and self.lru_hashes.used_size()
 	}
 
@@ -180,9 +193,13 @@ impl<B: BlockT> Cache<B> {
 						self.lru_storage.remove(a);
 						self.lru_hashes.remove(a);
 					}
+					self.lru_next_keys.retract_value_changes(m.ordered_storage.iter(), None);
 					for a in &m.child_storage {
 						trace!("Reverting enacted child key {:?}", a);
 						self.lru_child_storage.remove(a);
+					}
+					for (child_key, ordered_storage) in m.ordered_child_storage.iter() {
+						self.lru_next_keys.retract_value_changes(ordered_storage.iter(), Some(child_key));
 					}
 					false
 				} else {
@@ -201,9 +218,13 @@ impl<B: BlockT> Cache<B> {
 						self.lru_storage.remove(a);
 						self.lru_hashes.remove(a);
 					}
+					self.lru_next_keys.retract_value_changes(m.ordered_storage.iter(), None);
 					for a in &m.child_storage {
 						trace!("Retracted child key {:?}", a);
 						self.lru_child_storage.remove(a);
+					}
+					for (child_key, ordered_storage) in m.ordered_child_storage.iter() {
+						self.lru_next_keys.retract_value_changes(ordered_storage.iter(), Some(child_key));
 					}
 					false
 				} else {
@@ -216,6 +237,7 @@ impl<B: BlockT> Cache<B> {
 			trace!("Wiping cache");
 			self.lru_storage.clear();
 			self.lru_child_storage.clear();
+			self.lru_next_keys.clear();
 			self.lru_hashes.clear();
 			self.modifications.clear();
 		}
@@ -224,25 +246,53 @@ impl<B: BlockT> Cache<B> {
 
 pub type SharedCache<B> = Arc<Mutex<Cache<B>>>;
 
+/// Ratio of shared cache for different cache components.
+/// Total ratio size is always sum of all ratios.
+#[derive(Clone, Debug)]
+pub struct CacheRatios {
+	/// Key value accessed from top state.
+	pub values_top: usize,
+	/// Key values accessed from all default children states.
+	pub values_children: usize,
+	/// `next_storage_key` and `next_child_storage_key` cached keys.
+	pub ordered_keys: usize,
+}
+
+impl CacheRatios {
+	fn total_ratio(&self) -> usize {
+		self.values_top + self.values_children + self.ordered_keys
+	}
+
+	fn top_cache(&self, total_cache: usize) -> usize {
+		total_cache * self.values_top / self.total_ratio()
+	}
+	fn children_cache(&self, total_cache: usize) -> usize {
+		total_cache * self.values_children / self.total_ratio()
+	}
+	fn ordered_cache(&self, total_cache: usize) -> usize {
+		total_cache * self.ordered_keys / self.total_ratio()
+	}
+}
+
 /// Fix lru storage size for hash (small 64ko).
 const FIX_LRU_HASH_SIZE: usize = 65_536;
 
 /// Create a new shared cache instance with given max memory usage.
 pub fn new_shared_cache<B: BlockT>(
 	shared_cache_size: usize,
-	child_ratio: (usize, usize),
+	cache_ratios: CacheRatios,
 ) -> SharedCache<B> {
-	let top = child_ratio.1.saturating_sub(child_ratio.0);
 	Arc::new(
 		Mutex::new(
 			Cache {
 				lru_storage: LRUMap(
-					LinkedHashMap::new(), 0, shared_cache_size * top / child_ratio.1
+					LinkedHashMap::new(), 0, cache_ratios.top_cache(shared_cache_size)
 				),
 				lru_hashes: LRUMap(LinkedHashMap::new(), 0, FIX_LRU_HASH_SIZE),
 				lru_child_storage: LRUMap(
-					LinkedHashMap::new(), 0, shared_cache_size * child_ratio.0 / child_ratio.1
+					LinkedHashMap::new(), 0, cache_ratios.children_cache(shared_cache_size)
 				),
+				lru_next_keys: LRUOrderedKeys::new(cache_ratios.ordered_cache(shared_cache_size)),
 				modifications: VecDeque::new(),
 			}
 		)
@@ -260,8 +310,15 @@ struct BlockChanges<B: Header> {
 	parent: B::Hash,
 	/// A set of modified storage keys.
 	storage: HashSet<StorageKey>,
+	/// A set of modified storage keys.
+	/// TODO consider merging with storage
+	ordered_storage: BTreeSet<StorageKey>,
 	/// A set of modified child storage keys.
 	child_storage: HashSet<ChildStorageKey>,
+	/// A set of modified child storage keys.
+	/// A set of modified storage keys.
+	/// TODO consider merging with child storage
+	ordered_child_storage: HashMap<Vec<u8>, BTreeSet<StorageKey>>,
 	/// Block is part of the canonical chain.
 	is_canon: bool,
 }
@@ -280,6 +337,8 @@ struct LocalCache<H: Hasher> {
 	///
 	/// `None` indicates that key is known to be missing.
 	child_storage: HashMap<ChildStorageKey, Option<StorageValue>>,
+	/// `next_storage_key` calls cache.
+	next_keys: LocalOrderedKeys<StorageKey>,
 }
 
 /// Cache changes.
@@ -384,6 +443,7 @@ impl<B: BlockT> CacheChanges<B> {
 				for (k, v) in local_cache.storage.drain() {
 					cache.lru_storage.add(k, v);
 				}
+				cache.lru_next_keys.merge_local_cache(&mut local_cache.next_keys);
 				for (k, v) in local_cache.child_storage.drain() {
 					cache.lru_child_storage.add(k, v);
 				}
@@ -402,27 +462,46 @@ impl<B: BlockT> CacheChanges<B> {
 			}
 			let mut modifications = HashSet::new();
 			let mut child_modifications = HashSet::new();
-			child_changes.into_iter().for_each(|(sk, changes)|
+			let mut ordered_storage = BTreeSet::new();
+			let mut ordered_child_storage: HashMap<Vec<u8>, BTreeSet<StorageKey>> = Default::default();
+			child_changes.into_iter().for_each(|(sk, changes)| {
+				let ordered_entry = ordered_child_storage.entry(sk.clone()).or_default();
+				if is_best {
+					cache.lru_next_keys.enact_value_changes(
+						changes.iter().map(|(k, v)| (k, v.is_some())),
+						Some(&sk),
+					);
+				}
 				for (k, v) in changes.into_iter() {
+					ordered_entry.insert(k.clone());
 					let k = (sk.clone(), k);
 					if is_best {
 						cache.lru_child_storage.add(k.clone(), v);
 					}
 					child_modifications.insert(k);
 				}
-			);
+			});
+			if is_best {
+				cache.lru_next_keys.enact_value_changes(
+					changes.iter().map(|(k, v)| (k, v.is_some())),
+					None,
+				);
+			}
 			for (k, v) in changes.into_iter() {
 				if is_best {
 					cache.lru_hashes.remove(&k);
 					cache.lru_storage.add(k.clone(), v);
 				}
+				ordered_storage.insert(k.clone());
 				modifications.insert(k);
 			}
 
 			// Save modified storage. These are ordered by the block number in reverse.
 			let block_changes = BlockChanges {
 				storage: modifications,
+				ordered_storage,
 				child_storage: child_modifications,
+				ordered_child_storage,
 				number: *number,
 				hash: hash.clone(),
 				is_canon: is_best,
@@ -459,6 +538,7 @@ impl<S: StateBackend<HashFor<B>>, B: BlockT> CachingState<S, B> {
 					storage: Default::default(),
 					hashes: Default::default(),
 					child_storage: Default::default(),
+					next_keys: Default::default(),
 				}),
 				parent_hash,
 			},
@@ -509,6 +589,49 @@ impl<S: StateBackend<HashFor<B>>, B: BlockT> CachingState<S, B> {
 			"Cache lookup skipped for {:?}: parent hash is unknown",
 			key.as_ref().map(HexDisplay::from),
 		);
+		false
+	}
+
+	/// Check if the next key can be returned from cache by matching current block parent hash against canonical
+	/// state and filtering out entries with modification in their resulting range.
+	fn is_allowed_interval(
+		range: (&Vec<u8>, Option<&Vec<u8>>),
+		child_info: Option<&ChildInfo>,
+		parent_hash: &B::Hash,
+		modifications: &VecDeque<BlockChanges<B::Header>>
+	) -> bool {
+		let mut parent = parent_hash;
+		// Ignore all storage entries modified in later blocks.
+		// Modifications contains block ordered by the number
+		// We search for our parent in that list first and then for
+		// all its parents until we hit the canonical block,
+		// checking against all the intermediate modifications.
+		for m in modifications {
+			if &m.hash == parent {
+				if m.is_canon {
+					return true;
+				}
+				parent = &m.parent;
+			}
+			let storage = if let Some(info) = child_info {
+				if let Some(storage) = m.ordered_child_storage.get(info.storage_key()) {
+					storage
+				} else {
+					continue;
+				}
+			} else {
+				&m.ordered_storage
+			};
+			let mut range = if let Some(end) = range.1.as_ref() {
+				storage.range::<Vec<u8>, _>(range.0 .. end)
+			} else {
+				storage.range::<Vec<u8>, _>(range.0 ..)
+			};
+			if let Some(hash) = range.next() {
+				trace!("Cache range lookup skipped for {:?} modified in a later block", HexDisplay::from(&hash.as_slice()));
+				return false;
+			}
+		}
 		false
 	}
 }
@@ -626,7 +749,25 @@ impl<S: StateBackend<HashFor<B>>, B: BlockT> StateBackend<HashFor<B>> for Cachin
 	}
 
 	fn next_storage_key(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error> {
-		self.state.next_storage_key(key)
+		let local_cache = self.cache.local_cache.upgradable_read();
+		let key = key.to_vec();
+		if let Some(entry) = local_cache.next_keys.next_storage_key(&key, None) {
+			trace!("Found next storage key in local cache: {:?}", HexDisplay::from(&key));
+			return Ok(entry)
+		}
+		let mut cache = self.cache.shared_cache.lock();
+		if let Some(parent) = self.cache.parent_hash.as_ref() {
+			if let Some(entry) = cache.lru_next_keys.next_storage_key(&key, None) {
+				if Self::is_allowed_interval((&key, entry.as_ref()), None, parent, &cache.modifications) {
+					trace!("Found next key in shared cache: {:?}", HexDisplay::from(&key));
+					return Ok(entry)
+				}
+			}
+		}
+		trace!("Cache hash miss: {:?}", HexDisplay::from(&key));
+		let next  = self.state.next_storage_key(&key)?;
+		RwLockUpgradableReadGuard::upgrade(local_cache).next_keys.insert(key, None, next.clone());
+		Ok(next)
 	}
 
 	fn next_child_storage_key(
@@ -634,7 +775,25 @@ impl<S: StateBackend<HashFor<B>>, B: BlockT> StateBackend<HashFor<B>> for Cachin
 		child_info: &ChildInfo,
 		key: &[u8],
 	) -> Result<Option<Vec<u8>>, Self::Error> {
-		self.state.next_child_storage_key(child_info, key)
+		let local_cache = self.cache.local_cache.upgradable_read();
+		let key = key.to_vec();
+		if let Some(entry) = local_cache.next_keys.next_storage_key(&key, Some(child_info)) {
+			trace!("Found next storage key in local cache: {:?}", HexDisplay::from(&key));
+			return Ok(entry)
+		}
+		let mut cache = self.cache.shared_cache.lock();
+		if let Some(parent) = self.cache.parent_hash.as_ref() {
+			if let Some(entry) = cache.lru_next_keys.next_storage_key(&key, Some(child_info)) {
+				if Self::is_allowed_interval((&key, entry.as_ref()), None, parent, &cache.modifications) {
+					trace!("Found next key in shared cache: {:?}", HexDisplay::from(&key));
+					return Ok(entry)
+				}
+			}
+		}
+		trace!("Cache hash miss: {:?}", HexDisplay::from(&key));
+		let next  = self.state.next_child_storage_key(child_info, &key)?;
+		RwLockUpgradableReadGuard::upgrade(local_cache).next_keys.insert(key, Some(child_info), next.clone());
+		Ok(next)
 	}
 
 	fn for_keys_with_prefix<F: FnMut(&[u8])>(&self, prefix: &[u8], f: F) {
@@ -937,7 +1096,11 @@ mod tests {
 		let h3a = H256::random();
 		let h3b = H256::random();
 
-		let shared = new_shared_cache::<Block>(256 * 1024, (0, 1));
+		let shared = new_shared_cache::<Block>(256*1024, CacheRatios {
+			values_top: 1,
+			values_children: 0,
+			ordered_keys: 0,
+		});
 
 		// blocks  [ 3a(c) 2a(c) 2b 1b 1a(c) 0 ]
 		// state   [ 5     5     4  3  2     2 ]
@@ -1078,7 +1241,11 @@ mod tests {
 		let h2b = H256::random();
 		let h3b = H256::random();
 
-		let shared = new_shared_cache::<Block>(256*1024, (0,1));
+		let shared = new_shared_cache::<Block>(256*1024, CacheRatios {
+			values_top: 1,
+			values_children: 0,
+			ordered_keys: 0,
+		});
 
 		let mut s = CachingState::new(
 			InMemoryBackend::<BlakeTwo256>::default(),
@@ -1150,7 +1317,11 @@ mod tests {
 		let h3a = H256::random();
 		let h3b = H256::random();
 
-		let shared = new_shared_cache::<Block>(256*1024, (0,1));
+		let shared = new_shared_cache::<Block>(256*1024, CacheRatios {
+			values_top: 1,
+			values_children: 0,
+			ordered_keys: 0,
+		});
 
 		let mut s = CachingState::new(
 			InMemoryBackend::<BlakeTwo256>::default(),
@@ -1218,7 +1389,12 @@ mod tests {
 		let h1a = H256::random();
 		let h1b = H256::random();
 
-		let shared = new_shared_cache::<Block>(256*1024, (0,1));
+		let shared = new_shared_cache::<Block>(256*1024, CacheRatios {
+			values_top: 1,
+			values_children: 0,
+			ordered_keys: 0,
+		});
+
 		let mut backend = InMemoryBackend::<BlakeTwo256>::default();
 		backend.insert(std::iter::once((None, vec![(key.clone(), Some(vec![1]))])));
 
@@ -1255,7 +1431,11 @@ mod tests {
 	#[test]
 	fn should_track_used_size_correctly() {
 		let root_parent = H256::random();
-		let shared = new_shared_cache::<Block>(109, ((109-36), 109));
+		let shared = new_shared_cache::<Block>(109, CacheRatios {
+			values_top: 36,
+			values_children: 109 - 36,
+			ordered_keys: 0,
+		});
 		let h0 = H256::random();
 
 		let mut s = CachingState::new(
@@ -1293,7 +1473,11 @@ mod tests {
 	#[test]
 	fn should_remove_lru_items_based_on_tracking_used_size() {
 		let root_parent = H256::random();
-		let shared = new_shared_cache::<Block>(36*3, (2,3));
+		let shared = new_shared_cache::<Block>(36 * 3, CacheRatios {
+			values_top: 1,
+			values_children: 2,
+			ordered_keys: 0,
+		});
 		let h0 = H256::random();
 
 		let mut s = CachingState::new(
@@ -1338,8 +1522,11 @@ mod tests {
 
 		let h0 = H256::random();
 		let h1 = H256::random();
-
-		let shared = new_shared_cache::<Block>(256 * 1024, (0, 1));
+		let shared = new_shared_cache::<Block>(256 * 1024, CacheRatios {
+			values_top: 1,
+			values_children: 0,
+			ordered_keys: 0,
+		});
 		let mut s = CachingState::new(
 			InMemoryBackend::<BlakeTwo256>::default(),
 			shared.clone(),
@@ -1410,7 +1597,11 @@ mod tests {
 		let h1 = H256::random();
 		let h2 = H256::random();
 
-		let shared = new_shared_cache::<Block>(256*1024, (0,1));
+		let shared = new_shared_cache::<Block>(256 * 1024, CacheRatios {
+			values_top: 1,
+			values_children: 0,
+			ordered_keys: 0,
+		});
 
 		let mut s = CachingState::new(
 			InMemoryBackend::<BlakeTwo256>::default(),
@@ -1592,7 +1783,11 @@ mod qc {
 
 	impl Mutator {
 		fn new_empty() -> Self {
-			let shared = new_shared_cache::<Block>(256*1024, (0,1));
+			let shared = new_shared_cache::<Block>(256*1024, CacheRatios {
+				values_top: 1,
+				values_children: 0,
+				ordered_keys: 0,
+			});
 
 			Self {
 				shared,

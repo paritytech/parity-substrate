@@ -337,8 +337,12 @@ pub fn new_full_parts<TBl, TRtApi, TExecDisp>(
 	let (client, backend) = {
 		let db_config = sc_client_db::DatabaseSettings {
 			state_cache_size: config.state_cache_size,
-			state_cache_child_ratio:
-			config.state_cache_child_ratio.map(|v| (v, 100)),
+			state_cache_ratios:
+			config.state_cache_child_ratio.map(|v| sc_client_db::CacheRatios {
+				values_top: 100usize.saturating_sub(v),
+				values_children: v,
+				ordered_keys: 0, // TODO put this in params!! (do saturating sub for top)
+			}),
 			state_pruning: config.state_pruning.clone(),
 			source: config.database.clone(),
 			keep_blocks: config.keep_blocks.clone(),
@@ -417,8 +421,11 @@ pub fn new_light_parts<TBl, TRtApi, TExecDisp>(
 	let db_storage = {
 		let db_settings = sc_client_db::DatabaseSettings {
 			state_cache_size: config.state_cache_size,
-			state_cache_child_ratio:
-				config.state_cache_child_ratio.map(|v| (v, 100)),
+			state_cache_ratios: config.state_cache_child_ratio.map(|v| sc_client_db::CacheRatios {
+				values_top: 100usize.saturating_sub(v),
+				values_children: v,
+				ordered_keys: 0, // TODO put this in params!! (do saturating sub for top)
+			}),
 			state_pruning: config.state_pruning.clone(),
 			source: config.database.clone(),
 			keep_blocks: config.keep_blocks.clone(),

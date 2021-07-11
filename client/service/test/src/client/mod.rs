@@ -1538,7 +1538,7 @@ fn doesnt_import_blocks_that_revert_finality() {
 	let backend = Arc::new(Backend::new(
 		DatabaseSettings {
 			state_cache_size: 1 << 20,
-			state_cache_child_ratio: None,
+			state_cache_ratios: None,
 			state_pruning: PruningMode::ArchiveAll,
 			keep_blocks: KeepBlocks::All,
 			transaction_storage: TransactionStorageMode::BlockBody,
@@ -1742,7 +1742,7 @@ fn returns_status_for_pruned_blocks() {
 	let backend = Arc::new(Backend::new(
 		DatabaseSettings {
 			state_cache_size: 1 << 20,
-			state_cache_child_ratio: None,
+			state_cache_ratios: None,
 			state_pruning: PruningMode::keep_blocks(1),
 			keep_blocks: KeepBlocks::All,
 			transaction_storage: TransactionStorageMode::BlockBody,
