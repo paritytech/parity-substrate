@@ -86,7 +86,7 @@ mod test {
 			// when
 			assert_eq!(
 				Offences::on_runtime_upgrade(),
-				<T as frame_system::Config>::DbWeight::get().reads_writes(1, 2),
+				<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1),
 			);
 
 			// then

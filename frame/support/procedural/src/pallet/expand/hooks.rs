@@ -40,9 +40,8 @@ pub fn expand_hooks(def: &mut Def) -> proc_macro2::TokenStream {
 		quote::quote! {
 			#frame_support::log::info!(
 				target: #frame_support::LOG_TARGET,
-				"⚠️ {} declares internal migrations (which *might* execute), setting storage version to {:?}",
+				"⚠️ {} declares internal migrations (which *might* execute)",
 				pallet_name,
-				new_storage_version,
 			);
 		}
 	} else {
@@ -50,9 +49,8 @@ pub fn expand_hooks(def: &mut Def) -> proc_macro2::TokenStream {
 		quote::quote! {
 			#frame_support::log::info!(
 				target: #frame_support::LOG_TARGET,
-				"✅ no migration for {}, setting storage version to {:?}",
+				"✅ no migration for {}",
 				pallet_name,
-				new_storage_version,
 			);
 		}
 	};
@@ -131,7 +129,6 @@ pub fn expand_hooks(def: &mut Def) -> proc_macro2::TokenStream {
 				);
 
 				// log info about the upgrade.
-				let new_storage_version = #frame_support::crate_to_pallet_version!();
 				let pallet_name = <
 					<T as #frame_system::Config>::PalletInfo
 					as
@@ -139,19 +136,11 @@ pub fn expand_hooks(def: &mut Def) -> proc_macro2::TokenStream {
 				>::name::<Self>().unwrap_or("<unknown pallet name>");
 				#log_runtime_upgrade
 
-				let result = <
+				<
 					Self as #frame_support::traits::Hooks<
 						<T as #frame_system::Config>::BlockNumber
 					>
-				>::on_runtime_upgrade();
-
-				new_storage_version.put_into_storage::<<T as #frame_system::Config>::PalletInfo, Self>();
-
-				let additional_write = <
-					<T as #frame_system::Config>::DbWeight as #frame_support::traits::Get<_>
-				>::get().writes(1);
-
-				result.saturating_add(additional_write)
+				>::on_runtime_upgrade()
 			}
 
 			#[cfg(feature = "try-runtime")]

@@ -22,9 +22,6 @@
 #![warn(missing_docs)]
 #![deny(warnings)]
 
-#[cfg(test)]
-mod pallet_version;
-
 /// The configuration trait
 pub trait Config: 'static {
 	/// The runtime origin type.

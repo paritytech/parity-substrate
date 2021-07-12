@@ -313,7 +313,6 @@ pub trait OnTimestampSet<Moment> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::traits::metadata::PalletVersion;
 
 	#[test]
 	fn on_initialize_and_on_runtime_upgrade_weight_merge_works() {
@@ -331,19 +330,5 @@ mod tests {
 
 		assert_eq!(<(Test, Test)>::on_initialize(0), 20);
 		assert_eq!(<(Test, Test)>::on_runtime_upgrade(), 40);
-	}
-
-	#[test]
-	fn check_pallet_version_ordering() {
-		let version = PalletVersion::new(1, 0, 0);
-		assert!(version > PalletVersion::new(0, 1, 2));
-		assert!(version == PalletVersion::new(1, 0, 0));
-		assert!(version < PalletVersion::new(1, 0, 1));
-		assert!(version < PalletVersion::new(1, 1, 0));
-
-		let version = PalletVersion::new(2, 50, 50);
-		assert!(version < PalletVersion::new(2, 50, 51));
-		assert!(version > PalletVersion::new(2, 49, 51));
-		assert!(version < PalletVersion::new(3, 49, 51));
 	}
 }

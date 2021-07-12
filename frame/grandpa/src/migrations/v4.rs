@@ -15,10 +15,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use frame_support::{
-	weights::Weight,
-	traits::{GetPalletVersion, PalletVersion, Get},
-};
+use frame_support::{weights::Weight, traits::{Get, StorageVersion}};
 use sp_io::hashing::twox_128;
 
 /// The old prefix.
@@ -32,11 +29,9 @@ pub const OLD_PREFIX: &[u8] = b"GrandpaFinality";
 ///
 /// The old storage prefix, `GrandpaFinality` is hardcoded in the migration code.
 pub fn migrate<
-	T: frame_system::Config,
-	P: GetPalletVersion,
+	T: crate::Config,
 	N: AsRef<str>,
 >(new_pallet_name: N) -> Weight {
-
 	if new_pallet_name.as_ref().as_bytes() == OLD_PREFIX {
 		log::info!(
 			target: "runtime::afg",
@@ -44,30 +39,25 @@ pub fn migrate<
 		);
 		return 0;
 	}
-	let maybe_storage_version = <P as GetPalletVersion>::storage_version();
+	let storage_version = StorageVersion::get::<crate::Pallet<T>>();
 	log::info!(
 		target: "runtime::afg",
 		"Running migration to v3.1 for grandpa with storage version {:?}",
-		maybe_storage_version,
+		storage_version,
 	);
 
-	match maybe_storage_version {
-		Some(storage_version) if storage_version <= PalletVersion::new(3, 0, 0) => {
-			log::info!("new prefix: {}", new_pallet_name.as_ref());
-			frame_support::storage::migration::move_pallet(
-				OLD_PREFIX,
-				new_pallet_name.as_ref().as_bytes(),
-			);
-			<T as frame_system::Config>::BlockWeights::get().max_block
-		}
-		_ => {
-			log::warn!(
-				target: "runtime::afg",
-				"Attempted to apply migration to v3.1 but cancelled because storage version is {:?}",
-				maybe_storage_version,
-			);
-			0
-		},
+	if storage_version <= 3 {
+		log::info!("new prefix: {}", new_pallet_name.as_ref());
+		frame_support::storage::migration::move_pallet(
+			OLD_PREFIX,
+			new_pallet_name.as_ref().as_bytes(),
+		);
+
+		StorageVersion::new(4).put::<crate::Pallet<T>>();
+
+		<T as frame_system::Config>::BlockWeights::get().max_block
+	} else {
+		0
 	}
 }
 
@@ -76,8 +66,7 @@ pub fn migrate<
 ///
 /// Panics if anything goes wrong.
 pub fn pre_migration<
-	T: frame_system::Config,
-	P: GetPalletVersion + 'static,
+	T: crate::Config,
 	N: AsRef<str>,
 >(new: N) {
 	let new = new.as_ref();
@@ -88,7 +77,7 @@ pub fn pre_migration<
 	assert!(next_key.starts_with(&twox_128(OLD_PREFIX)));
 
 	// The pallet version is already stored using the pallet name
-	let storage_key = PalletVersion::storage_key::<T::PalletInfo, P>().unwrap();
+	let storage_key = StorageVersion::storage_key::<crate::Pallet<T>>();
 
 	// ensure nothing is stored in the new prefix.
 	assert!(
@@ -108,14 +97,14 @@ pub fn pre_migration<
 		),
 	);
 	// ensure storage version is 3.
-	assert!(<P as GetPalletVersion>::storage_version().unwrap().major == 3);
+	assert_eq!(StorageVersion::get::<crate::Pallet<T>>(), 3);
 }
 
 /// Some checks for after migration. This can be linked to
 /// [`frame_support::traits::OnRuntimeUpgrade::post_upgrade`] for further testing.
 ///
 /// Panics if anything goes wrong.
-pub fn post_migration<P: GetPalletVersion>() {
+pub fn post_migration() {
 	log::info!("post-migration grandpa");
 
 	// Assert that nothing remains at the old prefix

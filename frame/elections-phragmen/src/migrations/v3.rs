@@ -20,8 +20,7 @@
 use codec::{Encode, Decode, FullCodec};
 use sp_std::prelude::*;
 use frame_support::{
-	RuntimeDebug, weights::Weight, Twox64Concat,
-	traits::{GetPalletVersion, PalletVersion},
+	RuntimeDebug, Twox64Concat, traits::{PalletInfoAccess, StorageVersion}, weights::Weight,
 };
 
 #[derive(Encode, Decode, Clone, Default, RuntimeDebug, PartialEq)]
@@ -40,8 +39,8 @@ struct Voter<AccountId, Balance> {
 
 /// Trait to implement to give information about types used for migration
 pub trait V2ToV3 {
-	/// elections-phragmen module, used to check storage version.
-	type Module: GetPalletVersion;
+	/// The elections-phragmen pallet.
+	type Pallet: 'static + PalletInfoAccess;
 
 	/// System config account id
 	type AccountId: 'static + FullCodec;
@@ -66,7 +65,7 @@ frame_support::generate_storage_alias!(
 	>
 );
 
-/// Apply all of the migrations from 2_0_0 to 3_0_0.
+/// Apply all of the migrations from 2 to 3.
 ///
 /// ### Warning
 ///
@@ -76,28 +75,29 @@ frame_support::generate_storage_alias!(
 /// Be aware that this migration is intended to be used only for the mentioned versions. Use
 /// with care and run at your own risk.
 pub fn apply<T: V2ToV3>(old_voter_bond: T::Balance, old_candidacy_bond: T::Balance) -> Weight {
-	let maybe_storage_version = <T::Module as GetPalletVersion>::storage_version();
+	let storage_version = StorageVersion::get::<T::Pallet>();
 	log::info!(
 		target: "runtime::elections-phragmen",
 		"Running migration for elections-phragmen with storage version {:?}",
-		maybe_storage_version,
+		storage_version,
 	);
-	match maybe_storage_version {
-		Some(storage_version) if storage_version <= PalletVersion::new(2, 0, 0) => {
-			migrate_voters_to_recorded_deposit::<T>(old_voter_bond);
-			migrate_candidates_to_recorded_deposit::<T>(old_candidacy_bond);
-			migrate_runners_up_to_recorded_deposit::<T>(old_candidacy_bond);
-			migrate_members_to_recorded_deposit::<T>(old_candidacy_bond);
-			Weight::max_value()
-		}
-		_ => {
-			log::warn!(
-				target: "runtime::elections-phragmen",
-				"Attempted to apply migration to V3 but failed because storage version is {:?}",
-				maybe_storage_version,
-			);
-			0
-		},
+
+	if storage_version <= 2 {
+		migrate_voters_to_recorded_deposit::<T>(old_voter_bond);
+		migrate_candidates_to_recorded_deposit::<T>(old_candidacy_bond);
+		migrate_runners_up_to_recorded_deposit::<T>(old_candidacy_bond);
+		migrate_members_to_recorded_deposit::<T>(old_candidacy_bond);
+
+		StorageVersion::new(3).put::<T::Pallet>();
+
+		Weight::max_value()
+	} else {
+		log::warn!(
+			target: "runtime::elections-phragmen",
+			"Attempted to apply migration to V3 but failed because storage version is {:?}",
+			storage_version,
+		);
+		0
 	}
 }
 

@@ -68,56 +68,42 @@ pub trait GetCallMetadata {
 	fn get_call_metadata(&self) -> CallMetadata;
 }
 
-/// The storage key postfix that is used to store the [`PalletVersion`] per pallet.
+/// The storage key postfix that is used to store the [`StorageVersion`] per pallet.
 ///
 /// The full storage key is built by using:
-/// Twox128([`PalletInfo::name`]) ++ Twox128([`PALLET_VERSION_STORAGE_KEY_POSTFIX`])
-pub const PALLET_VERSION_STORAGE_KEY_POSTFIX: &[u8] = b":__PALLET_VERSION__:";
+/// Twox128([`PalletInfo::name`]) ++ Twox128([`STORAGE_VERSION_STORAGE_KEY_POSTFIX`])
+pub const STORAGE_VERSION_STORAGE_KEY_POSTFIX: &[u8] = b":__STORAGE_VERSION__:";
 
-/// The version of a pallet.
+/// The storage version of a pallet.
 ///
-/// Each pallet version is stored in the state under a fixed key. See
-/// [`PALLET_VERSION_STORAGE_KEY_POSTFIX`] for how this key is built.
-#[derive(RuntimeDebug, Eq, PartialEq, Encode, Decode, Ord, Clone, Copy)]
-pub struct PalletVersion {
-	/// The major version of the pallet.
-	pub major: u16,
-	/// The minor version of the pallet.
-	pub minor: u8,
-	/// The patch version of the pallet.
-	pub patch: u8,
-}
+/// Each storage version of a pallet is stored in the state under a fixed key. See
+/// [`STORAGE_VERSION_STORAGE_KEY_POSTFIX`] for how this key is built.
+#[derive(RuntimeDebug, Eq, PartialEq, Encode, Decode, Ord, Clone, Copy, PartialOrd, Default)]
+pub struct StorageVersion(u16);
 
-impl PalletVersion {
+impl StorageVersion {
 	/// Creates a new instance of `Self`.
-	pub fn new(major: u16, minor: u8, patch: u8) -> Self {
-		Self {
-			major,
-			minor,
-			patch,
-		}
+	pub const fn new(version: u16) -> Self {
+		Self(version)
 	}
 
-	/// Returns the storage key for a pallet version.
+	/// Returns the storage key for a storage version.
 	///
-	/// See [`PALLET_VERSION_STORAGE_KEY_POSTFIX`] on how this key is built.
-	///
-	/// Returns `None` if the given `PI` returned a `None` as name for the given
-	/// `Pallet`.
-	pub fn storage_key<PI: PalletInfo, Pallet: 'static>() -> Option<[u8; 32]> {
-		let pallet_name = PI::name::<Pallet>()?;
+	/// See [`STORAGE_VERSION_STORAGE_KEY_POSTFIX`] on how this key is built.
+	pub fn storage_key<P: PalletInfoAccess>() -> [u8; 32] {
+		let pallet_name = P::name();
 
 		let pallet_name = sp_io::hashing::twox_128(pallet_name.as_bytes());
-		let postfix = sp_io::hashing::twox_128(PALLET_VERSION_STORAGE_KEY_POSTFIX);
+		let postfix = sp_io::hashing::twox_128(STORAGE_VERSION_STORAGE_KEY_POSTFIX);
 
 		let mut final_key = [0u8; 32];
 		final_key[..16].copy_from_slice(&pallet_name);
 		final_key[16..].copy_from_slice(&postfix);
 
-		Some(final_key)
+		final_key
 	}
 
-	/// Put this pallet version into the storage.
+	/// Put this storage version for the given pallet into the storage.
 	///
 	/// It will use the storage key that is associated with the given `Pallet`.
 	///
@@ -129,50 +115,75 @@ impl PalletVersion {
 	///
 	/// It will also panic if this function isn't executed in an externalities
 	/// provided environment.
-	pub fn put_into_storage<PI: PalletInfo, Pallet: 'static>(&self) {
-		let key = Self::storage_key::<PI, Pallet>()
-			.expect("Every active pallet has a name in the runtime; qed");
+	pub fn put<P: PalletInfoAccess>(&self) {
+		let key = Self::storage_key::<P>();
 
 		crate::storage::unhashed::put(&key, self);
 	}
-}
 
-impl sp_std::cmp::PartialOrd for PalletVersion {
-	fn partial_cmp(&self, other: &Self) -> Option<sp_std::cmp::Ordering> {
-		let res = self.major
-			.cmp(&other.major)
-			.then_with(||
-				self.minor
-					.cmp(&other.minor)
-					.then_with(|| self.patch.cmp(&other.patch)
-					));
+	/// Get the storage version of the given pallet from the storage.
+	///
+	/// It will use the storage key that is associated with the given `Pallet`.
+	///
+	/// # Panics
+	///
+	/// This function will panic iff `Pallet` can not be found by `PalletInfo`.
+	/// In a runtime that is put together using
+	/// [`construct_runtime!`](crate::construct_runtime) this should never happen.
+	///
+	/// It will also panic if this function isn't executed in an externalities
+	/// provided environment.
+	pub fn get<P: PalletInfoAccess>() -> Self {
+		let key = Self::storage_key::<P>();
 
-		Some(res)
+		crate::storage::unhashed::get_or_default(&key)
 	}
 }
 
-/// Provides version information about a pallet.
-///
-/// This trait provides two functions for returning the version of a
-/// pallet. There is a state where both functions can return distinct versions.
-/// See [`GetPalletVersion::storage_version`] for more information about this.
-pub trait GetPalletVersion {
-	/// Returns the current version of the pallet.
-	fn current_version() -> PalletVersion;
+impl PartialEq<u16> for StorageVersion {
+	fn eq(&self, other: &u16) -> bool {
+		self.0 == *other
+	}
+}
 
-	/// Returns the version of the pallet that is stored in storage.
-	///
-	/// Most of the time this will return the exact same version as
-	/// [`GetPalletVersion::current_version`]. Only when being in
-	/// a state after a runtime upgrade happened and the pallet did
-	/// not yet updated its version in storage, this will return a
-	/// different(the previous, seen from the time of calling) version.
-	///
-	/// See [`PalletVersion`] for more information.
-	///
-	/// # Note
-	///
-	/// If there was no previous version of the pallet stored in the state,
-	/// this function returns `None`.
-	fn storage_version() -> Option<PalletVersion>;
+impl PartialOrd<u16> for StorageVersion {
+	fn partial_cmp(&self, other: &u16) -> Option<sp_std::cmp::Ordering> {
+		Some(self.0.cmp(other))
+	}
+}
+
+/// Provides information about the storage version of a pallet.
+///
+/// It differentiates between current and active storage version. Both should be only out of sync
+/// when a new runtime upgrade was applied and the runtime migrations did not yet executed.
+/// Otherwise it means that the pallet works with an unsupported storage version and unforeseen
+/// stuff can happen.
+///
+/// The current storage version is the version of the pallet as supported at runtime. The active
+/// storage version is the version of the pallet in the storage.
+///
+/// It is required to update the active storage version manually when a migration was applied.
+pub trait GetStorageVersion {
+	/// Returns the current storage version as supported by the pallet.
+	fn current_storage_version() -> StorageVersion;
+	/// Returns the on-chain storage version of the pallet as stored in the storage.
+	fn on_chain_storage_version() -> StorageVersion;
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn check_storage_version_ordering() {
+		let version = StorageVersion::new(1);
+		assert!(version == StorageVersion::new(1));
+		assert!(version < StorageVersion::new(2));
+		assert!(version < StorageVersion::new(3));
+
+		let version = StorageVersion::new(2);
+		assert!(version < StorageVersion::new(3));
+		assert!(version > StorageVersion::new(1));
+		assert!(version < StorageVersion::new(5));
+	}
 }

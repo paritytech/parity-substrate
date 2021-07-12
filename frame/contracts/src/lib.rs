@@ -118,7 +118,7 @@ use sp_runtime::{
 	Perbill,
 };
 use frame_support::{
-	traits::{OnUnbalanced, Currency, Get, Time, Randomness},
+	traits::{OnUnbalanced, Currency, Get, Time, Randomness, StorageVersion},
 	weights::{Weight, PostDispatchInfo, WithPostDispatchInfo},
 };
 use frame_system::Pallet as System;
@@ -133,6 +133,9 @@ type BalanceOf<T> =
 	<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 type NegativeImbalanceOf<T> =
 	<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::NegativeImbalance;
+
+/// The current storage version.
+pub const STORAGE_VERSION: StorageVersion = StorageVersion::new(4);
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -239,6 +242,7 @@ pub mod pallet {
 	}
 
 	#[pallet::pallet]
+	#[pallet::storage_version(STORAGE_VERSION)]
 	pub struct Pallet<T>(PhantomData<T>);
 
 	#[pallet::hooks]

@@ -17,10 +17,7 @@
 
 //! Migrations to version [`4.0.0`], as denoted by the changelog.
 
-use frame_support::{
-	weights::Weight,
-	traits::{GetPalletVersion, PalletVersion, Get},
-};
+use frame_support::{weights::Weight, traits::{StorageVersion, Get}};
 
 /// The old prefix.
 pub const OLD_PREFIX: &[u8] = b"PhragmenElection";
@@ -33,8 +30,7 @@ pub const OLD_PREFIX: &[u8] = b"PhragmenElection";
 ///
 /// The old storage prefix, `PhragmenElection` is hardcoded in the migration code.
 pub fn migrate<
-	T: frame_system::Config,
-	P: GetPalletVersion,
+	T: crate::Config,
 	N: AsRef<str>,
 >(new_pallet_name: N) -> Weight {
 	if new_pallet_name.as_ref().as_bytes() == OLD_PREFIX {
@@ -44,30 +40,30 @@ pub fn migrate<
 		);
 		return 0;
 	}
-	let maybe_storage_version = <P as GetPalletVersion>::storage_version();
+	let storage_version = StorageVersion::get::<crate::Pallet<T>>();
 	log::info!(
 		target: "runtime::elections-phragmen",
 		"Running migration to v4 for elections-phragmen with storage version {:?}",
-		maybe_storage_version,
+		storage_version,
 	);
 
-	match maybe_storage_version {
-		Some(storage_version) if storage_version <= PalletVersion::new(3, 0, 0) => {
-			log::info!("new prefix: {}", new_pallet_name.as_ref());
-			frame_support::storage::migration::move_pallet(
-				OLD_PREFIX,
-				new_pallet_name.as_ref().as_bytes(),
-			);
-			<T as frame_system::Config>::BlockWeights::get().max_block
-		}
-		_ => {
-			log::warn!(
-				target: "runtime::elections-phragmen",
-				"Attempted to apply migration to v4 but failed because storage version is {:?}",
-				maybe_storage_version,
-			);
-			0
-		},
+	if storage_version <= 3 {
+		log::info!("new prefix: {}", new_pallet_name.as_ref());
+		frame_support::storage::migration::move_pallet(
+			OLD_PREFIX,
+			new_pallet_name.as_ref().as_bytes(),
+		);
+
+		StorageVersion::new(4).put::<crate::Pallet<T>>();
+
+		<T as frame_system::Config>::BlockWeights::get().max_block
+	} else {
+		log::warn!(
+			target: "runtime::elections-phragmen",
+			"Attempted to apply migration to v4 but failed because storage version is {:?}",
+			storage_version,
+		);
+		0
 	}
 }
 
@@ -75,7 +71,7 @@ pub fn migrate<
 /// [`frame_support::traits::OnRuntimeUpgrade::pre_upgrade`] for further testing.
 ///
 /// Panics if anything goes wrong.
-pub fn pre_migration<P: GetPalletVersion, N: AsRef<str>>(new: N) {
+pub fn pre_migration<T: crate::Config, N: AsRef<str>>(new: N) {
 	let new = new.as_ref();
 	log::info!("pre-migration elections-phragmen test with new = {}", new);
 
@@ -96,15 +92,15 @@ pub fn pre_migration<P: GetPalletVersion, N: AsRef<str>>(new: N) {
 		sp_core::hexdisplay::HexDisplay::from(&sp_io::storage::next_key(new.as_bytes()).unwrap())
 	);
 	// ensure storage version is 3.
-	assert!(<P as GetPalletVersion>::storage_version().unwrap().major == 3);
+	assert_eq!(StorageVersion::get::<crate::Pallet<T>>(), 3);
 }
 
 /// Some checks for after migration. This can be linked to
 /// [`frame_support::traits::OnRuntimeUpgrade::post_upgrade`] for further testing.
 ///
 /// Panics if anything goes wrong.
-pub fn post_migration<P : GetPalletVersion>() {
+pub fn post_migration<T : crate::Config>() {
 	log::info!("post-migration elections-phragmen");
 	// ensure we've been updated to v4 by the automatic write of crate version -> storage version.
-	assert!(<P as GetPalletVersion>::storage_version().unwrap().major == 4);
+	assert_eq!(StorageVersion::get::<crate::Pallet<T>>(), 4);
 }

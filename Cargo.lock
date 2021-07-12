@@ -1877,6 +1877,7 @@ name = "frame-support-procedural"
 version = "4.0.0-dev"
 dependencies = [
  "Inflector",
+ "cargo_metadata",
  "frame-support-procedural-tools",
  "proc-macro2",
  "quote",

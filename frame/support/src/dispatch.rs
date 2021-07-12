@@ -29,9 +29,7 @@ pub use crate::weights::{
 	PaysFee, PostDispatchInfo, WithPostDispatchInfo,
 };
 pub use sp_runtime::{traits::Dispatchable, DispatchError};
-pub use crate::traits::{
-	CallMetadata, GetCallMetadata, GetCallName, UnfilteredDispatchable, GetPalletVersion,
-};
+pub use crate::traits::{CallMetadata, GetCallMetadata, GetCallName, UnfilteredDispatchable};
 
 /// The return typ of a `Dispatchable` in frame. When returned explicitly from
 /// a dispatchable function it allows overriding the default `PostDispatchInfo`
@@ -1445,25 +1443,14 @@ macro_rules! decl_module {
 					as
 					$system::Config
 				>::PalletInfo as $crate::traits::PalletInfo>::name::<Self>().unwrap_or("<unknown pallet name>");
-				let new_storage_version = $crate::crate_to_pallet_version!();
 
 				$crate::log::info!(
 					target: $crate::LOG_TARGET,
-					"⚠️ {} declares internal migrations (which *might* execute), setting storage version to {:?}",
+					"⚠️ {} declares internal migrations (which *might* execute)",
 					pallet_name,
-					new_storage_version,
 				);
 
-				let result: $return = (|| { $( $impl )* })();
-
-				new_storage_version
-					.put_into_storage::<<$trait_instance as $system::Config>::PalletInfo, Self>();
-
-				let additional_write = <
-					<$trait_instance as $system::Config>::DbWeight as $crate::traits::Get<_>
-				>::get().writes(1);
-
-				result.saturating_add(additional_write)
+				(|| { $( $impl )* })()
 			}
 
 			#[cfg(feature = "try-runtime")]
@@ -1494,19 +1481,14 @@ macro_rules! decl_module {
 					as
 					$system::Config
 				>::PalletInfo as $crate::traits::PalletInfo>::name::<Self>().unwrap_or("<unknown pallet name>");
-				let new_storage_version = $crate::crate_to_pallet_version!();
 
 				$crate::log::info!(
 					target: $crate::LOG_TARGET,
-					"✅ no migration for {}, setting storage version to {:?}",
+					"✅ no migration for {}",
 					pallet_name,
-					new_storage_version,
 				);
 
-				new_storage_version
-					.put_into_storage::<<$trait_instance as $system::Config>::PalletInfo, Self>();
-
-				<<$trait_instance as $system::Config>::DbWeight as $crate::traits::Get<_>>::get().writes(1)
+				0
 			}
 
 			#[cfg(feature = "try-runtime")]
@@ -2017,33 +1999,11 @@ macro_rules! decl_module {
 			}
 		}
 
-		// Bring `GetPalletVersion` into scope to make it easily usable.
-		pub use $crate::traits::GetPalletVersion as _;
-		// Implement `GetPalletVersion` for `Module`
-		impl<$trait_instance: $trait_name $(<I>, $instance: $instantiable)?> $crate::traits::GetPalletVersion
-			for $mod_type<$trait_instance $(, $instance)?> where $( $other_where_bounds )*
-		{
-			fn current_version() -> $crate::traits::PalletVersion {
-				$crate::crate_to_pallet_version!()
-			}
-
-			fn storage_version() -> Option<$crate::traits::PalletVersion> {
-				let key = $crate::traits::PalletVersion::storage_key::<
-						<$trait_instance as $system::Config>::PalletInfo, Self
-					>().expect("Every active pallet has a name in the runtime; qed");
-
-				$crate::storage::unhashed::get(&key)
-			}
-		}
-
 		// Implement `OnGenesis` for `Module`
 		impl<$trait_instance: $trait_name $(<I>, $instance: $instantiable)?> $crate::traits::OnGenesis
 			for $mod_type<$trait_instance $(, $instance)?> where $( $other_where_bounds )*
 		{
-			fn on_genesis() {
-				$crate::crate_to_pallet_version!()
-					.put_into_storage::<<$trait_instance as $system::Config>::PalletInfo, Self>();
-			}
+			fn on_genesis() {}
 		}
 
 		// manual implementation of clone/eq/partialeq because using derive erroneously requires

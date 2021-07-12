@@ -22,7 +22,6 @@
 mod storage;
 mod construct_runtime;
 mod pallet;
-mod pallet_version;
 mod transactional;
 mod debug_no_bound;
 mod clone_no_bound;
@@ -456,11 +455,6 @@ pub fn derive_default_no_bound(input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn require_transactional(attr: TokenStream, input: TokenStream) -> TokenStream {
 	transactional::require_transactional(attr, input).unwrap_or_else(|e| e.to_compile_error().into())
-}
-
-#[proc_macro]
-pub fn crate_to_pallet_version(input: TokenStream) -> TokenStream {
-	pallet_version::crate_to_pallet_version(input).unwrap_or_else(|e| e.to_compile_error()).into()
 }
 
 /// The number of module instances supported by the runtime, starting at index 1,
