@@ -1,6 +1,3 @@
-// our error-chain could potentially blow up otherwise
-#![recursion_limit="128"]
-
 #[macro_use] extern crate log;
 
 pub mod import_queue;

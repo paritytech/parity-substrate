@@ -21,12 +21,6 @@
 //! change. Implementors of traits should not rely on the interfaces to remain
 //! the same.
 
-// This provides "unused" building blocks to other crates
-#![allow(dead_code)]
-
-// our error-chain could potentially blow up otherwise
-#![recursion_limit="128"]
-
 use std::sync::Arc;
 use std::time::Duration;
 
