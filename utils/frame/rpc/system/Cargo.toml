@@ -16,7 +16,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 sc-client-api = { version = "4.0.0-dev", path = "../../../../client/api" }
 codec = { package = "parity-scale-codec", version = "2.0.0" }
 futures = { version = "0.3.4", features = ["compat"] }
-jsonrpc-core = "15.1.0"
+jsonrpc-core = "17.1.0"
 jsonrpc-core-client = "15.1.0"
 jsonrpc-derive = "15.1.0"
 log = "0.4.8"

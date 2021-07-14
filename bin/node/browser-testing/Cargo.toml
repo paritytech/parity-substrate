@@ -9,7 +9,7 @@ license = "Apache-2.0"
 [dependencies]
 futures-timer = "3.0.2"
 libp2p = { version = "0.37.1", default-features = false }
-jsonrpc-core = "15.0.0"
+jsonrpc-core = "17.1.0"
 serde = "1.0.126"
 serde_json = "1.0.48"
 wasm-bindgen = { version = "=0.2.73", features = ["serde-serialize"] }

@@ -15,7 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 sc-consensus-babe = { version = "0.10.0-dev", path = "../" }
 sc-rpc-api = { version = "0.10.0-dev", path = "../../../rpc-api" }
-jsonrpc-core = "15.1.0"
+jsonrpc-core = "17.1.0"
 jsonrpc-core-client = "15.1.0"
 jsonrpc-derive = "15.1.0"
 sp-consensus-babe = { version = "0.10.0-dev", path = "../../../../primitives/consensus/babe" }

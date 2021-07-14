@@ -14,7 +14,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 futures = "0.1.6"
-jsonrpc-core = "15.1.0"
+jsonrpc-core = "17.1.0"
 pubsub = { package = "jsonrpc-pubsub", version = "15.1.0" }
 log = "0.4.8"
 prometheus-endpoint = { package = "substrate-prometheus-endpoint", path = "../../utils/prometheus", version = "0.9.0"}

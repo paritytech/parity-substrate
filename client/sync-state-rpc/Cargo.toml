@@ -14,7 +14,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 thiserror = "1.0.21"
-jsonrpc-core = "15.0"
+jsonrpc-core = "17.1"
 jsonrpc-core-client = "15.0"
 jsonrpc-derive = "15.0"
 sc-chain-spec = { version = "4.0.0-dev", path = "../chain-spec" }

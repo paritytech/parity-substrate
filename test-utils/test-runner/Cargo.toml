@@ -50,5 +50,5 @@ log = "0.4.8"
 futures = { package = "futures", version = "0.3", features = ["compat"] }
 tokio = { version = "0.2", features = ["signal"] }
 # Calling RPC
-jsonrpc-core = "15.1"
+jsonrpc-core = "17.1"
 num-traits = "0.2.14"
