@@ -16,7 +16,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 codec = { package = "parity-scale-codec", version = "2.0.0" }
 jsonrpc-core = "15.1.0"
 jsonrpc-core-client = "15.1.0"
-jsonrpc-derive = "15.1.0"
+jsonrpc-derive = "17.1.0"
 serde = { version = "1.0.126", features = ["derive"] }
 
 sp-api = { version = "4.0.0-dev", path = "../../../primitives/api" }
