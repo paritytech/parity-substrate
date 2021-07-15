@@ -153,7 +153,7 @@ fn basic_setup_works() {
 		// for these stash ids, see
 		// https://github.com/paritytech/substrate/
 		//   blob/631d4cdbcad438248c2597213918d8207d85bf6e/frame/staking/src/mock.rs#L435-L441
-		for genesis_stash_account_id in [11, 21, 31, 101] {
+		for genesis_stash_account_id in &[11, 21, 31, 101] {
 			let node = crate::voter_bags::Node::<Test>::from_id(&genesis_stash_account_id)
 				.expect(&format!("node was created for account {}", genesis_stash_account_id));
 			assert!(!node.is_misplaced(&weight_of));
@@ -3901,15 +3901,18 @@ fn test_rebag() {
 	ExtBuilder::default().build_and_execute(|| {
 		// We want to have two validators: one, `stash`, is the one we will rebag.
 		// The other, `other_stash`, exists only so that the destination bag is not empty.
-		let stash = make_validator(0, 100).unwrap();
-		let other_stash = make_validator(1, 300).unwrap();
+		let stash = make_validator(0, 2000).unwrap();
+		let other_stash = make_validator(1, 9000).unwrap();
 
 		// verify preconditions
 		let weight_of = Staking::weight_of_fn();
 		let node = Node::<Test>::from_id(&stash).unwrap();
+
+		println!("upper node: {:#?}", node);
 		assert_eq!(
 			{
 				let origin_bag = Bag::<Test>::get(node.bag_upper).unwrap();
+				println!("origin bag: {:#?}", origin_bag);
 				origin_bag.iter().count()
 			},
 			1,

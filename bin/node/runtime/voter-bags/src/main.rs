@@ -62,7 +62,7 @@ struct Opt {
 }
 
 fn main() -> Result<(), std::io::Error> {
-	let Opt {n_bags, output, runtime } = Opt::from_args();
+	let Opt { n_bags, output, runtime } = Opt::from_args();
 	let mut ext = sp_io::TestExternalities::new_empty();
 	ext.execute_with(|| runtime.generate_thresholds()(n_bags, &output))
 }

@@ -671,11 +671,15 @@ benchmarks! {
 		// Clean up any existing state.
 		clear_validators_and_nominators::<T>();
 
-		// stash controls the node account
-		let (stash, controller) = make_validator(USER_SEED, 100)?;
+		let threshold = T::VoterBagThresholds::get();
 
-		// create another validator with 3x the stake
-		let (other_stash, _) = make_validator(USER_SEED + 1, 300)?;
+		// stash controls the node account
+		let bag0_thresh = threshold[0];
+		let (stash, controller) = make_validator(USER_SEED, bag0_thresh as u32)?;
+
+		// create another validator with more stake
+		let bag2_thresh = threshold[2];
+		let (other_stash, _) = make_validator(USER_SEED + 1, bag2_thresh as u32)?;
 
 		// update the stash account's value/weight
 		//
