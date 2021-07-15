@@ -17,6 +17,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use sc_service::config::BasePath;
+use sc_tracing::logging::RotationKind;
 use std::path::PathBuf;
 use structopt::StructOpt;
 use crate::arg_enums::TracingReceiver;
@@ -57,6 +58,24 @@ pub struct SharedParams {
 	/// option set.
 	#[structopt(long = "disable-log-reloading")]
 	pub disable_log_reloading: bool,
+
+	/// Sets log segmentation type.
+	///
+	/// Supported types: Daily, Hour, Minute
+	#[structopt(long)]
+	pub log_rotation_kind: Option<String>,
+
+	/// Sets output dir of log segmentation.
+	#[structopt(long)]
+	pub log_rotation_dir: Option<String>,
+
+	/// Sets log file prefix of log segmentation.
+	#[structopt(long)]
+	pub log_rotation_prefix: Option<String>,
+
+	/// Sets log file remain time of log segmentation.
+	#[structopt(long)]
+	pub log_rotation_remain: Option<i64>,
 
 	/// Sets a custom profiling filter. Syntax is the same as for logging: <target>=<level>
 	#[structopt(long = "tracing-targets", value_name = "TARGETS")]
@@ -111,6 +130,29 @@ impl SharedParams {
 	/// Is log reloading disabled
 	pub fn is_log_filter_reloading_disabled(&self) -> bool {
 		self.disable_log_reloading
+	}
+
+	/// Get log segmentation type
+	pub fn log_rotation_kind(&self) -> Option<RotationKind> {
+		match self.log_rotation_kind.clone(){
+			Some(k) => Some(k.as_str().into()),
+			_ => None
+		}
+	}
+
+	/// Get log segmentation type
+	pub fn log_rotation_dir(&self) -> Option<String> {
+		self.log_rotation_dir.clone()
+	}
+
+	/// Get log segmentation type
+	pub fn log_rotation_prefix(&self) -> Option<String> {
+		self.log_rotation_prefix.clone()
+	}
+
+	/// Get log segmentation type
+	pub fn log_rotation_remain(&self) -> Option<i64> {
+		self.log_rotation_remain
 	}
 
 	/// Receiver to process tracing messages.

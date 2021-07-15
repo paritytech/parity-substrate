@@ -8180,6 +8180,7 @@ version = "4.0.0-dev"
 dependencies = [
  "ansi_term 0.12.1",
  "atty",
+ "chrono",
  "erased-serde",
  "lazy_static",
  "log",
@@ -8203,6 +8204,7 @@ dependencies = [
  "sp-tracing",
  "thiserror",
  "tracing",
+ "tracing-appender",
  "tracing-log",
  "tracing-subscriber",
  "wasm-bindgen",
@@ -10458,6 +10460,17 @@ dependencies = [
  "pin-project-lite 0.2.6",
  "tracing-attributes",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-appender"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9965507e507f12c8901432a33e31131222abac31edd90cabbcf85cf544b7127a"
+dependencies = [
+ "chrono",
+ "crossbeam-channel",
+ "tracing-subscriber",
 ]
 
 [[package]]

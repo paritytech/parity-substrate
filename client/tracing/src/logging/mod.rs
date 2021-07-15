@@ -97,6 +97,7 @@ fn prepare_subscriber<N, E, F, W>(
 			fn() -> std::io::Stderr,
 		>,
 	) -> SubscriberBuilder<N, E, F, W>,
+	rotation: RotationBuilder,
 ) -> Result<impl Subscriber + for<'a> LookupSpan<'a>>
 where
 	N: for<'writer> FormatFields<'writer> + 'static,
@@ -170,6 +171,15 @@ where
 		"%Y-%m-%d %H:%M:%S%.3f".to_string()
 	});
 
+	let event_format_file = EventFormat {
+		timer: timer.clone(),
+		display_target: !simple,
+		display_level: !simple,
+		display_thread_name: !simple,
+		enable_color: false,
+		dup_to_stdout: false,
+	};
+
 	let event_format = EventFormat {
 		timer,
 		display_target: !simple,
@@ -200,7 +210,27 @@ where
 	#[cfg(target_os = "unknown")]
 	let subscriber = subscriber.with(ConsoleLogLayer::new(event_format));
 
+	let kind = rotation.rotation_kind;
+	let dir = rotation.rotation_dir.unwrap_or("log".to_owned());
+	let prefix = rotation.rotation_prefix.unwrap_or("log".to_owned());
+	let remain = rotation.rotation_remain.unwrap_or(10);
+	let rotation = RotationLayer::new(kind, dir, prefix).event_format(event_format_file).with_remain(remain);
+	let subscriber = subscriber.with(rotation);
+
 	Ok(subscriber)
+}
+
+/// A builder that is used to initialize the rotation.
+#[derive(Default)]
+pub struct RotationBuilder {
+	/// Log segmentation type
+	pub rotation_kind: Option<RotationKind>,
+	/// tracing storage directory
+	pub rotation_dir: Option<String>,
+	/// Log file prefix
+	pub rotation_prefix: Option<String>,
+	/// Remain time, the unit is determined by kind
+	pub rotation_remain: Option<Remain>,
 }
 
 /// A builder that is used to initialize the global logger.
@@ -209,6 +239,7 @@ pub struct LoggerBuilder {
 	profiling: Option<(crate::TracingReceiver, String)>,
 	log_reloading: bool,
 	force_colors: Option<bool>,
+	rotation: RotationBuilder,
 }
 
 impl LoggerBuilder {
@@ -219,7 +250,14 @@ impl LoggerBuilder {
 			profiling: None,
 			log_reloading: true,
 			force_colors: None,
+			rotation: Default::default(),
 		}
+	}
+
+	/// Set up rotation.
+	pub fn with_rotation(&mut self, r: RotationBuilder) -> &mut Self {
+		self.rotation = r;
+		self
 	}
 
 	/// Set up the profiling.
@@ -255,6 +293,7 @@ impl LoggerBuilder {
 					Some(&profiling_targets),
 					self.force_colors,
 					|builder| enable_log_reloading!(builder),
+					self.rotation,
 				)?;
 				let profiling = crate::ProfilingLayer::new(tracing_receiver, &profiling_targets);
 
@@ -267,6 +306,7 @@ impl LoggerBuilder {
 					Some(&profiling_targets),
 					self.force_colors,
 					|builder| builder,
+					self.rotation,
 				)?;
 				let profiling = crate::ProfilingLayer::new(tracing_receiver, &profiling_targets);
 
@@ -281,6 +321,7 @@ impl LoggerBuilder {
 					None,
 					self.force_colors,
 					|builder| enable_log_reloading!(builder),
+					self.rotation,
 				)?;
 
 				tracing::subscriber::set_global_default(subscriber)?;
@@ -292,6 +333,7 @@ impl LoggerBuilder {
 					None,
 					self.force_colors,
 					|builder| builder,
+					self.rotation,
 				)?;
 
 				tracing::subscriber::set_global_default(subscriber)?;

@@ -33,7 +33,7 @@ use sc_service::config::{
 	TaskExecutor, TelemetryEndpoints, TransactionPoolOptions, WasmExecutionMethod,
 };
 use sc_service::{ChainSpec, TracingReceiver, KeepBlocks, TransactionStorageMode};
-use sc_tracing::logging::LoggerBuilder;
+use sc_tracing::logging::{LoggerBuilder, RotationBuilder};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
@@ -592,6 +592,13 @@ pub trait CliConfiguration<DCV: DefaultConfigurationValues = ()>: Sized {
 		sp_panic_handler::set(&C::support_url(), &C::impl_version());
 
 		let mut logger = LoggerBuilder::new(self.log_filters()?);
+		let rotation = RotationBuilder {
+			rotation_kind: self.shared_params().log_rotation_kind(),
+			rotation_dir: self.shared_params().log_rotation_dir(),
+			rotation_prefix: self.shared_params().log_rotation_prefix(),
+			rotation_remain: self.shared_params().log_rotation_remain(),
+		};
+		logger.with_rotation(rotation);
 		logger.with_log_reloading(!self.is_log_filter_reloading_disabled()?);
 
 		if let Some(tracing_targets) = self.tracing_targets()? {

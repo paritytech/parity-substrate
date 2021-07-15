@@ -19,7 +19,9 @@
 #[cfg(target_os = "unknown")]
 mod console_log;
 mod prefix_layer;
+mod rotation_layer;
 
 #[cfg(target_os = "unknown")]
 pub use console_log::*;
 pub use prefix_layer::*;
+pub use rotation_layer::*;
