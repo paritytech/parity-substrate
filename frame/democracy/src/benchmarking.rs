@@ -25,7 +25,7 @@ use frame_support::{
 	traits::{Currency, Get, EnsureOrigin, OnInitialize, UnfilteredDispatchable, schedule::DispatchTime},
 };
 use frame_system::{RawOrigin, Pallet as System, self};
-use sp_runtime::traits::{Bounded, One};
+use sp_runtime::traits::{Bounded, One, BadOrigin};
 
 use crate::Pallet as Democracy;
 
@@ -759,7 +759,7 @@ benchmarks! {
 	}: enact_proposal(RawOrigin::Root, proposal_hash, 0)
 	verify {
 		// Fails due to mismatched origin
-		assert_last_event::<T>(Event::<T>::Executed(0, false).into());
+		assert_last_event::<T>(Event::<T>::Executed(0, Err(BadOrigin.into())).into());
 	}
 
 	#[extra]
