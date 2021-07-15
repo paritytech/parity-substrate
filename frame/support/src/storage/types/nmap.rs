@@ -318,6 +318,23 @@ where
 		<Self as crate::storage::IterableStorageNMap<Key, Value>>::iter_prefix(kp)
 	}
 
+	/// Enumerate all elements in the map with prefix key `kp` after a specified `starting_raw_key`
+	/// in no particular order.
+	///
+	/// If you add or remove values whose prefix key is `kp` to the map while doing this, you'll get
+	/// undefined results.
+	pub fn iter_prefix_from<KP>(
+		kp: KP,
+		starting_raw_key: Vec<u8>,
+	) -> crate::storage::PrefixIterator<(<Key as HasKeyPrefix<KP>>::Suffix, Value)>
+	where
+		Key: HasReversibleKeyPrefix<KP>,
+	{
+		<
+			Self as crate::storage::IterableStorageNMap<Key, Value>
+		>::iter_prefix_from(kp, starting_raw_key)
+	}
+
 	/// Enumerate all suffix keys in the map with prefix key `kp` in no particular order.
 	///
 	/// If you add or remove values whose prefix key is `kp` to the map while doing this, you'll get
@@ -329,6 +346,23 @@ where
 		Key: HasReversibleKeyPrefix<KP>,
 	{
 		<Self as crate::storage::IterableStorageNMap<Key, Value>>::iter_key_prefix(kp)
+	}
+
+	/// Enumerate all suffix keys in the map with prefix key `kp` after a specified
+	/// `starting_raw_key` in no particular order.
+	///
+	/// If you add or remove values whose prefix key is `kp` to the map while doing this, you'll get
+	/// undefined results.
+	pub fn iter_key_prefix_from<KP>(
+		kp: KP,
+		starting_raw_key: Vec<u8>,
+	) -> crate::storage::KeyPrefixIterator<<Key as HasKeyPrefix<KP>>::Suffix>
+	where
+		Key: HasReversibleKeyPrefix<KP>,
+	{
+		<
+			Self as crate::storage::IterableStorageNMap<Key, Value>
+		>::iter_key_prefix_from(kp, starting_raw_key)
 	}
 
 	/// Remove all elements from the map with prefix key `kp` and iterate through them in no
@@ -352,11 +386,29 @@ where
 		<Self as crate::storage::IterableStorageNMap<Key, Value>>::iter()
 	}
 
+	/// Enumerate all elements in the map after a specified `starting_key` in no particular order.
+	///
+	/// If you add or remove values to the map while doing this, you'll get undefined results.
+	pub fn iter_from(
+		starting_raw_key: Vec<u8>,
+	) -> crate::storage::PrefixIterator<(Key::Key, Value)> {
+		<Self as crate::storage::IterableStorageNMap<Key, Value>>::iter_from(starting_raw_key)
+	}
+
 	/// Enumerate all keys in the map in no particular order.
 	///
 	/// If you add or remove values to the map while doing this, you'll get undefined results.
 	pub fn iter_keys() -> crate::storage::KeyPrefixIterator<Key::Key> {
 		<Self as crate::storage::IterableStorageNMap<Key, Value>>::iter_keys()
+	}
+
+	/// Enumerate all keys in the map after a specified `starting_raw_key` in no particular order.
+	///
+	/// If you add or remove values to the map while doing this, you'll get undefined results.
+	pub fn iter_keys_from(
+		starting_raw_key: Vec<u8>,
+	) -> crate::storage::KeyPrefixIterator<Key::Key> {
+		<Self as crate::storage::IterableStorageNMap<Key, Value>>::iter_keys_from(starting_raw_key)
 	}
 
 	/// Remove all elements from the map and iterate through them in no particular order.

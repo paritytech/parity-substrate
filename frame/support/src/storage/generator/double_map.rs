@@ -358,6 +358,15 @@ impl<
 		}
 	}
 
+	fn iter_prefix_from(
+		k1: impl EncodeLike<K1>,
+		starting_raw_key: Vec<u8>,
+	) -> Self::PrefixIterator {
+		let mut iter = Self::iter_prefix(k1);
+		iter.set_last_raw_key(starting_raw_key);
+		iter
+	}
+
 	fn iter_key_prefix(k1: impl EncodeLike<K1>) -> Self::PartialKeyIterator {
 		let prefix = G::storage_double_map_final_key1(k1);
 		Self::PartialKeyIterator {
@@ -371,6 +380,15 @@ impl<
 		}
 	}
 
+	fn iter_key_prefix_from(
+		k1: impl EncodeLike<K1>,
+		starting_raw_key: Vec<u8>,
+	) -> Self::PartialKeyIterator {
+		let mut iter = Self::iter_key_prefix(k1);
+		iter.set_last_raw_key(starting_raw_key);
+		iter
+	}
+
 	fn drain_prefix(k1: impl EncodeLike<K1>) -> Self::PrefixIterator {
 		let mut iterator = Self::iter_prefix(k1);
 		iterator.drain = true;
@@ -378,10 +396,14 @@ impl<
 	}
 
 	fn iter() -> Self::Iterator {
+		Self::iter_from(G::prefix_hash())
+	}
+
+	fn iter_from(starting_raw_key: Vec<u8>) -> Self::Iterator {
 		let prefix = G::prefix_hash();
 		Self::Iterator {
-			prefix: prefix.clone(),
-			previous_key: prefix,
+			prefix,
+			previous_key: starting_raw_key,
 			drain: false,
 			closure: |raw_key_without_prefix, mut raw_value| {
 				let mut k1_k2_material = G::Hasher1::reverse(raw_key_without_prefix);
@@ -394,10 +416,14 @@ impl<
 	}
 
 	fn iter_keys() -> Self::FullKeyIterator {
+		Self::iter_keys_from(G::prefix_hash())
+	}
+
+	fn iter_keys_from(starting_raw_key: Vec<u8>) -> Self::FullKeyIterator {
 		let prefix = G::prefix_hash();
 		Self::FullKeyIterator {
-			prefix: prefix.clone(),
-			previous_key: prefix,
+			prefix,
+			previous_key: starting_raw_key,
 			drain: false,
 			closure: |raw_key_without_prefix| {
 				let mut k1_k2_material = G::Hasher1::reverse(raw_key_without_prefix);
