@@ -599,6 +599,8 @@ ss58_address_format!(
 		(1284, "moonbeam", "Moonbeam, session key (*25519).")
 	Moonriver =>
 		(1285, "moonriver", "Moonriver, session key (*25519).")
+	BholdusAccount =>
+		(2207, "bholdus", "BHoldus Network, standard account (*25519).")
 	BasiliskAccount =>
 		(10041, "basilisk", "Basilisk standard account (*25519).")
 

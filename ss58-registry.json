@@ -587,6 +587,15 @@
 			"website": "https://moonbeam.network"
 		},
 		{
+			"prefix": 2207,
+			"network": "bholdus",
+			"displayName": "BHoldus Network",
+			"symbols": ["BHO"],
+			"decimals": [18],
+			"standardAccount": "*25519",
+			"website": "https://bholdus.com"
+		},
+		{
 			"prefix": 10041,
 			"network": "basilisk",
 			"displayName": "Basilisk",
