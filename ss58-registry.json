@@ -532,7 +532,7 @@
 			"standardAccount": "secp256k1",
 			"website": "https://origintrail.io"
 		},
-		{
+    {
 			"prefix": 110,
 			"network": "heiko",
 			"displayName": "Heiko",
@@ -541,6 +541,15 @@
 			"standardAccount": "*25519",
 			"website": "https://parallel.fi/"
 		},
+    {
+			"prefix": 128,
+			"network": "clover",
+			"displayName": "Clover Finance",
+			"symbols": ["CLV"],
+			"decimals": [18],
+			"standardAccount": "*25519",
+			"website": "https://clover.finance" 
+    },
 		{
 			"prefix": 136,
 			"network": "altair",
