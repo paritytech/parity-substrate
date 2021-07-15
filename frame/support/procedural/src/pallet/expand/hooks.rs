@@ -122,6 +122,24 @@ pub fn expand_hooks(def: &mut Def) -> proc_macro2::TokenStream {
 		}
 
 		impl<#type_impl_gen>
+			#frame_support::traits::OnPostInherent<<T as #frame_system::Config>::BlockNumber>
+			for #pallet_ident<#type_use_gen> #where_clause
+		{
+			fn on_post_inherent(
+				n: <T as #frame_system::Config>::BlockNumber
+			) -> #frame_support::weights::Weight {
+				#frame_support::sp_tracing::enter_span!(
+					#frame_support::sp_tracing::trace_span!("on_post_inherent")
+				);
+				<
+					Self as #frame_support::traits::Hooks<
+						<T as #frame_system::Config>::BlockNumber
+					>
+				>::on_post_inherent(n)
+			}
+		}
+
+		impl<#type_impl_gen>
 			#frame_support::traits::OnRuntimeUpgrade
 			for #pallet_ident<#type_use_gen> #where_clause
 		{

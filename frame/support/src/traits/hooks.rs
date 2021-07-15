@@ -31,8 +31,10 @@ pub trait OnInitialize<BlockNumber> {
 	/// Return the non-negotiable weight consumed in the block.
 	///
 	/// NOTE: This function is called BEFORE ANY extrinsic in a block is applied,
-	/// including inherent extrinsics. Hence for instance, if you runtime includes
+	/// including inherent extrinsics. Hence, for instance, if your runtime includes
 	/// `pallet_timestamp`, the `timestamp` is not yet up to date at this point.
+	///
+	/// If you want to execute something after inherents, implement `OnPostInherent`.
 	fn on_initialize(_n: BlockNumber) -> crate::weights::Weight { 0 }
 }
 
@@ -41,6 +43,29 @@ impl<BlockNumber: Clone> OnInitialize<BlockNumber> for Tuple {
 	fn on_initialize(n: BlockNumber) -> crate::weights::Weight {
 		let mut weight = 0;
 		for_tuples!( #( weight = weight.saturating_add(Tuple::on_initialize(n.clone())); )* );
+		weight
+	}
+}
+
+/// The after inherent initialization trait.
+///
+/// Implementing this lets you express what should happen for your pallet when the block is
+/// beginning (right before the first extrinsic is executed).
+pub trait OnPostInherent<BlockNumber> {
+	/// We have finished executing all inherent extrinsics. Implement to have something happen.
+	///
+	/// Return the non-negotiable weight consumed for this behavior.
+	///
+	/// NOTE: Unlike `on_initialize`, this is called after the inherent extrinsics have been
+	/// included, so things like the `timestamp` will be up to date here.
+	fn on_post_inherent(_n: BlockNumber) -> crate::weights::Weight { 0 }
+}
+
+#[impl_for_tuples(30)]
+impl<BlockNumber: Clone> OnPostInherent<BlockNumber> for Tuple {
+	fn on_post_inherent(n: BlockNumber) -> crate::weights::Weight {
+		let mut weight = 0;
+		for_tuples!( #( weight = weight.saturating_add(Tuple::on_post_inherent(n.clone())); )* );
 		weight
 	}
 }
@@ -223,6 +248,11 @@ pub trait Hooks<BlockNumber> {
 	///
 	/// Return the non-negotiable weight consumed in the block.
 	fn on_initialize(_n: BlockNumber) -> crate::weights::Weight { 0 }
+
+	/// The inherent extrinsics have been executed. Implement to have something happen.
+	///
+	/// Return the non-negotiable weight consumed in the block.
+	fn on_post_inherent(_n: BlockNumber) -> crate::weights::Weight { 0 }
 
 	/// Perform a module upgrade.
 	///

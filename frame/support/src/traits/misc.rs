@@ -308,8 +308,10 @@ pub trait GetBacking {
 pub trait EnsureInherentsAreFirst<Block> {
 	/// Ensure the position of inherent is correct, i.e. they are before non-inherents.
 	///
+	/// On success, return the index of the first non-inherent (signed) extrinsic if one exists.
+	///
 	/// On error return the index of the inherent with invalid position (counting from 0).
-	fn ensure_inherents_are_first(block: &Block) -> Result<(), u32>;
+	fn ensure_inherents_are_first(block: &Block) -> Result<Option<u32>, u32>;
 }
 
 /// An extrinsic on which we can get access to call.

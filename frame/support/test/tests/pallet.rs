@@ -19,6 +19,7 @@ use frame_support::{
 	weights::{DispatchInfo, DispatchClass, Pays, GetDispatchInfo},
 	traits::{
 		GetCallName, OnInitialize, OnFinalize, OnRuntimeUpgrade, GetPalletVersion, OnGenesis,
+		OnPostInherent,
 	},
 	dispatch::{UnfilteredDispatchable, Parameter},
 	storage::unhashed,
@@ -112,6 +113,12 @@ pub mod pallet {
 			T::AccountId::from(SomeType2); // Test for where clause
 			Self::deposit_event(Event::Something(10));
 			10
+		}
+		fn on_post_inherent(_: BlockNumberFor<T>) -> Weight {
+			T::AccountId::from(SomeType1); // Test for where clause
+			T::AccountId::from(SomeType2); // Test for where clause
+			Self::deposit_event(Event::Something(15));
+			15
 		}
 		fn on_finalize(_: BlockNumberFor<T>) {
 			T::AccountId::from(SomeType1); // Test for where clause
@@ -568,7 +575,10 @@ fn inherent_expand() {
 		traits::EnsureInherentsAreFirst,
 	};
 	use sp_core::Hasher;
-	use sp_runtime::{traits::{BlakeTwo256, Header}, Digest};
+	use sp_runtime::{
+		Digest,
+		traits::{BlakeTwo256, Header as HeaderTrait},
+	};
 
 	let inherents = InherentData::new().create_extrinsics();
 
@@ -577,14 +587,16 @@ fn inherent_expand() {
 	];
 	assert_eq!(expected, inherents);
 
+	let header = Header::new(
+		1,
+		BlakeTwo256::hash(b"test"),
+		BlakeTwo256::hash(b"test"),
+		BlakeTwo256::hash(b"test"),
+		Digest::default(),
+	);
+
 	let block = Block::new(
-		Header::new(
-			1,
-			BlakeTwo256::hash(b"test"),
-			BlakeTwo256::hash(b"test"),
-			BlakeTwo256::hash(b"test"),
-			Digest::default(),
-		),
+		header.clone(),
 		vec![
 			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo_no_post_info()), signature: None },
 			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo(1, 0)), signature: None },
@@ -594,13 +606,7 @@ fn inherent_expand() {
 	assert!(InherentData::new().check_extrinsics(&block).ok());
 
 	let block = Block::new(
-		Header::new(
-			1,
-			BlakeTwo256::hash(b"test"),
-			BlakeTwo256::hash(b"test"),
-			BlakeTwo256::hash(b"test"),
-			Digest::default(),
-		),
+		header.clone(),
 		vec![
 			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo_no_post_info()), signature: None },
 			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo(0, 0)), signature: None },
@@ -610,13 +616,7 @@ fn inherent_expand() {
 	assert!(InherentData::new().check_extrinsics(&block).fatal_error());
 
 	let block = Block::new(
-		Header::new(
-			1,
-			BlakeTwo256::hash(b"test"),
-			BlakeTwo256::hash(b"test"),
-			BlakeTwo256::hash(b"test"),
-			Digest::default(),
-		),
+		header.clone(),
 		vec![
 			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo_transactional(0)), signature: None },
 		],
@@ -627,13 +627,7 @@ fn inherent_expand() {
 	assert!(inherent.check_extrinsics(&block).fatal_error());
 
 	let block = Block::new(
-		Header::new(
-			1,
-			BlakeTwo256::hash(b"test"),
-			BlakeTwo256::hash(b"test"),
-			BlakeTwo256::hash(b"test"),
-			Digest::default(),
-		),
+		header.clone(),
 		vec![
 			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo_no_post_info()), signature: Some((1, (), ())) },
 		],
@@ -643,30 +637,59 @@ fn inherent_expand() {
 	inherent.put_data(*b"required", &true).unwrap();
 	assert!(inherent.check_extrinsics(&block).fatal_error());
 
+	// First non-inherent is an unsigned extrinsic
 	let block = Block::new(
-		Header::new(
-			1,
-			BlakeTwo256::hash(b"test"),
-			BlakeTwo256::hash(b"test"),
-			BlakeTwo256::hash(b"test"),
-			Digest::default(),
-		),
+		header.clone(),
 		vec![
 			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo(1, 1)), signature: None },
+			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo_transactional(0)), signature: None },
+			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo_transactional(0)), signature: None },
+			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo_transactional(0)), signature: Some((1, (), ())) },
+		],
+	);
+
+	assert_eq!(Runtime::ensure_inherents_are_first(&block).ok().unwrap(), Some(1));
+
+	// First non-inherent is a signed extrinsic
+	let block = Block::new(
+		header.clone(),
+		vec![
+			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo(1, 1)), signature: None },
+			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo_transactional(0)), signature: Some((1, (), ())) },
+			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo_transactional(0)), signature: Some((1, (), ())) },
+			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo_transactional(0)), signature: None},
+		],
+	);
+
+	assert_eq!(Runtime::ensure_inherents_are_first(&block).ok().unwrap(), Some(1));
+
+	// No inherents
+	let block = Block::new(
+		header.clone(),
+		vec![
+			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo_transactional(0)), signature: None },
+			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo_transactional(0)), signature: None },
 			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo_transactional(0)), signature: None },
 		],
 	);
 
-	assert!(Runtime::ensure_inherents_are_first(&block).is_ok());
+	assert_eq!(Runtime::ensure_inherents_are_first(&block).ok().unwrap(), Some(0));
+
+	// No non-inherent
+	let block = Block::new(
+		header.clone(),
+		vec![
+			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo(1, 1)), signature: None },
+			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo(1, 1)), signature: None },
+			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo(1, 1)), signature: None },
+			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo(1, 1)), signature: None },
+		],
+	);
+
+	assert_eq!(Runtime::ensure_inherents_are_first(&block).ok().unwrap(), None);
 
 	let block = Block::new(
-		Header::new(
-			1,
-			BlakeTwo256::hash(b"test"),
-			BlakeTwo256::hash(b"test"),
-			BlakeTwo256::hash(b"test"),
-			Digest::default(),
-		),
+		header.clone(),
 		vec![
 			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo(1, 1)), signature: None },
 			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo_transactional(0)), signature: None },
@@ -677,13 +700,7 @@ fn inherent_expand() {
 	assert_eq!(Runtime::ensure_inherents_are_first(&block).err().unwrap(), 2);
 
 	let block = Block::new(
-		Header::new(
-			1,
-			BlakeTwo256::hash(b"test"),
-			BlakeTwo256::hash(b"test"),
-			BlakeTwo256::hash(b"test"),
-			Digest::default(),
-		),
+		header.clone(),
 		vec![
 			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo(1, 1)), signature: None },
 			UncheckedExtrinsic { function: Call::Example(pallet::Call::foo(1, 0)), signature: Some((1, (), ())) },
@@ -812,6 +829,7 @@ fn pallet_hooks_expand() {
 		frame_system::Pallet::<Runtime>::set_block_number(1);
 
 		assert_eq!(AllPallets::on_initialize(1), 10);
+		assert_eq!(AllPallets::on_post_inherent(1), 15);
 		AllPallets::on_finalize(1);
 
 		assert_eq!(pallet::Pallet::<Runtime>::storage_version(), None);
@@ -821,16 +839,22 @@ fn pallet_hooks_expand() {
 			Some(pallet::Pallet::<Runtime>::current_version()),
 		);
 
+		let events = frame_system::Pallet::<Runtime>::events();
+		assert_eq!(events.len(), 4);
 		assert_eq!(
 			frame_system::Pallet::<Runtime>::events()[0].event,
 			Event::Example(pallet::Event::Something(10)),
 		);
 		assert_eq!(
 			frame_system::Pallet::<Runtime>::events()[1].event,
-			Event::Example(pallet::Event::Something(20)),
+			Event::Example(pallet::Event::Something(15)),
 		);
 		assert_eq!(
 			frame_system::Pallet::<Runtime>::events()[2].event,
+			Event::Example(pallet::Event::Something(20)),
+		);
+		assert_eq!(
+			frame_system::Pallet::<Runtime>::events()[3].event,
 			Event::Example(pallet::Event::Something(30)),
 		);
 	})

@@ -67,7 +67,7 @@ pub use metadata::{
 };
 
 mod hooks;
-pub use hooks::{Hooks, OnGenesis, OnInitialize, OnFinalize, OnIdle, OnRuntimeUpgrade, OnTimestampSet};
+pub use hooks::{Hooks, OnGenesis, OnInitialize, OnPostInherent, OnFinalize, OnIdle, OnRuntimeUpgrade, OnTimestampSet};
 #[cfg(feature = "try-runtime")]
 pub use hooks::{OnRuntimeUpgradeHelpersExt, ON_RUNTIME_UPGRADE_PREFIX};
 #[cfg(feature = "std")]

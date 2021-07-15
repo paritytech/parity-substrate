@@ -1398,6 +1398,11 @@ macro_rules! decl_module {
 				{ $( $impl )* }
 			}
 		}
+		// `on_post_inherent` is not supported with `decl_module`, so we do an empty impl.
+		impl<$trait_instance: $system::Config + $trait_name$(<I>, $instance: $instantiable)?>
+			$crate::traits::OnPostInherent<<$trait_instance as $system::Config>::BlockNumber>
+			for $module<$trait_instance$(, $instance)?> where $( $other_where_bounds )*
+		{}
 	};
 
 	(@impl_on_initialize
@@ -1415,6 +1420,11 @@ macro_rules! decl_module {
 				{ $( $impl )* }
 			}
 		}
+		// `on_post_inherent` is not supported with `decl_module`, so we do an empty impl.
+		impl<$trait_instance: $system::Config + $trait_name$(<I>, $instance: $instantiable)?>
+			$crate::traits::OnPostInherent<<$trait_instance as $system::Config>::BlockNumber>
+			for $module<$trait_instance$(, $instance)?> where $( $other_where_bounds )*
+		{}
 	};
 
 	(@impl_on_initialize
@@ -1424,6 +1434,11 @@ macro_rules! decl_module {
 	) => {
 		impl<$trait_instance: $system::Config + $trait_name$(<I>, $instance: $instantiable)?>
 			$crate::traits::OnInitialize<<$trait_instance as $system::Config>::BlockNumber>
+			for $module<$trait_instance$(, $instance)?> where $( $other_where_bounds )*
+		{}
+		// `on_post_inherent` is not supported with `decl_module`, so we do an empty impl.
+		impl<$trait_instance: $system::Config + $trait_name$(<I>, $instance: $instantiable)?>
+			$crate::traits::OnPostInherent<<$trait_instance as $system::Config>::BlockNumber>
 			for $module<$trait_instance$(, $instance)?> where $( $other_where_bounds )*
 		{}
 	};
