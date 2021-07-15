@@ -228,7 +228,13 @@ impl ProtocolConfig {
 		} else {
 			match self.sync_mode {
 				config::SyncMode::Full => sync::SyncMode::Full,
-				config::SyncMode::Fast { skip_proofs } => sync::SyncMode::LightState { skip_proofs },
+				config::SyncMode::Fast {
+					skip_proofs,
+					storage_chain_mode,
+				} => sync::SyncMode::LightState {
+					skip_proofs,
+					storage_chain_mode
+				},
 			}
 		}
 	}
@@ -594,6 +600,11 @@ impl<B: BlockT> Protocol<B> {
 					Some(block_data.body.iter().map(|body| {
 						Decode::decode(&mut body.as_ref())
 					}).collect::<Result<Vec<_>, _>>()?)
+				} else {
+					None
+				},
+				indexed_body: if request.fields.contains(message::BlockAttributes::INDEXED_BODY) {
+					Some(block_data.indexed_body)
 				} else {
 					None
 				},
@@ -965,6 +976,7 @@ impl<B: BlockT> Protocol<B> {
 						hash: header.hash(),
 						header: Some(header),
 						body: None,
+						indexed_body: None,
 						receipt: None,
 						message_queue: None,
 						justification: None,

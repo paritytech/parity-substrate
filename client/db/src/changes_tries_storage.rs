@@ -572,7 +572,7 @@ mod tests {
 		};
 		let mut op = backend.begin_operation().unwrap();
 		backend.begin_state_operation(&mut op, block_id).unwrap();
-		op.set_block_data(header, None, None, NewBlockState::Best).unwrap();
+		op.set_block_data(header, None, None, None, NewBlockState::Best).unwrap();
 		op.update_changes_trie((changes_trie_update, ChangesTrieCacheAction::Clear)).unwrap();
 		backend.commit_operation(op).unwrap();
 
@@ -916,7 +916,7 @@ mod tests {
 		backend.begin_state_operation(&mut op, BlockId::Hash(block2)).unwrap();
 		op.mark_finalized(BlockId::Hash(block1), None).unwrap();
 		op.mark_finalized(BlockId::Hash(block2), None).unwrap();
-		op.set_block_data(header3, None, None, NewBlockState::Final).unwrap();
+		op.set_block_data(header3, None, None, None, NewBlockState::Final).unwrap();
 		backend.commit_operation(op).unwrap();
 
 		// insert more unfinalized headers
@@ -941,7 +941,7 @@ mod tests {
 		op.mark_finalized(BlockId::Hash(block4), None).unwrap();
 		op.mark_finalized(BlockId::Hash(block5), None).unwrap();
 		op.mark_finalized(BlockId::Hash(block6), None).unwrap();
-		op.set_block_data(header7, None, None, NewBlockState::Final).unwrap();
+		op.set_block_data(header7, None, None, None, NewBlockState::Final).unwrap();
 		backend.commit_operation(op).unwrap();
 	}
 

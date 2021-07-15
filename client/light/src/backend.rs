@@ -293,6 +293,7 @@ impl<S, Block> BlockImportOperation<Block> for ImportOperation<Block, S>
 		&mut self,
 		header: Block::Header,
 		_body: Option<Vec<Block::Extrinsic>>,
+		_indexed_body: Option<Vec<Vec<u8>>>,
 		_justifications: Option<Justifications>,
 		state: NewBlockState,
 	) -> ClientResult<()> {

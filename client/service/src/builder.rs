@@ -21,7 +21,7 @@ use crate::{
 	start_rpc_servers, build_network_future, TransactionPoolAdapter, TaskManager, SpawnTaskHandle,
 	metrics::MetricsService,
 	client::{light, Client, ClientConfig},
-	config::{Configuration, KeystoreConfig, PrometheusConfig},
+	config::{Configuration, KeystoreConfig, PrometheusConfig, TransactionStorageMode},
 };
 use sc_client_api::{
 	light::RemoteBlockchain, ForkBlocks, BadBlocks, UsageProvider, ExecutorProvider,
@@ -40,7 +40,7 @@ use futures::{
 };
 use sc_keystore::LocalKeystore;
 use log::info;
-use sc_network::config::{Role, OnDemand};
+use sc_network::config::{Role, OnDemand, SyncMode};
 use sc_network::NetworkService;
 use sc_network::block_request_handler::{self, BlockRequestHandler};
 use sc_network::state_request_handler::{self, StateRequestHandler};
@@ -946,7 +946,7 @@ pub fn build_network<TBl, TExPool, TImpQu, TCl>(
 		}
 	};
 
-	let network_params = sc_network::config::Params {
+	let mut network_params = sc_network::config::Params {
 		role: config.role.clone(),
 		executor: {
 			let spawn_handle = Clone::clone(&spawn_handle);
@@ -972,6 +972,15 @@ pub fn build_network<TBl, TExPool, TImpQu, TCl>(
 		state_request_protocol_config,
 		light_client_request_protocol_config,
 	};
+
+	// Storage chains don't keep full block history and can't be synced in full mode.
+	// Force fast sync when storage chain mode is enabled.
+	if matches!(config.transaction_storage, TransactionStorageMode::StorageChain) {
+		network_params.network_config.sync_mode = SyncMode::Fast {
+			storage_chain_mode: true,
+			skip_proofs: false,
+		};
+	}
 
 	let has_bootnodes = !network_params.network_config.boot_nodes.is_empty();
 	let network_mut = sc_network::NetworkWorker::new(network_params)?;

@@ -250,8 +250,14 @@ impl Into<sc_network::config::SyncMode> for SyncMode {
 	fn into(self) -> sc_network::config::SyncMode {
 		match self {
 			SyncMode::Full => sc_network::config::SyncMode::Full,
-			SyncMode::Fast => sc_network::config::SyncMode::Fast { skip_proofs: false },
-			SyncMode::FastUnsafe => sc_network::config::SyncMode::Fast { skip_proofs: true },
+			SyncMode::Fast => sc_network::config::SyncMode::Fast {
+				skip_proofs: false,
+				storage_chain_mode: false,
+			},
+			SyncMode::FastUnsafe => sc_network::config::SyncMode::Fast {
+				skip_proofs: true,
+				storage_chain_mode: false,
+			},
 		}
 	}
 }

@@ -355,6 +355,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 				genesis_block.deconstruct().0,
 				Some(vec![]),
 				None,
+				None,
 				block_state,
 			)?;
 			backend.commit_operation(op)?;
@@ -657,6 +658,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 			justifications,
 			post_digests,
 			body,
+			indexed_body,
 			finalized,
 			auxiliary,
 			fork_choice,
@@ -695,6 +697,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 			import_headers,
 			justifications,
 			body,
+			indexed_body,
 			storage_changes,
 			new_cache,
 			finalized,
@@ -734,6 +737,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		import_headers: PrePostHeader<Block::Header>,
 		justifications: Option<Justifications>,
 		body: Option<Vec<Block::Extrinsic>>,
+		indexed_body: Option<Vec<Vec<u8>>>,
 		storage_changes: Option<sp_consensus::StorageChanges<Block, backend::TransactionFor<B, Block>>>,
 		new_cache: HashMap<CacheKeyId, Vec<u8>>,
 		finalized: bool,
@@ -871,6 +875,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		operation.op.set_block_data(
 			import_headers.post().clone(),
 			body,
+			indexed_body,
 			justifications,
 			leaf_state,
 		)?;

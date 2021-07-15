@@ -66,6 +66,8 @@ message BlockData {
 	// is because empty justifications, like all justifications, are paired with a non-empty
 	// consensus engine ID.
 	bytes justifications = 8; // optional
+	// Indexed block body if requestd.
+	repeated bytes indexed_body = 9; // optional
 }
 
 // Request storage data from a peer.

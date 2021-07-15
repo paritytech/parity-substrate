@@ -469,7 +469,8 @@ pub enum SyncMode {
 	Full,
 	// Sync headers and the last finalied state
 	LightState {
-		skip_proofs: bool
+		storage_chain_mode: bool,
+		skip_proofs: bool,
 	},
 }
 
@@ -518,8 +519,10 @@ impl<B: BlockT> ChainSync<B> {
 		match self.mode {
 			SyncMode::Full => BlockAttributes::HEADER | BlockAttributes::JUSTIFICATION | BlockAttributes::BODY,
 			SyncMode::Light => BlockAttributes::HEADER | BlockAttributes::JUSTIFICATION,
-			SyncMode::LightState { .. } =>
+			SyncMode::LightState { storage_chain_mode: false, .. } =>
 				BlockAttributes::HEADER | BlockAttributes::JUSTIFICATION | BlockAttributes::BODY,
+			SyncMode::LightState { storage_chain_mode: true, .. } =>
+				BlockAttributes::HEADER | BlockAttributes::JUSTIFICATION | BlockAttributes::INDEXED_BODY,
 		}
 	}
 
@@ -914,25 +917,7 @@ impl<B: BlockT> ChainSync<B> {
 							peer.state = PeerSyncState::Available;
 							validate_blocks::<B>(&blocks, who, Some(request))?;
 							self.blocks.insert(start_block, blocks, who.clone());
-							self.blocks
-								.drain(self.best_queued_number + One::one())
-								.into_iter()
-								.map(|block_data| {
-									let justifications = block_data.block.justifications.or(
-										legacy_justification_mapping(block_data.block.justification)
-									);
-									IncomingBlock {
-										hash: block_data.block.hash,
-										header: block_data.block.header,
-										body: block_data.block.body,
-										justifications,
-										origin: block_data.origin,
-										allow_missing_state: true,
-										import_existing: self.import_existing,
-										skip_execution: self.skip_execution(),
-										state: None,
-									}
-								}).collect()
+							self.drain_blocks()
 						}
 						PeerSyncState::DownloadingStale(_) => {
 							peer.state = PeerSyncState::Available;
@@ -949,6 +934,7 @@ impl<B: BlockT> ChainSync<B> {
 									hash: b.hash,
 									header: b.header,
 									body: b.body,
+									indexed_body: None,
 									justifications,
 									origin: Some(who.clone()),
 									allow_missing_state: true,
@@ -1064,6 +1050,7 @@ impl<B: BlockT> ChainSync<B> {
 							hash: b.hash,
 							header: b.header,
 							body: b.body,
+							indexed_body: None,
 							justifications,
 							origin: Some(who.clone()),
 							allow_missing_state: true,
@@ -1115,6 +1102,7 @@ impl<B: BlockT> ChainSync<B> {
 					hash,
 					header: Some(header),
 					body: None,
+					indexed_body: None,
 					justifications: None,
 					origin: None,
 					allow_missing_state: true,
@@ -1367,7 +1355,7 @@ impl<B: BlockT> ChainSync<B> {
 			is_descendent_of(&**client, base, block)
 		});
 
-		if let SyncMode::LightState { skip_proofs } = &self.mode {
+		if let SyncMode::LightState { skip_proofs, .. } = &self.mode {
 			if self.state_sync.is_none()
 				&& !self.peers.is_empty()
 				&& self.queue_blocks.is_empty()
@@ -1757,24 +1745,7 @@ impl<B: BlockT> ChainSync<B> {
 			target.peers.remove(who);
 			!target.peers.is_empty()
 		});
-		let blocks: Vec<_> = self.blocks
-			.drain(self.best_queued_number + One::one())
-			.into_iter()
-			.map(|block_data| {
-				let justifications =
-					legacy_justification_mapping(block_data.block.justification);
-				IncomingBlock {
-					hash: block_data.block.hash,
-					header: block_data.block.header,
-					body: block_data.block.body,
-					justifications,
-					origin: block_data.origin,
-					allow_missing_state: true,
-					import_existing: false,
-					skip_execution: self.skip_execution(),
-					state: None,
-				}
-			}).collect();
+		let blocks = self.drain_blocks();
 		if !blocks.is_empty() {
 			Some(self.validate_and_queue_blocks(blocks))
 		} else {
@@ -1878,6 +1849,31 @@ impl<B: BlockT> ChainSync<B> {
 			_priv: ()
 		}
 	}
+
+	/// Drain the downloaded block set up to the first gap.
+	fn drain_blocks(&mut self) -> Vec<IncomingBlock<B>> {
+		self.blocks
+			.drain(self.best_queued_number + One::one())
+			.into_iter()
+			.map(|block_data| {
+				let justifications = block_data.block.justifications.or(
+					legacy_justification_mapping(block_data.block.justification)
+				);
+				IncomingBlock {
+					hash: block_data.block.hash,
+					header: block_data.block.header,
+					body: block_data.block.body,
+					indexed_body: block_data.block.indexed_body,
+					justifications,
+					origin: block_data.origin,
+					allow_missing_state: true,
+					import_existing: self.import_existing,
+					skip_execution: self.skip_execution(),
+					state: None,
+				}
+			}).collect()
+	}
+
 }
 
 // This is purely during a backwards compatible transitionary period and should be removed
@@ -2383,6 +2379,7 @@ mod test {
 					hash: b.hash(),
 					header: Some(b.header().clone()),
 					body: Some(b.deconstruct().1),
+					indexed_body: None,
 					receipt: None,
 					message_queue: None,
 					justification: None,

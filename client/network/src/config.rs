@@ -390,7 +390,9 @@ pub enum SyncMode {
 	/// Download blocks and the latest state.
 	Fast {
 		/// Skip state proof download and verification.
-		skip_proofs: bool
+		skip_proofs: bool,
+		/// Download indexed transactions for recent blocks.
+		storage_chain_mode: bool,
 	},
 }
 

@@ -196,6 +196,8 @@ pub struct BlockImportParams<Block: BlockT, Transaction> {
 	pub post_digests: Vec<DigestItemFor<Block>>,
 	/// The body of the block.
 	pub body: Option<Vec<Block::Extrinsic>>,
+	/// Indexed transaction body of the block.
+	pub indexed_body: Option<Vec<Vec<u8>>>,
 	/// Specify how the new state is computed.
 	pub state_action: StateAction<Block, Transaction>,
 	/// Is this block finalized already?
@@ -233,6 +235,7 @@ impl<Block: BlockT, Transaction> BlockImportParams<Block, Transaction> {
 			justifications: None,
 			post_digests: Vec::new(),
 			body: None,
+			indexed_body: None,
 			state_action: StateAction::Execute,
 			finalized: false,
 			intermediates: HashMap::new(),
@@ -286,6 +289,7 @@ impl<Block: BlockT, Transaction> BlockImportParams<Block, Transaction> {
 			justifications: self.justifications,
 			post_digests: self.post_digests,
 			body: self.body,
+			indexed_body: self.indexed_body,
 			state_action,
 			finalized: self.finalized,
 			auxiliary: self.auxiliary,

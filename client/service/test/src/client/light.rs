@@ -266,7 +266,7 @@ fn local_state_is_created_when_genesis_state_is_available() {
 		Arc::new(DummyBlockchain::new(DummyStorage::new())),
 	);
 	let mut op = backend.begin_operation().unwrap();
-	op.set_block_data(header0, None, None, NewBlockState::Final).unwrap();
+	op.set_block_data(header0, None, None, None, NewBlockState::Final).unwrap();
 	op.set_genesis_state(Default::default(), true).unwrap();
 	backend.commit_operation(op).unwrap();
 

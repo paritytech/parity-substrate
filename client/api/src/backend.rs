@@ -149,6 +149,7 @@ pub trait BlockImportOperation<Block: BlockT> {
 		&mut self,
 		header: Block::Header,
 		body: Option<Vec<Block::Extrinsic>>,
+		indexed_body: Option<Vec<Vec<u8>>>,
 		justifications: Option<Justifications>,
 		state: NewBlockState,
 	) -> sp_blockchain::Result<()>;

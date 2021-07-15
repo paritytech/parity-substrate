@@ -272,6 +272,8 @@ fn execute_transaction_backend(utx: &Extrinsic, extrinsic_index: u32) -> ApplyEx
 			sp_io::offchain_index::clear(&key);
 			Ok(Ok(()))
 		}
+		Extrinsic::Store(data) =>
+			execute_store(data.clone()),
 	}
 }
 
@@ -298,6 +300,13 @@ fn execute_transfer_backend(tx: &Transfer) -> ApplyExtrinsicResult {
 	let to_balance: u64 = storage::hashed::get_or(&blake2_256, &to_balance_key, 0);
 	storage::hashed::put(&blake2_256, &from_balance_key, &(from_balance - tx.amount));
 	storage::hashed::put(&blake2_256, &to_balance_key, &(to_balance + tx.amount));
+	Ok(Ok(()))
+}
+
+fn execute_store(data: Vec<u8>) -> ApplyExtrinsicResult {
+	let content_hash = sp_io::hashing::blake2_256(&data);
+	let extrinsic_index: u32 = storage::unhashed::get(well_known_keys::EXTRINSIC_INDEX).unwrap();
+	sp_io::transaction_index::index(extrinsic_index, data.len() as u32, content_hash);
 	Ok(Ok(()))
 }
 

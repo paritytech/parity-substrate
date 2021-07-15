@@ -68,6 +68,8 @@ pub struct IncomingBlock<B: BlockT> {
 	pub header: Option<<B as BlockT>::Header>,
 	/// Block body if requested.
 	pub body: Option<Vec<<B as BlockT>::Extrinsic>>,
+	/// Indexed block body if requested.
+	pub indexed_body: Option<Vec<Vec<u8>>>,
 	/// Justification(s) if requested.
 	pub justifications: Option<Justifications>,
 	/// The peer, we received this from
@@ -269,6 +271,7 @@ pub(crate) async fn import_single_block_metered<B: BlockT, V: Verifier<B>, Trans
 		cache.extend(keys.into_iter());
 	}
 	import_block.import_existing = block.import_existing;
+	import_block.indexed_body = block.indexed_body;
 	let mut import_block = import_block.clear_storage_changes_and_mutate();
 	if let Some(state) = block.state {
 		import_block.state_action = StateAction::ApplyChanges(crate::StorageChanges::Import(state));

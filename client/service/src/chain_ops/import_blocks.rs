@@ -168,6 +168,7 @@ fn import_block_to_queue<TBl, TImpQu>(
 			hash,
 			header: Some(header),
 			body: Some(extrinsics),
+			indexed_body: None,
 			justifications: signed_block.justifications,
 			origin: None,
 			allow_missing_state: false,

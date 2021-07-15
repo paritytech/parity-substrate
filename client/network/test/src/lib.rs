@@ -660,6 +660,8 @@ pub struct FullPeerConfig {
 	pub is_authority: bool,
 	/// Syncing mode
 	pub sync_mode: SyncMode,
+	/// Enable transaction indexing.
+	pub storage_chain: bool,
 }
 
 pub trait TestNetFactory: Sized where <Self::BlockImport as BlockImport<Block>>::Transaction: Send {
@@ -715,9 +717,11 @@ pub trait TestNetFactory: Sized where <Self::BlockImport as BlockImport<Block>>:
 
 	/// Add a full peer.
 	fn add_full_peer_with_config(&mut self, config: FullPeerConfig) {
-		let mut test_client_builder = match config.keep_blocks {
-			Some(keep_blocks) => TestClientBuilder::with_pruning_window(keep_blocks),
-			None => TestClientBuilder::with_default_backend(),
+		let mut test_client_builder = match (config.keep_blocks, config.storage_chain) {
+			(Some(keep_blocks), true) => TestClientBuilder::with_tx_storage(keep_blocks),
+			(None, true) => TestClientBuilder::with_tx_storage(u32::MAX),
+			(Some(keep_blocks), false) => TestClientBuilder::with_pruning_window(keep_blocks),
+			(None, false) => TestClientBuilder::with_default_backend(),
 		};
 		if matches!(config.sync_mode, SyncMode::Fast{..}) {
 			test_client_builder = test_client_builder.set_no_genesis();

@@ -167,6 +167,7 @@ pub enum Extrinsic {
 	ChangesTrieConfigUpdate(Option<ChangesTrieConfiguration>),
 	OffchainIndexSet(Vec<u8>, Vec<u8>),
 	OffchainIndexClear(Vec<u8>),
+	Store(Vec<u8>),
 }
 
 parity_util_mem::malloc_size_of_is_0!(Extrinsic); // non-opaque extrinsic does not need this
@@ -199,6 +200,7 @@ impl BlindCheckable for Extrinsic {
 				Ok(Extrinsic::OffchainIndexSet(key, value)),
 			Extrinsic::OffchainIndexClear(key) =>
 				Ok(Extrinsic::OffchainIndexClear(key)),
+			Extrinsic::Store(data) => Ok(Extrinsic::Store(data)),
 		}
 	}
 }
