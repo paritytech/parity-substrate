@@ -79,7 +79,7 @@ const MAX_KNOWN_EXTERNAL_ADDRESSES: usize = 32;
 ///       one protocol via [`DiscoveryConfig::add_protocol`].
 pub struct DiscoveryConfig {
 	local_peer_id: PeerId,
-	user_defined: Vec<(PeerId, Multiaddr)>,
+	permanent_addresses: Vec<(PeerId, Multiaddr)>,
 	dht_random_walk: bool,
 	allow_private_ipv4: bool,
 	allow_non_globals_in_dht: bool,
@@ -94,7 +94,7 @@ impl DiscoveryConfig {
 	pub fn new(local_public_key: PublicKey) -> Self {
 		DiscoveryConfig {
 			local_peer_id: local_public_key.into_peer_id(),
-			user_defined: Vec::new(),
+			permanent_addresses: Vec::new(),
 			dht_random_walk: true,
 			allow_private_ipv4: true,
 			allow_non_globals_in_dht: false,
@@ -112,11 +112,11 @@ impl DiscoveryConfig {
 	}
 
 	/// Set custom nodes which never expire, e.g. bootstrap or reserved nodes.
-	pub fn with_user_defined<I>(&mut self, user_defined: I) -> &mut Self
+	pub fn with_permanent_addresses<I>(&mut self, permanent_addresses: I) -> &mut Self
 	where
 		I: IntoIterator<Item = (PeerId, Multiaddr)>
 	{
-		self.user_defined.extend(user_defined);
+		self.permanent_addresses.extend(permanent_addresses);
 		self
 	}
 
@@ -171,7 +171,7 @@ impl DiscoveryConfig {
 	pub fn finish(self) -> DiscoveryBehaviour {
 		let DiscoveryConfig {
 			local_peer_id,
-			user_defined,
+			permanent_addresses,
 			dht_random_walk,
 			allow_private_ipv4,
 			allow_non_globals_in_dht,
@@ -196,7 +196,7 @@ impl DiscoveryConfig {
 				let store = MemoryStore::new(local_peer_id.clone());
 				let mut kad = Kademlia::with_config(local_peer_id.clone(), store, config);
 
-				for (peer_id, addr) in &user_defined {
+				for (peer_id, addr) in &permanent_addresses {
 					kad.add_address(peer_id, addr.clone());
 				}
 
@@ -205,7 +205,8 @@ impl DiscoveryConfig {
 			.collect();
 
 		DiscoveryBehaviour {
-			user_defined,
+			permanent_addresses,
+			ephemeral_addresses: HashMap::new(),
 			kademlias,
 			next_kad_random_query: if dht_random_walk {
 				Some(Delay::new(Duration::new(0, 0)))
@@ -237,7 +238,10 @@ impl DiscoveryConfig {
 pub struct DiscoveryBehaviour {
 	/// User-defined list of nodes and their addresses. Typically includes bootstrap nodes and
 	/// reserved nodes.
-	user_defined: Vec<(PeerId, Multiaddr)>,
+	permanent_addresses: Vec<(PeerId, Multiaddr)>,
+	/// Same as `permanent_addresses`, except that addresses that fail to reach a peer are
+	/// removed.
+	ephemeral_addresses: HashMap<PeerId, Vec<Multiaddr>>,
 	/// Kademlia requests and answers.
 	kademlias: HashMap<ProtocolId, Kademlia<MemoryStore>>,
 	/// Discovers nodes on the local network.
@@ -255,7 +259,7 @@ pub struct DiscoveryBehaviour {
 	/// Number of nodes we're currently connected to.
 	num_connections: u64,
 	/// If false, `addresses_of_peer` won't return any private IPv4 address, except for the ones
-	/// stored in `user_defined`.
+	/// stored in `permanent_addresses` or `ephemeral_addresses`.
 	allow_private_ipv4: bool,
 	/// Number of active connections over which we interrupt the discovery process.
 	discovery_only_if_under_num: u64,
@@ -287,12 +291,14 @@ impl DiscoveryBehaviour {
 	///
 	/// If we didn't know this address before, also generates a `Discovered` event.
 	pub fn add_known_address(&mut self, peer_id: PeerId, addr: Multiaddr) {
-		if self.user_defined.iter().all(|(p, a)| *p != peer_id && *a != addr) {
+		let addrs_list = self.ephemeral_addresses.entry(peer_id).or_default();
+		if !addrs_list.iter().any(|a| *a == addr) {
 			for k in self.kademlias.values_mut() {
 				k.add_address(&peer_id, addr.clone());
 			}
+
 			self.pending_events.push_back(DiscoveryOut::Discovered(peer_id.clone()));
-			self.user_defined.push((peer_id, addr));
+			addrs_list.push(addr);
 		}
 	}
 
@@ -471,9 +477,13 @@ impl NetworkBehaviour for DiscoveryBehaviour {
 	}
 
 	fn addresses_of_peer(&mut self, peer_id: &PeerId) -> Vec<Multiaddr> {
-		let mut list = self.user_defined.iter()
+		let mut list = self.permanent_addresses.iter()
 			.filter_map(|(p, a)| if p == peer_id { Some(a.clone()) } else { None })
 			.collect::<Vec<_>>();
+
+		if let Some(ephemeral_addresses) = self.ephemeral_addresses.get(peer_id) {
+			list.extend(ephemeral_addresses.clone());
+		}
 
 		{
 			let mut list_to_filter = Vec::new();
@@ -536,6 +546,12 @@ impl NetworkBehaviour for DiscoveryBehaviour {
 		addr: &Multiaddr,
 		error: &dyn std::error::Error
 	) {
+		if let Some(peer_id) = peer_id {
+			if let Some(list) = self.ephemeral_addresses.get_mut(peer_id) {
+				list.retain(|a| a != addr);
+			}
+		}
+
 		for k in self.kademlias.values_mut() {
 			NetworkBehaviour::inject_addr_reach_failure(k, peer_id, addr, error)
 		}
@@ -875,7 +891,7 @@ mod tests {
 		let protocol_id = ProtocolId::from("dot");
 
 		// Build swarms whose behaviour is `DiscoveryBehaviour`, each aware of
-		// the first swarm via `with_user_defined`.
+		// the first swarm via `with_permanent_addresses`.
 		let mut swarms = (0..25).map(|i| {
 			let keypair = Keypair::generate_ed25519();
 
@@ -891,7 +907,7 @@ mod tests {
 
 			let behaviour = {
 				let mut config = DiscoveryConfig::new(keypair.public());
-				config.with_user_defined(first_swarm_peer_id_and_addr.clone())
+				config.with_permanent_addresses(first_swarm_peer_id_and_addr.clone())
 					.allow_private_ipv4(true)
 					.allow_non_globals_in_dht(true)
 					.discovery_limit(50)
