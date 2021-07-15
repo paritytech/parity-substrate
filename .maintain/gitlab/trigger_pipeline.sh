@@ -9,6 +9,7 @@ SCRIPT_NAME="$0"
 SCRIPT_PATH=$(dirname "$0")               # relative
 SCRIPT_PATH=$(cd "${SCRIPT_PATH}" && pwd) # absolutized and normalized
 SIMNET_VERSION=""
+FEATURES=""
 
 function usage {
   cat << EOF
@@ -25,7 +26,7 @@ OPTIONS
   Mandatory in both cases:
 
     -s, --simnet-version        Simnet version to trigger.
-                                E.g.: v4
+                                E.g.: v6
 
     -u, --upstream-project      Triggering project.
                                 E.g.: substrate
@@ -37,13 +38,15 @@ OPTIONS
                                 E.g.: 332 (simnet project id)
 
     -n, --image-name            Name of image to test.
-                                E.g.: docker.io/paritypr/synth-wave
+                                E.g.: docker.io/parity/substrate
 
     -i, --image-tag             Tag of the image to test.
-                                E.g.: master
+                                E.g.: latest
 
-    -c, --collator-image-tag    Tag of collator image. Image name is hardcoded.
-                                E.g.: master
+    -f, --features              Path to cucumber features dir or file.This path is 
+                                relative to runt_tests.sh script specified 
+                                as arg to "--test-script"
+                                E.g.: tests/quick
 
   Required for local launch:
 
@@ -64,12 +67,12 @@ EXAMPLES
   ${SCRIPT_NAME} --simnet-version=v4
 
   Local test example. You need to set the 2 vars before running: TR_TOKEN and PERS_TOKEN
-  ${SCRIPT_NAME} --simnet-version=v4 \\
+  ${SCRIPT_NAME} --simnet-version=v6 \\
                  --upstream-project=substrate \\
                  --upstream-ref=master \\
-                 --image-name=docker.io/paritypr/synth-wave \\
-                 --image-tag=master \\
-                 --collator-image-tag=master \\
+                 --image-name=docker.io/parity/substrate \\
+                 --features=tests/quick \\
+                 --image-tag=latest \\
                  --ci-server-fqdn=gitlab.parity.io \\
                  --downstream-id=332 \\
                  --trigger-token="\${TR_TOKEN}" \\
@@ -88,7 +91,7 @@ function main {
 
 function parse_args {
   # shellcheck disable=SC2214
-  while getopts c:u:r:i:n:g:t:r:a:s:h-: OPT; do
+  while getopts f:r:a:c:t:u:r:i:n:g:s:h-: OPT; do
     # support long options: https://stackoverflow.com/a/28466267/519360
     if [ "${OPT}" = "-" ]; then   # long option: reformulate OPT and OPTARG
       OPT="${OPTARG%%=*}"         # extract long option name
@@ -102,7 +105,7 @@ function parse_args {
       r | upstream-ref )        needs_arg ; TRGR_REF="${OPTARG}" ;;
       n | image-name )          needs_arg ; IMAGE_NAME="${OPTARG}" ;;
       i | image-tag )           needs_arg ; IMAGE_TAG="${OPTARG}" ;;
-      c | collator-image-tag )  needs_arg ; COLLATOR_IMAGE_TAG="${OPTARG}" ;;
+      f | features )            needs_arg ; FEATURES="${OPTARG}" ;;
       g | ci-server-fqdn )      needs_arg ; CI_SERVER_HOST="${OPTARG}" ;;
       d | downstream-id )       needs_arg ; DWNSTRM_ID="${OPTARG}" ;;
       t | trigger-token )       needs_arg ; CI_JOB_TOKEN="${OPTARG}" ;;
@@ -141,6 +144,7 @@ function trigger_pipeline {
       -F "variables[TRGR_REF]=${TRGR_REF}" \
       -F "variables[IMAGE_NAME]=${IMAGE_NAME}" \
       -F "variables[IMAGE_TAG]=${IMAGE_TAG}" \
+      -F "variables[FEATURES]=${FEATURES}" \
       "https://${CI_SERVER_HOST}/api/v4/projects/${DWNSTRM_ID}/trigger/pipeline" | \
           tee pipeline;
 }

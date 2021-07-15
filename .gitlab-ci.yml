@@ -712,4 +712,14 @@ trigger-simnet:
     DWNSTRM_ID:                    332
   script:
     # API trigger for a simnet job
-    - .maintain/gitlab/trigger_pipeline.sh --simnet-version=${SIMNET_REF}
+    # use the -v operator to explicitly test if a variable is set
+    # use the -n operator to test if variable is empty string
+    - if [[ -v FEATURES && -n "${FEATURES}" ]]  ; then 
+        echo "Testing only ${FEATURES}" ;
+        SUBSTRATE_FEATURES="--features=${FEATURES}"   ;
+      else  
+        echo "Value for FEATURES not specified, all tests will run" ;
+        SUBSTRATE_FEATURES="" ;
+      fi
+    - .maintain/gitlab/trigger_pipeline.sh --simnet-version=${SIMNET_REF} 
+                                           "${SUBSTRATE_FEATURES}"
