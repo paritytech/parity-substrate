@@ -84,8 +84,8 @@ pub trait VestingSchedule<AccountId> {
 
 	/// Adds a vesting schedule to a given account.
 	///
-	/// If there already exists a vesting schedule for the given account, an `Err` is returned
-	/// and nothing is updated.
+	/// If the account has `MaxVestingSchedules`, an Error is returned and nothing
+	/// is updated.
 	///
 	/// Is a no-op if the amount to be vested is zero.
 	///
@@ -97,8 +97,19 @@ pub trait VestingSchedule<AccountId> {
 		starting_block: Self::Moment,
 	) -> DispatchResult;
 
+	/// Checks if `add_vesting_schedule` would work against `who`.
+	fn can_add_vesting_schedule(
+		who: &AccountId,
+		locked: <Self::Currency as Currency<AccountId>>::Balance,
+		per_block: <Self::Currency as Currency<AccountId>>::Balance,
+		starting_block: Self::Moment,
+	) -> DispatchResult;
+
 	/// Remove a vesting schedule for a given account.
 	///
+	/// Parameter `schedule_index` is only applicable for implementations that
+	/// support multiple schedules.
+	///
 	/// NOTE: This doesn't alter the free balance of the account.
-	fn remove_vesting_schedule(who: &AccountId);
+	fn remove_vesting_schedule(who: &AccountId, schedule_index: u32) -> DispatchResult;
 }

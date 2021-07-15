@@ -85,28 +85,40 @@ impl pallet_balances::Config for Test {
 	type WeightInfo = ();
 }
 parameter_types! {
+	// Ideally all tests should use a value <= `MinVestedTransfer` when configuring the
+	// existential deposit. In production this is ensured the by the runtime integrity test.
 	pub const MinVestedTransfer: u64 = 256 * 2;
 	pub static ExistentialDeposit: u64 = 0;
+	pub const MaxVestingSchedules: u32 = 3;
 }
 impl Config for Test {
 	type BlockNumberToBalance = Identity;
 	type Currency = Balances;
 	type Event = Event;
+	type MaxVestingSchedules = MaxVestingSchedules;
 	type MinVestedTransfer = MinVestedTransfer;
 	type WeightInfo = ();
 }
 
 pub struct ExtBuilder {
 	existential_deposit: u64,
+	vesting_genesis_config: Option<Vec<(u64, u64, u64, u64)>>,
 }
+
 impl Default for ExtBuilder {
 	fn default() -> Self {
-		Self { existential_deposit: 1 }
+		Self { existential_deposit: 1, vesting_genesis_config: None }
 	}
 }
+
 impl ExtBuilder {
 	pub fn existential_deposit(mut self, existential_deposit: u64) -> Self {
 		self.existential_deposit = existential_deposit;
+		self
+	}
+
+	pub fn vesting_genesis_config(mut self, config: Vec<(u64, u64, u64, u64)>) -> Self {
+		self.vesting_genesis_config = Some(config);
 		self
 	}
 
@@ -120,19 +132,25 @@ impl ExtBuilder {
 				(3, 30 * self.existential_deposit),
 				(4, 40 * self.existential_deposit),
 				(12, 10 * self.existential_deposit),
+				(13, 9999 * self.existential_deposit),
 			],
 		}
 		.assimilate_storage(&mut t)
 		.unwrap();
-		pallet_vesting::GenesisConfig::<Test> {
-			vesting: vec![
+
+		let vesting = if let Some(vesting_config) = self.vesting_genesis_config {
+			vesting_config
+		} else {
+			vec![
 				(1, 0, 10, 5 * self.existential_deposit),
 				(2, 10, 20, 0),
 				(12, 10, 20, 5 * self.existential_deposit),
-			],
-		}
-		.assimilate_storage(&mut t)
-		.unwrap();
+			]
+		};
+
+		pallet_vesting::GenesisConfig::<Test> { vesting }
+			.assimilate_storage(&mut t)
+			.unwrap();
 		let mut ext = sp_io::TestExternalities::new(t);
 		ext.execute_with(|| System::set_block_number(1));
 		ext
