@@ -140,385 +140,386 @@ default:
 
 #### stage:                       .pre
 
-skip-if-draft:
-  image:                           paritytech/tools:latest
-  <<:                              *kubernetes-env
-  stage:                           .pre
-  rules:
-    - if: $CI_COMMIT_REF_NAME =~ /^[0-9]+$/                         # PRs
-  script:
-     - echo "Commit message is ${CI_COMMIT_MESSAGE}"
-     - echo "Ref is ${CI_COMMIT_REF_NAME}"
-     - echo "pipeline source is ${CI_PIPELINE_SOURCE}"
-     - ./.maintain/gitlab/skip_if_draft.sh
+# skip-if-draft:
+#   image:                           paritytech/tools:latest
+#   <<:                              *kubernetes-env
+#   stage:                           .pre
+#   rules:
+#     - if: $CI_COMMIT_REF_NAME =~ /^[0-9]+$/                         # PRs
+#   script:
+#      - echo "Commit message is ${CI_COMMIT_MESSAGE}"
+#      - echo "Ref is ${CI_COMMIT_REF_NAME}"
+#      - echo "pipeline source is ${CI_PIPELINE_SOURCE}"
+#      - ./.maintain/gitlab/skip_if_draft.sh
 
-#### stage:                        check
+# #### stage:                        check
 
-check-runtime:
-  stage:                           check
-  image:                           paritytech/tools:latest
-  <<:                              *kubernetes-env
-  rules:
-    - if: $CI_COMMIT_REF_NAME =~ /^[0-9]+$/                         # PRs
-  variables:
-    <<:                            *default-vars
-    GITLAB_API:                    "https://gitlab.parity.io/api/v4"
-    GITHUB_API_PROJECT:            "parity%2Finfrastructure%2Fgithub-api"
-  script:
-    - ./.maintain/gitlab/check_runtime.sh
-  allow_failure:                   true
+# check-runtime:
+#   stage:                           check
+#   image:                           paritytech/tools:latest
+#   <<:                              *kubernetes-env
+#   rules:
+#     - if: $CI_COMMIT_REF_NAME =~ /^[0-9]+$/                         # PRs
+#   variables:
+#     <<:                            *default-vars
+#     GITLAB_API:                    "https://gitlab.parity.io/api/v4"
+#     GITHUB_API_PROJECT:            "parity%2Finfrastructure%2Fgithub-api"
+#   script:
+#     - ./.maintain/gitlab/check_runtime.sh
+#   allow_failure:                   true
 
-check-signed-tag:
-  stage:                           check
-  image:                           paritytech/tools:latest
-  <<:                              *kubernetes-env
-  rules:
-    - if: $CI_COMMIT_REF_NAME =~ /^ci-release-.*$/
-    - if: $CI_COMMIT_REF_NAME =~ /^v[0-9]+\.[0-9]+.*$/              # i.e. v1.0, v2.1rc1
-  script:
-    - ./.maintain/gitlab/check_signed.sh
+# check-signed-tag:
+#   stage:                           check
+#   image:                           paritytech/tools:latest
+#   <<:                              *kubernetes-env
+#   rules:
+#     - if: $CI_COMMIT_REF_NAME =~ /^ci-release-.*$/
+#     - if: $CI_COMMIT_REF_NAME =~ /^v[0-9]+\.[0-9]+.*$/              # i.e. v1.0, v2.1rc1
+#   script:
+#     - ./.maintain/gitlab/check_signed.sh
 
-check-line-width:
-  stage:                           check
-  image:                           paritytech/tools:latest
-  <<:                              *kubernetes-env
-  rules:
-    - if: $CI_COMMIT_REF_NAME =~ /^[0-9]+$/                         # PRs
-  script:
-    - ./.maintain/gitlab/check_line_width.sh
-  allow_failure:                   true
+# check-line-width:
+#   stage:                           check
+#   image:                           paritytech/tools:latest
+#   <<:                              *kubernetes-env
+#   rules:
+#     - if: $CI_COMMIT_REF_NAME =~ /^[0-9]+$/                         # PRs
+#   script:
+#     - ./.maintain/gitlab/check_line_width.sh
+#   allow_failure:                   true
 
-test-dependency-rules:
-  stage:                           check
-  image:                           paritytech/tools:latest
-  <<:                              *kubernetes-env
-  rules:
-    - if: $CI_COMMIT_REF_NAME =~ /^[0-9]+$/                         # PRs
-  script:
-    - .maintain/ensure-deps.sh
+# test-dependency-rules:
+#   stage:                           check
+#   image:                           paritytech/tools:latest
+#   <<:                              *kubernetes-env
+#   rules:
+#     - if: $CI_COMMIT_REF_NAME =~ /^[0-9]+$/                         # PRs
+#   script:
+#     - .maintain/ensure-deps.sh
 
-test-prometheus-alerting-rules:
-  stage:                           check
-  image:                           paritytech/tools:latest
-  <<:                              *kubernetes-env
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "pipeline"
-      when: never
-    - if: $CI_COMMIT_BRANCH
-      changes:
-        - .gitlab-ci.yml
-        - .maintain/monitoring/**/*
-  script:
-    - promtool check rules .maintain/monitoring/alerting-rules/alerting-rules.yaml
-    - cat .maintain/monitoring/alerting-rules/alerting-rules.yaml |
-        promtool test rules .maintain/monitoring/alerting-rules/alerting-rule-tests.yaml
+# test-prometheus-alerting-rules:
+#   stage:                           check
+#   image:                           paritytech/tools:latest
+#   <<:                              *kubernetes-env
+#   rules:
+#     - if: $CI_PIPELINE_SOURCE == "pipeline"
+#       when: never
+#     - if: $CI_COMMIT_BRANCH
+#       changes:
+#         - .gitlab-ci.yml
+#         - .maintain/monitoring/**/*
+#   script:
+#     - promtool check rules .maintain/monitoring/alerting-rules/alerting-rules.yaml
+#     - cat .maintain/monitoring/alerting-rules/alerting-rules.yaml |
+#         promtool test rules .maintain/monitoring/alerting-rules/alerting-rule-tests.yaml
 
-#### stage:                        test
+# #### stage:                        test
 
-cargo-deny:
-  stage:                           test
-  <<:                              *docker-env
-  <<:                              *nightly-pipeline
-  script:
-    - cargo deny check --hide-inclusion-graph -c .maintain/deny.toml
-  after_script:
-    - echo "___The complete log is in the artifacts___"
-    - cargo deny check -c .maintain/deny.toml 2> deny.log
-  artifacts:
-    name:                          $CI_COMMIT_SHORT_SHA
-    expire_in:                     3 days
-    when:                          always
-    paths:
-      - deny.log
-  # FIXME: Temorarily allow to fail.
-  allow_failure:                   true
+# cargo-deny:
+#   stage:                           test
+#   <<:                              *docker-env
+#   <<:                              *nightly-pipeline
+#   script:
+#     - cargo deny check --hide-inclusion-graph -c .maintain/deny.toml
+#   after_script:
+#     - echo "___The complete log is in the artifacts___"
+#     - cargo deny check -c .maintain/deny.toml 2> deny.log
+#   artifacts:
+#     name:                          $CI_COMMIT_SHORT_SHA
+#     expire_in:                     3 days
+#     when:                          always
+#     paths:
+#       - deny.log
+#   # FIXME: Temorarily allow to fail.
+#   allow_failure:                   true
 
-cargo-check-benches:
-  stage:                           test
-  <<:                              *docker-env
-  <<:                              *test-refs
-  <<:                              *collect-artifacts
-  before_script:
-    # merges in the master branch on PRs
-    - *merge-ref-into-master-script
-    - *rust-info-script
-  script:
-    - *cargo-check-benches-script
+# cargo-check-benches:
+#   stage:                           test
+#   <<:                              *docker-env
+#   <<:                              *test-refs
+#   <<:                              *collect-artifacts
+#   before_script:
+#     # merges in the master branch on PRs
+#     - *merge-ref-into-master-script
+#     - *rust-info-script
+#   script:
+#     - *cargo-check-benches-script
 
-node-bench-regression-guard:
-  # it's not belong to `build` semantically, but dag jobs can't depend on each other
-  # within the single stage - https://gitlab.com/gitlab-org/gitlab/-/issues/30632
-  # more: https://github.com/paritytech/substrate/pull/8519#discussion_r608012402
-  stage:                           build
-  <<:                              *docker-env
-  <<:                              *test-refs-no-trigger-prs-only
-  needs:
-    # this is a DAG
-    - job:                         cargo-check-benches
-      artifacts:                   true
-    # this does not like a DAG, just polls the artifact
-    - project:                     $CI_PROJECT_PATH
-      job:                         cargo-check-benches
-      ref:                         master
-      artifacts:                   true
-  variables:
-    CI_IMAGE:                      "paritytech/node-bench-regression-guard:latest"
-  before_script: [""]
-  script:
-    - 'node-bench-regression-guard --reference artifacts/benches/master-* 
-       --compare-with artifacts/benches/$CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA'
+# node-bench-regression-guard:
+#   # it's not belong to `build` semantically, but dag jobs can't depend on each other
+#   # within the single stage - https://gitlab.com/gitlab-org/gitlab/-/issues/30632
+#   # more: https://github.com/paritytech/substrate/pull/8519#discussion_r608012402
+#   stage:                           build
+#   <<:                              *docker-env
+#   <<:                              *test-refs-no-trigger-prs-only
+#   needs:
+#     # this is a DAG
+#     - job:                         cargo-check-benches
+#       artifacts:                   true
+#     # this does not like a DAG, just polls the artifact
+#     - project:                     $CI_PROJECT_PATH
+#       job:                         cargo-check-benches
+#       ref:                         master
+#       artifacts:                   true
+#   variables:
+#     CI_IMAGE:                      "paritytech/node-bench-regression-guard:latest"
+#   before_script: [""]
+#   script:
+#     - 'node-bench-regression-guard --reference artifacts/benches/master-* 
+#        --compare-with artifacts/benches/$CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA'
 
-cargo-check-subkey:
-  stage:                           test
-  <<:                              *docker-env
-  <<:                              *test-refs
-  script:
-    - cd ./bin/utils/subkey
-    - SKIP_WASM_BUILD=1 time cargo check --release
-    - sccache -s
+# cargo-check-subkey:
+#   stage:                           test
+#   <<:                              *docker-env
+#   <<:                              *test-refs
+#   script:
+#     - cd ./bin/utils/subkey
+#     - SKIP_WASM_BUILD=1 time cargo check --release
+#     - sccache -s
 
-cargo-check-try-runtime:
-  stage:                           test
-  <<:                              *docker-env
-  <<:                              *test-refs
-  script:
-    - time cargo check --features try-runtime
-    - sccache -s
+# cargo-check-try-runtime:
+#   stage:                           test
+#   <<:                              *docker-env
+#   <<:                              *test-refs
+#   script:
+#     - time cargo check --features try-runtime
+#     - sccache -s
 
-test-deterministic-wasm:
-  stage:                           test
-  <<:                              *docker-env
-  <<:                              *test-refs
-  variables:
-    <<:                            *default-vars
-    WASM_BUILD_NO_COLOR:           1
-  script:
-    # build runtime
-    - cargo build --verbose --release -p node-runtime
-    # make checksum
-    - sha256sum target/release/wbuild/node-runtime/target/wasm32-unknown-unknown/release/node_runtime.wasm > checksum.sha256
-    # clean up – FIXME: can we reuse some of the artifacts?
-    - cargo clean
-    # build again
-    - cargo build --verbose --release -p node-runtime
-    # confirm checksum
-    - sha256sum -c checksum.sha256
-    - sccache -s
+# test-deterministic-wasm:
+#   stage:                           test
+#   <<:                              *docker-env
+#   <<:                              *test-refs
+#   variables:
+#     <<:                            *default-vars
+#     WASM_BUILD_NO_COLOR:           1
+#   script:
+#     # build runtime
+#     - cargo build --verbose --release -p node-runtime
+#     # make checksum
+#     - sha256sum target/release/wbuild/node-runtime/target/wasm32-unknown-unknown/release/node_runtime.wasm > checksum.sha256
+#     # clean up – FIXME: can we reuse some of the artifacts?
+#     - cargo clean
+#     # build again
+#     - cargo build --verbose --release -p node-runtime
+#     # confirm checksum
+#     - sha256sum -c checksum.sha256
+#     - sccache -s
 
-test-linux-stable:                 &test-linux
-  stage:                           test
-  <<:                              *docker-env
-  <<:                              *test-refs
-  variables:
-    <<:                            *default-vars
-    # Enable debug assertions since we are running optimized builds for testing
-    # but still want to have debug assertions.
-    RUSTFLAGS:                     "-Cdebug-assertions=y -Dwarnings"
-    RUST_BACKTRACE:                1
-    WASM_BUILD_NO_COLOR:           1
-  script:
-    # this job runs all tests in former runtime-benchmarks, frame-staking and wasmtime tests
-    - time cargo test --workspace --locked --release --verbose --features runtime-benchmarks --manifest-path bin/node/cli/Cargo.toml
-    - time cargo test -p frame-support-test --features=conditional-storage --manifest-path frame/support/test/Cargo.toml --test pallet # does not reuse cache 1 min 44 sec
-    - SUBSTRATE_TEST_TIMEOUT=1 time cargo test -p substrate-test-utils --release --verbose --locked -- --ignored timeout
-    - sccache -s
+# test-linux-stable:                 &test-linux
+#   stage:                           test
+#   <<:                              *docker-env
+#   <<:                              *test-refs
+#   variables:
+#     <<:                            *default-vars
+#     # Enable debug assertions since we are running optimized builds for testing
+#     # but still want to have debug assertions.
+#     RUSTFLAGS:                     "-Cdebug-assertions=y -Dwarnings"
+#     RUST_BACKTRACE:                1
+#     WASM_BUILD_NO_COLOR:           1
+#   script:
+#     # this job runs all tests in former runtime-benchmarks, frame-staking and wasmtime tests
+#     - time cargo test --workspace --locked --release --verbose --features runtime-benchmarks --manifest-path bin/node/cli/Cargo.toml
+#     - time cargo test -p frame-support-test --features=conditional-storage --manifest-path frame/support/test/Cargo.toml --test pallet # does not reuse cache 1 min 44 sec
+#     - SUBSTRATE_TEST_TIMEOUT=1 time cargo test -p substrate-test-utils --release --verbose --locked -- --ignored timeout
+#     - sccache -s
 
-unleash-check:
-  stage:                           test
-  <<:                              *docker-env
-  <<:                              *test-refs-no-trigger
-  script:
-    - cargo install cargo-unleash ${CARGO_UNLEASH_INSTALL_PARAMS}
-    - cargo unleash de-dev-deps
-    # Reuse build artifacts when running checks (cuts down check time by 3x)
-    # TODO: Implement this optimization in cargo-unleash rather than here
-    - mkdir -p target/unleash
-    - export CARGO_TARGET_DIR=target/unleash
-    - cargo unleash check ${CARGO_UNLEASH_PKG_DEF}
+# unleash-check:
+#   stage:                           test
+#   <<:                              *docker-env
+#   <<:                              *test-refs-no-trigger
+#   script:
+#     - cargo install cargo-unleash ${CARGO_UNLEASH_INSTALL_PARAMS}
+#     - cargo unleash de-dev-deps
+#     # Reuse build artifacts when running checks (cuts down check time by 3x)
+#     # TODO: Implement this optimization in cargo-unleash rather than here
+#     - mkdir -p target/unleash
+#     - export CARGO_TARGET_DIR=target/unleash
+#     - cargo unleash check ${CARGO_UNLEASH_PKG_DEF}
 
-test-frame-examples-compile-to-wasm:
-  # into one job
-  stage:                           test
-  <<:                              *docker-env
-  <<:                              *test-refs
-  variables:
-    <<:                            *default-vars
-    # Enable debug assertions since we are running optimized builds for testing
-    # but still want to have debug assertions.
-    RUSTFLAGS:                     "-Cdebug-assertions=y"
-    RUST_BACKTRACE: 1
-  script:
-    - cd frame/example-offchain-worker/
-    - cargo +nightly build --target=wasm32-unknown-unknown --no-default-features
-    - cd ../example
-    - cargo +nightly build --target=wasm32-unknown-unknown --no-default-features
-    - sccache -s
+# test-frame-examples-compile-to-wasm:
+#   # into one job
+#   stage:                           test
+#   <<:                              *docker-env
+#   <<:                              *test-refs
+#   variables:
+#     <<:                            *default-vars
+#     # Enable debug assertions since we are running optimized builds for testing
+#     # but still want to have debug assertions.
+#     RUSTFLAGS:                     "-Cdebug-assertions=y"
+#     RUST_BACKTRACE: 1
+#   script:
+#     - cd frame/example-offchain-worker/
+#     - cargo +nightly build --target=wasm32-unknown-unknown --no-default-features
+#     - cd ../example
+#     - cargo +nightly build --target=wasm32-unknown-unknown --no-default-features
+#     - sccache -s
 
-test-linux-stable-int:
-  <<:                              *test-linux
-  stage:                           test
-  script:
-    - echo "___Logs will be partly shown at the end in case of failure.___"
-    - echo "___Full log will be saved to the job artifacts only in case of failure.___"
-    - WASM_BUILD_NO_COLOR=1
-      RUST_LOG=sync=trace,consensus=trace,client=trace,state-db=trace,db=trace,forks=trace,state_db=trace,storage_cache=trace
-        time cargo test -p node-cli --release --verbose --locked -- --ignored
-        &> ${CI_COMMIT_SHORT_SHA}_int_failure.log
-    - sccache -s
-  after_script:
-    - awk '/FAILED|^error\[/,0' ${CI_COMMIT_SHORT_SHA}_int_failure.log
-  artifacts:
-    name:                          $CI_COMMIT_SHORT_SHA
-    when:                          on_failure
-    expire_in:                     3 days
-    paths:
-      - ${CI_COMMIT_SHORT_SHA}_int_failure.log
+# test-linux-stable-int:
+#   <<:                              *test-linux
+#   stage:                           test
+#   script:
+#     - echo "___Logs will be partly shown at the end in case of failure.___"
+#     - echo "___Full log will be saved to the job artifacts only in case of failure.___"
+#     - WASM_BUILD_NO_COLOR=1
+#       RUST_LOG=sync=trace,consensus=trace,client=trace,state-db=trace,db=trace,forks=trace,state_db=trace,storage_cache=trace
+#         time cargo test -p node-cli --release --verbose --locked -- --ignored
+#         &> ${CI_COMMIT_SHORT_SHA}_int_failure.log
+#     - sccache -s
+#   after_script:
+#     - awk '/FAILED|^error\[/,0' ${CI_COMMIT_SHORT_SHA}_int_failure.log
+#   artifacts:
+#     name:                          $CI_COMMIT_SHORT_SHA
+#     when:                          on_failure
+#     expire_in:                     3 days
+#     paths:
+#       - ${CI_COMMIT_SHORT_SHA}_int_failure.log
 
-check-web-wasm:
-  stage:                           test
-  <<:                              *docker-env
-  <<:                              *test-refs
-  script:
-    # WASM support is in progress. As more and more crates support WASM, we
-    # should add entries here. See https://github.com/paritytech/substrate/issues/2416
-    # Note: we don't need to test crates imported in `bin/node/cli`
-    - time cargo build --manifest-path=client/consensus/aura/Cargo.toml --target=wasm32-unknown-unknown --features getrandom
-    # Note: the command below is a bit weird because several Cargo issues prevent us from compiling the node in a more straight-forward way.
-    - time cargo +nightly build --manifest-path=bin/node/cli/Cargo.toml --no-default-features --features browser --target=wasm32-unknown-unknown
-    # with-tracing must be explicitly activated, we run a test to ensure this works as expected in both cases
-    - time cargo +nightly test --manifest-path primitives/tracing/Cargo.toml --no-default-features
-    - time cargo +nightly test --manifest-path primitives/tracing/Cargo.toml --no-default-features --features=with-tracing
-    - sccache -s
+# check-web-wasm:
+#   stage:                           test
+#   <<:                              *docker-env
+#   <<:                              *test-refs
+#   script:
+#     # WASM support is in progress. As more and more crates support WASM, we
+#     # should add entries here. See https://github.com/paritytech/substrate/issues/2416
+#     # Note: we don't need to test crates imported in `bin/node/cli`
+#     - time cargo build --manifest-path=client/consensus/aura/Cargo.toml --target=wasm32-unknown-unknown --features getrandom
+#     # Note: the command below is a bit weird because several Cargo issues prevent us from compiling the node in a more straight-forward way.
+#     - time cargo +nightly build --manifest-path=bin/node/cli/Cargo.toml --no-default-features --features browser --target=wasm32-unknown-unknown
+#     # with-tracing must be explicitly activated, we run a test to ensure this works as expected in both cases
+#     - time cargo +nightly test --manifest-path primitives/tracing/Cargo.toml --no-default-features
+#     - time cargo +nightly test --manifest-path primitives/tracing/Cargo.toml --no-default-features --features=with-tracing
+#     - sccache -s
 
-test-full-crypto-feature:
-  stage:                           test
-  <<:                              *docker-env
-  <<:                              *test-refs
-  variables:
-    <<:                            *default-vars
-    # Enable debug assertions since we are running optimized builds for testing
-    # but still want to have debug assertions.
-    RUSTFLAGS:                     "-Cdebug-assertions=y"
-    RUST_BACKTRACE: 1
-  script:
-    - cd primitives/core/
-    - time cargo +nightly build --verbose --no-default-features --features full_crypto
-    - cd ../application-crypto
-    - time cargo +nightly build --verbose --no-default-features --features full_crypto
-    - sccache -s
+# test-full-crypto-feature:
+#   stage:                           test
+#   <<:                              *docker-env
+#   <<:                              *test-refs
+#   variables:
+#     <<:                            *default-vars
+#     # Enable debug assertions since we are running optimized builds for testing
+#     # but still want to have debug assertions.
+#     RUSTFLAGS:                     "-Cdebug-assertions=y"
+#     RUST_BACKTRACE: 1
+#   script:
+#     - cd primitives/core/
+#     - time cargo +nightly build --verbose --no-default-features --features full_crypto
+#     - cd ../application-crypto
+#     - time cargo +nightly build --verbose --no-default-features --features full_crypto
+#     - sccache -s
 
-cargo-check-macos:
-  stage:                           test
-  # shell runner on mac ignores the image set in *docker-env
-  <<:                              *docker-env
-  <<:                              *test-refs-no-trigger
-  script:
-    - SKIP_WASM_BUILD=1 time cargo check --release
-    - sccache -s
-  tags:
-    - osx
+# cargo-check-macos:
+#   stage:                           test
+#   # shell runner on mac ignores the image set in *docker-env
+#   <<:                              *docker-env
+#   <<:                              *test-refs-no-trigger
+#   script:
+#     - SKIP_WASM_BUILD=1 time cargo check --release
+#     - sccache -s
+#   tags:
+#     - osx
 
-#### stage:                        build
+# #### stage:                        build
 
-check-polkadot-companion-status:
-  stage:                           build
-  image:                           paritytech/tools:latest
-  <<:                              *kubernetes-env
-  rules:
-    - if: $CI_COMMIT_REF_NAME =~ /^[0-9]+$/                         # PRs
-  script:
-    - ./.maintain/gitlab/check_polkadot_companion_status.sh
+# check-polkadot-companion-status:
+#   stage:                           build
+#   image:                           paritytech/tools:latest
+#   <<:                              *kubernetes-env
+#   rules:
+#     - if: $CI_COMMIT_REF_NAME =~ /^[0-9]+$/                         # PRs
+#   script:
+#     - ./.maintain/gitlab/check_polkadot_companion_status.sh
 
-check-polkadot-companion-build:
-  stage:                           build
-  <<:                              *docker-env
-  <<:                              *test-refs-no-trigger
-  needs:
-    - job:                         test-linux-stable-int
-      artifacts:                   false
-  script:
-    - ./.maintain/gitlab/check_polkadot_companion_build.sh
-  after_script:
-    - cd polkadot && git rev-parse --abbrev-ref HEAD
-  allow_failure:                   true
+# check-polkadot-companion-build:
+#   stage:                           build
+#   <<:                              *docker-env
+#   <<:                              *test-refs-no-trigger
+#   needs:
+#     - job:                         test-linux-stable-int
+#       artifacts:                   false
+#   script:
+#     - ./.maintain/gitlab/check_polkadot_companion_build.sh
+#   after_script:
+#     - cd polkadot && git rev-parse --abbrev-ref HEAD
+#   allow_failure:                   true
 
-test-browser-node:
-  stage:                           build
-  <<:                              *docker-env
-  <<:                              *test-refs
-  needs:
-    - job:                         check-web-wasm
-      artifacts:                   false
-  variables:
-    <<:                                         *default-vars
-    CHROMEDRIVER_ARGS:                          "--log-level=INFO --whitelisted-ips=127.0.0.1"
-    CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: "wasm-bindgen-test-runner"
-    WASM_BINDGEN_TEST_TIMEOUT:                  120
-  script:
-    - cargo +nightly test --target wasm32-unknown-unknown -p node-browser-testing
+# test-browser-node:
+#   stage:                           build
+#   <<:                              *docker-env
+#   <<:                              *test-refs
+#   needs:
+#     - job:                         check-web-wasm
+#       artifacts:                   false
+#   variables:
+#     <<:                                         *default-vars
+#     CHROMEDRIVER_ARGS:                          "--log-level=INFO --whitelisted-ips=127.0.0.1"
+#     CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: "wasm-bindgen-test-runner"
+#     WASM_BINDGEN_TEST_TIMEOUT:                  120
+#   script:
+#     - cargo +nightly test --target wasm32-unknown-unknown -p node-browser-testing
 
-build-linux-substrate:             &build-binary
-  stage:                           build
-  <<:                              *collect-artifacts
-  <<:                              *docker-env
-  <<:                              *build-refs
-  needs:
-    - job:                         test-linux-stable
-      artifacts:                   false
-  before_script:
-    - mkdir -p ./artifacts/substrate/
-  script:
-    - WASM_BUILD_NO_COLOR=1 time cargo build --release --verbose
-    - mv ./target/release/substrate ./artifacts/substrate/.
-    - echo -n "Substrate version = "
-    - if [ "${CI_COMMIT_TAG}" ]; then
-        echo "${CI_COMMIT_TAG}" | tee ./artifacts/substrate/VERSION;
-      else
-        ./artifacts/substrate/substrate --version |
-          sed -n -E 's/^substrate ([0-9.]+.*-[0-9a-f]{7,13})-.*$/\1/p' |
-            tee ./artifacts/substrate/VERSION;
-      fi
-    - sha256sum ./artifacts/substrate/substrate | tee ./artifacts/substrate/substrate.sha256
-    - printf '\n# building node-template\n\n'
-    - ./.maintain/node-template-release.sh ./artifacts/substrate/substrate-node-template.tar.gz
-    - cp -r .maintain/docker/substrate.Dockerfile ./artifacts/substrate/
-    - sccache -s
+# build-linux-substrate:             &build-binary
+#   stage:                           build
+#   <<:                              *collect-artifacts
+#   <<:                              *docker-env
+#   <<:                              *build-refs
+#   needs:
+#     - job:                         test-linux-stable
+#       artifacts:                   false
+#   before_script:
+#     - mkdir -p ./artifacts/substrate/
+#   script:
+#     - WASM_BUILD_NO_COLOR=1 time cargo build --release --verbose
+#     - mv ./target/release/substrate ./artifacts/substrate/.
+#     - echo -n "Substrate version = "
+#     - if [ "${CI_COMMIT_TAG}" ]; then
+#         echo "${CI_COMMIT_TAG}" | tee ./artifacts/substrate/VERSION;
+#       else
+#         ./artifacts/substrate/substrate --version |
+#           sed -n -E 's/^substrate ([0-9.]+.*-[0-9a-f]{7,13})-.*$/\1/p' |
+#             tee ./artifacts/substrate/VERSION;
+#       fi
+#     - sha256sum ./artifacts/substrate/substrate | tee ./artifacts/substrate/substrate.sha256
+#     - printf '\n# building node-template\n\n'
+#     - ./.maintain/node-template-release.sh ./artifacts/substrate/substrate-node-template.tar.gz
+#     - cp -r .maintain/docker/substrate.Dockerfile ./artifacts/substrate/
+#     - sccache -s
 
-build-linux-subkey:                &build-subkey
-  stage:                           build
-  <<:                              *collect-artifacts
-  <<:                              *docker-env
-  <<:                              *build-refs
-  needs:
-    - job:                         cargo-check-subkey
-      artifacts:                   false
-  before_script:
-    - mkdir -p ./artifacts/subkey
-  script:
-    - cd ./bin/utils/subkey
-    - SKIP_WASM_BUILD=1 time cargo build --release --verbose
-    - cd -
-    - mv ./target/release/subkey ./artifacts/subkey/.
-    - echo -n "Subkey version = "
-    - ./artifacts/subkey/subkey --version |
-        sed -n -E 's/^subkey ([0-9.]+.*)/\1/p' |
-          tee ./artifacts/subkey/VERSION;
-    - sha256sum ./artifacts/subkey/subkey | tee ./artifacts/subkey/subkey.sha256
-    - cp -r .maintain/docker/subkey.Dockerfile ./artifacts/subkey/
-    - sccache -s
+# build-linux-subkey:                &build-subkey
+#   stage:                           build
+#   <<:                              *collect-artifacts
+#   <<:                              *docker-env
+#   <<:                              *build-refs
+#   needs:
+#     - job:                         cargo-check-subkey
+#       artifacts:                   false
+#   before_script:
+#     - mkdir -p ./artifacts/subkey
+#   script:
+#     - cd ./bin/utils/subkey
+#     - SKIP_WASM_BUILD=1 time cargo build --release --verbose
+#     - cd -
+#     - mv ./target/release/subkey ./artifacts/subkey/.
+#     - echo -n "Subkey version = "
+#     - ./artifacts/subkey/subkey --version |
+#         sed -n -E 's/^subkey ([0-9.]+.*)/\1/p' |
+#           tee ./artifacts/subkey/VERSION;
+#     - sha256sum ./artifacts/subkey/subkey | tee ./artifacts/subkey/subkey.sha256
+#     - cp -r .maintain/docker/subkey.Dockerfile ./artifacts/subkey/
+#     - sccache -s
 
-build-macos-subkey:
-  <<:                              *build-subkey
-  tags:
-    - osx
+# build-macos-subkey:
+#   <<:                              *build-subkey
+#   tags:
+#     - osx
 
 build-rust-doc:
   stage:                           build
   <<:                              *docker-env
   <<:                              *test-refs
-  needs:
-    - job:                         test-linux-stable
-      artifacts:                   false
+  # FIXME
+  # needs:
+  #   - job:                         test-linux-stable
+  #     artifacts:                   false
   variables:
     <<:                            *default-vars
     SKIP_WASM_BUILD:               1
@@ -538,90 +539,90 @@ build-rust-doc:
 
 #### stage:                        publish
 
-.build-push-docker-image:          &build-push-docker-image
-  <<:                              *build-refs
-  <<:                              *kubernetes-env
-  image:                           quay.io/buildah/stable
-  variables:                       &docker-build-vars
-    <<:                            *default-vars
-    GIT_STRATEGY:                  none
-    DOCKERFILE:                    $PRODUCT.Dockerfile
-    IMAGE_NAME:                    docker.io/parity/$PRODUCT
-  before_script:
-    - cd ./artifacts/$PRODUCT/
-    - VERSION="$(cat ./VERSION)"
-    - echo "${PRODUCT} version = ${VERSION}"
-    - test -z "${VERSION}" && exit 1
-  script:
-    - test "$Docker_Hub_User_Parity" -a "$Docker_Hub_Pass_Parity" ||
-        ( echo "no docker credentials provided"; exit 1 )
-    - buildah bud
-        --format=docker
-        --build-arg VCS_REF="${CI_COMMIT_SHA}"
-        --build-arg BUILD_DATE="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-        --tag "$IMAGE_NAME:$VERSION"
-        --tag "$IMAGE_NAME:latest"
-        --file "$DOCKERFILE" .
-    - echo "$Docker_Hub_Pass_Parity" |
-        buildah login --username "$Docker_Hub_User_Parity" --password-stdin docker.io
-    - buildah info
-    - buildah push --format=v2s2 "$IMAGE_NAME:$VERSION"
-    - buildah push --format=v2s2 "$IMAGE_NAME:latest"
-  after_script:
-    - buildah logout "$IMAGE_NAME"
-    # pass artifacts to the trigger-simnet job 
-    - echo "IMAGE_NAME=${IMAGE_NAME}" | tee -a ./artifacts/$PRODUCT/build.env
-    - IMAGE_TAG="$(cat ./artifacts/$PRODUCT/VERSION)"
-    - echo "IMAGE_TAG=${IMAGE_TAG}"   | tee -a ./artifacts/$PRODUCT/build.env
-    - cat ./artifacts/$PRODUCT/build.env
+# .build-push-docker-image:          &build-push-docker-image
+#   <<:                              *build-refs
+#   <<:                              *kubernetes-env
+#   image:                           quay.io/buildah/stable
+#   variables:                       &docker-build-vars
+#     <<:                            *default-vars
+#     GIT_STRATEGY:                  none
+#     DOCKERFILE:                    $PRODUCT.Dockerfile
+#     IMAGE_NAME:                    docker.io/parity/$PRODUCT
+#   before_script:
+#     - cd ./artifacts/$PRODUCT/
+#     - VERSION="$(cat ./VERSION)"
+#     - echo "${PRODUCT} version = ${VERSION}"
+#     - test -z "${VERSION}" && exit 1
+#   script:
+#     - test "$Docker_Hub_User_Parity" -a "$Docker_Hub_Pass_Parity" ||
+#         ( echo "no docker credentials provided"; exit 1 )
+#     - buildah bud
+#         --format=docker
+#         --build-arg VCS_REF="${CI_COMMIT_SHA}"
+#         --build-arg BUILD_DATE="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+#         --tag "$IMAGE_NAME:$VERSION"
+#         --tag "$IMAGE_NAME:latest"
+#         --file "$DOCKERFILE" .
+#     - echo "$Docker_Hub_Pass_Parity" |
+#         buildah login --username "$Docker_Hub_User_Parity" --password-stdin docker.io
+#     - buildah info
+#     - buildah push --format=v2s2 "$IMAGE_NAME:$VERSION"
+#     - buildah push --format=v2s2 "$IMAGE_NAME:latest"
+#   after_script:
+#     - buildah logout "$IMAGE_NAME"
+#     # pass artifacts to the trigger-simnet job 
+#     - echo "IMAGE_NAME=${IMAGE_NAME}" | tee -a ./artifacts/$PRODUCT/build.env
+#     - IMAGE_TAG="$(cat ./artifacts/$PRODUCT/VERSION)"
+#     - echo "IMAGE_TAG=${IMAGE_TAG}"   | tee -a ./artifacts/$PRODUCT/build.env
+#     - cat ./artifacts/$PRODUCT/build.env
 
-publish-docker-substrate:
-  stage:                           publish
-  <<:                              *build-push-docker-image
-  <<:                              *build-refs
-  needs:
-    - job:                         build-linux-substrate
-      artifacts:                   true
-  variables:
-    <<:                            *docker-build-vars
-    PRODUCT:                       substrate
-  artifacts:
-    reports:
-      # this artifact is used in trigger-simnet job
-      # https://docs.gitlab.com/ee/ci/multi_project_pipelines.html#with-variable-inheritance
-      dotenv: ./artifacts/substrate/build.env
+# publish-docker-substrate:
+#   stage:                           publish
+#   <<:                              *build-push-docker-image
+#   <<:                              *build-refs
+#   needs:
+#     - job:                         build-linux-substrate
+#       artifacts:                   true
+#   variables:
+#     <<:                            *docker-build-vars
+#     PRODUCT:                       substrate
+#   artifacts:
+#     reports:
+#       # this artifact is used in trigger-simnet job
+#       # https://docs.gitlab.com/ee/ci/multi_project_pipelines.html#with-variable-inheritance
+#       dotenv: ./artifacts/substrate/build.env
 
-publish-docker-subkey:
-  stage:                           publish
-  <<:                              *build-push-docker-image
-  needs:
-    - job:                         build-linux-subkey
-      artifacts:                   true
-  variables:
-    <<:                            *docker-build-vars
-    PRODUCT:                       subkey
+# publish-docker-subkey:
+#   stage:                           publish
+#   <<:                              *build-push-docker-image
+#   needs:
+#     - job:                         build-linux-subkey
+#       artifacts:                   true
+#   variables:
+#     <<:                            *docker-build-vars
+#     PRODUCT:                       subkey
 
-publish-s3-release:
-  stage:                           publish
-  <<:                              *build-refs
-  <<:                              *kubernetes-env
-  needs:
-    - job:                         build-linux-substrate
-      artifacts:                   true
-    - job:                         build-linux-subkey
-      artifacts:                   true
-  image:                           paritytech/awscli:latest
-  variables:
-    GIT_STRATEGY:                  none
-    BUCKET:                        "releases.parity.io"
-    PREFIX:                        "substrate/${ARCH}-${DOCKER_OS}"
-  script:
-    - aws s3 sync ./artifacts/ s3://${BUCKET}/${PREFIX}/$(cat ./artifacts/substrate/VERSION)/
-    - echo "update objects in latest path"
-    - aws s3 sync s3://${BUCKET}/${PREFIX}/$(cat ./artifacts/substrate/VERSION)/ s3://${BUCKET}/${PREFIX}/latest/
-  after_script:
-    - aws s3 ls s3://${BUCKET}/${PREFIX}/latest/
-        --recursive --human-readable --summarize
+# publish-s3-release:
+#   stage:                           publish
+#   <<:                              *build-refs
+#   <<:                              *kubernetes-env
+#   needs:
+#     - job:                         build-linux-substrate
+#       artifacts:                   true
+#     - job:                         build-linux-subkey
+#       artifacts:                   true
+#   image:                           paritytech/awscli:latest
+#   variables:
+#     GIT_STRATEGY:                  none
+#     BUCKET:                        "releases.parity.io"
+#     PREFIX:                        "substrate/${ARCH}-${DOCKER_OS}"
+#   script:
+#     - aws s3 sync ./artifacts/ s3://${BUCKET}/${PREFIX}/$(cat ./artifacts/substrate/VERSION)/
+#     - echo "update objects in latest path"
+#     - aws s3 sync s3://${BUCKET}/${PREFIX}/$(cat ./artifacts/substrate/VERSION)/ s3://${BUCKET}/${PREFIX}/latest/
+#   after_script:
+#     - aws s3 ls s3://${BUCKET}/${PREFIX}/latest/
+#         --recursive --human-readable --summarize
 
 publish-s3-doc:
   stage:                           publish
@@ -630,9 +631,11 @@ publish-s3-doc:
   needs:
     - job:                         build-rust-doc
       artifacts:                   true
-    - job:                         build-linux-substrate
-      artifacts:                   false
-  <<:                              *build-refs
+    # FIXME
+    # - job:                         build-linux-substrate
+    #   artifacts:                   false
+  # <<:                              *build-refs
+  # <<:                              *test-refs
   <<:                              *kubernetes-env
   variables:
     GIT_STRATEGY:                  none
@@ -643,73 +646,77 @@ publish-s3-doc:
         echo "./crate-docs/index.html not present, build:rust:doc:release job not complete";
         exit 1
       )
-    - aws s3 sync --delete --size-only --only-show-errors
-        ./crate-docs/ s3://${BUCKET}/${PREFIX}/
+    # FIXME
+    # --only-show-errors
+    - ls -lah crate-docs
+    # - rm -f ./crate-docs/.lock
+    - aws s3 sync --delete --size-only
+        ./crate-docs/* s3://${BUCKET}/${PREFIX}/
   after_script:
     - aws s3 ls s3://${BUCKET}/${PREFIX}/
         --human-readable --summarize
 
-publish-draft-release:
-  stage:                           publish
-  image:                           paritytech/tools:latest
-  rules:
-    - if: $CI_COMMIT_REF_NAME =~ /^ci-release-.*$/
-    - if: $CI_COMMIT_REF_NAME =~ /^v[0-9]+\.[0-9]+.*$/              # i.e. v1.0, v2.1rc1
-  script:
-    - ./.maintain/gitlab/publish_draft_release.sh
-  allow_failure:                   true
+# publish-draft-release:
+#   stage:                           publish
+#   image:                           paritytech/tools:latest
+#   rules:
+#     - if: $CI_COMMIT_REF_NAME =~ /^ci-release-.*$/
+#     - if: $CI_COMMIT_REF_NAME =~ /^v[0-9]+\.[0-9]+.*$/              # i.e. v1.0, v2.1rc1
+#   script:
+#     - ./.maintain/gitlab/publish_draft_release.sh
+#   allow_failure:                   true
 
-publish-to-crates-io:
-  stage:                           publish
-  <<:                              *docker-env
-  rules:
-    - if: $CI_COMMIT_REF_NAME =~ /^ci-release-.*$/
-    - if: $CI_COMMIT_REF_NAME =~ /^v[0-9]+\.[0-9]+.*$/              # i.e. v1.0, v2.1rc1
-  script:
-    - cargo install cargo-unleash ${CARGO_UNLEASH_INSTALL_PARAMS}
-    - cargo unleash em-dragons --no-check --owner github:paritytech:core-devs ${CARGO_UNLEASH_PKG_DEF}
-  allow_failure:                   true
+# publish-to-crates-io:
+#   stage:                           publish
+#   <<:                              *docker-env
+#   rules:
+#     - if: $CI_COMMIT_REF_NAME =~ /^ci-release-.*$/
+#     - if: $CI_COMMIT_REF_NAME =~ /^v[0-9]+\.[0-9]+.*$/              # i.e. v1.0, v2.1rc1
+#   script:
+#     - cargo install cargo-unleash ${CARGO_UNLEASH_INSTALL_PARAMS}
+#     - cargo unleash em-dragons --no-check --owner github:paritytech:core-devs ${CARGO_UNLEASH_PKG_DEF}
+#   allow_failure:                   true
 
-#### stage:                        deploy
+# #### stage:                        deploy
 
-deploy-prometheus-alerting-rules:
-  stage:                           deploy
-  needs:
-    - job:                         test-prometheus-alerting-rules
-      artifacts:                   false
-  allow_failure:                   true
-  trigger:
-    project:  parity/infrastructure/cloud-infra
-  variables:
-    SUBSTRATE_CI_COMMIT_NAME:       "${CI_COMMIT_REF_NAME}"
-    SUBSTRATE_CI_COMMIT_REF:        "${CI_COMMIT_SHORT_SHA}"
-    UPSTREAM_TRIGGER_PROJECT:       "${CI_PROJECT_PATH}"
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "pipeline"
-      when: never
-    - if: $CI_COMMIT_REF_NAME == "master"
-      changes:
-        - .gitlab-ci.yml
-        - .maintain/monitoring/**/*
+# deploy-prometheus-alerting-rules:
+#   stage:                           deploy
+#   needs:
+#     - job:                         test-prometheus-alerting-rules
+#       artifacts:                   false
+#   allow_failure:                   true
+#   trigger:
+#     project:  parity/infrastructure/cloud-infra
+#   variables:
+#     SUBSTRATE_CI_COMMIT_NAME:       "${CI_COMMIT_REF_NAME}"
+#     SUBSTRATE_CI_COMMIT_REF:        "${CI_COMMIT_SHORT_SHA}"
+#     UPSTREAM_TRIGGER_PROJECT:       "${CI_PROJECT_PATH}"
+#   rules:
+#     - if: $CI_PIPELINE_SOURCE == "pipeline"
+#       when: never
+#     - if: $CI_COMMIT_REF_NAME == "master"
+#       changes:
+#         - .gitlab-ci.yml
+#         - .maintain/monitoring/**/*
 
-trigger-simnet:
-  stage:                           deploy
-  image:                           paritytech/tools:latest
-  <<:                              *kubernetes-env
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "pipeline"
-      when: never
-    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_REF_NAME == "master"
-    - if: $CI_COMMIT_REF_NAME == "master"
-  needs:
-    - job:                         publish-docker-substrate
-  # `build.env` brings here `$IMAGE_NAME` and `$IMAGE_TAG` (`$VERSION` here, 
-  # i.e. `2643-0.8.29-5f689e0a-6b24dc54`).
-  variables:
-    TRGR_PROJECT:                  ${CI_PROJECT_NAME}
-    TRGR_REF:                      ${CI_COMMIT_REF_NAME}
-    # simnet project ID
-    DWNSTRM_ID:                    332
-  script:
-    # API trigger for a simnet job
-    - .maintain/gitlab/trigger_pipeline.sh --simnet-version=${SIMNET_REF}
+# trigger-simnet:
+#   stage:                           deploy
+#   image:                           paritytech/tools:latest
+#   <<:                              *kubernetes-env
+#   rules:
+#     - if: $CI_PIPELINE_SOURCE == "pipeline"
+#       when: never
+#     - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_REF_NAME == "master"
+#     - if: $CI_COMMIT_REF_NAME == "master"
+#   needs:
+#     - job:                         publish-docker-substrate
+#   # `build.env` brings here `$IMAGE_NAME` and `$IMAGE_TAG` (`$VERSION` here, 
+#   # i.e. `2643-0.8.29-5f689e0a-6b24dc54`).
+#   variables:
+#     TRGR_PROJECT:                  ${CI_PROJECT_NAME}
+#     TRGR_REF:                      ${CI_COMMIT_REF_NAME}
+#     # Simnet project ID
+#     DWNSTRM_ID:                    332
+#   script:
+#     # API trigger for a Simnet job
+#     - .maintain/gitlab/trigger_pipeline.sh --simnet-version=${SIMNET_REF}
