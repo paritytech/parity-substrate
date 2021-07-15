@@ -13,13 +13,15 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+async-trait = "0.1"
+anyhow = "1"
 sc-rpc-api = { version = "0.10.0-dev", path = "../rpc-api" }
 sc-client-api = { version = "4.0.0-dev", path = "../api" }
 sp-api = { version = "4.0.0-dev", path = "../../primitives/api" }
 codec = { package = "parity-scale-codec", version = "2.0.0" }
 futures = { version = "0.3.1", features = ["compat"] }
-jsonrpc-pubsub = "15.1.0"
 log = "0.4.8"
+rand = "0.8"
 sp-core = { version = "4.0.0-dev", path = "../../primitives/core" }
 rpc = { package = "jsonrpc-core", version = "15.1.0" }
 sp-version = { version = "4.0.0-dev", path = "../../primitives/version" }
@@ -40,12 +42,12 @@ sc-tracing = { version = "4.0.0-dev", path = "../tracing" }
 hash-db = { version = "0.15.2", default-features = false }
 parking_lot = "0.11.1"
 lazy_static = { version = "1.4.0", optional = true }
+jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", branch = "master", features = ["server"] }
 sp-tracing = { version = "4.0.0-dev", path = "../../primitives/tracing" }
 sc-transaction-pool-api = { version = "4.0.0-dev", path = "../transaction-pool/api" }
 
 [dev-dependencies]
 assert_matches = "1.3.0"
-futures01 = { package = "futures", version = "0.1.29" }
 lazy_static = "1.4.0"
 sc-network = { version = "0.10.0-dev", path = "../network" }
 sp-io = { version = "4.0.0-dev", path = "../../primitives/io" }

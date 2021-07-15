@@ -15,20 +15,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures01::sync::mpsc as mpsc01;
-use log::{debug, info};
+use log::info;
 use sc_network::config::TransportConfig;
 use sc_service::{
-	RpcSession, Role, Configuration, TaskManager, RpcHandlers,
+	Role, Configuration, TaskManager,
 	config::{DatabaseConfig, KeystoreConfig, NetworkConfiguration},
 	GenericChainSpec, RuntimeGenesis,
 	KeepBlocks, TransactionStorageMode,
 };
 use sc_tracing::logging::LoggerBuilder;
 use wasm_bindgen::prelude::*;
-use futures::{
-	prelude::*, channel::{oneshot, mpsc}, compat::*, future::{ready, ok, select}
-};
+use futures::channel::{oneshot, mpsc};
 use std::pin::Pin;
 use sc_chain_spec::Extension;
 use libp2p_wasm_ext::{ExtTransport, ffi};
@@ -126,93 +123,99 @@ where
 /// A running client.
 #[wasm_bindgen]
 pub struct Client {
-	rpc_send_tx: mpsc::UnboundedSender<RpcMessage>,
+	_rpc_send_tx: mpsc::UnboundedSender<RpcMessage>,
 }
 
 struct RpcMessage {
-	rpc_json: String,
-	session: RpcSession,
-	send_back: oneshot::Sender<Pin<Box<dyn futures::Future<Output = Option<String>> + Send>>>,
+	_rpc_json: String,
+	// _session: RpcSession,
+	_send_back: oneshot::Sender<Pin<Box<dyn futures::Future<Output = Option<String>> + Send>>>,
 }
 
-/// Create a Client object that connects to a service.
-pub fn start_client(mut task_manager: TaskManager, rpc_handlers: RpcHandlers) -> Client {
-	// We dispatch a background task responsible for processing the service.
-	//
-	// The main action performed by the code below consists in polling the service with
-	// `service.poll()`.
-	// The rest consists in handling RPC requests.
-	let (rpc_send_tx, rpc_send_rx) = mpsc::unbounded::<RpcMessage>();
-	wasm_bindgen_futures::spawn_local(
-		select(
-			rpc_send_rx.for_each(move |message| {
-				let fut = rpc_handlers.rpc_query(&message.session, &message.rpc_json);
-				let _ = message.send_back.send(fut);
-				ready(())
-			}),
-			Box::pin(async move {
-				let _ = task_manager.future().await;
-			}),
-		).map(drop)
-	);
+// TODO: (dp) We need to figure out what the state of the in-browser client is and why it needs this home-rolled IPC mechanism.
 
-	Client {
-		rpc_send_tx,
-	}
+/// Create a Client object that connects to a service.
+// pub fn start_client(mut task_manager: TaskManager, rpc_handlers: RpcHandlers) -> Client {
+pub fn start_client(_task_manager: TaskManager) -> Client {
+	todo!()
+	// // We dispatch a background task responsible for processing the service.
+	// //
+	// // The main action performed by the code below consists in polling the service with
+	// // `service.poll()`.
+	// // The rest consists in handling RPC requests.
+	// let (rpc_send_tx, rpc_send_rx) = mpsc::unbounded::<RpcMessage>();
+	// wasm_bindgen_futures::spawn_local(
+	// 	select(
+	// 		rpc_send_rx.for_each(move |message| {
+	// 			let fut = rpc_handlers.rpc_query(&message.session, &message.rpc_json);
+	// 			let _ = message.send_back.send(fut);
+	// 			ready(())
+	// 		}),
+	// 		Box::pin(async move {
+	// 			let _ = task_manager.future().await;
+	// 		}),
+	// 	).map(drop)
+	// );
+
+	// Client {
+	// 	rpc_send_tx,
+	// }
 }
 
 #[wasm_bindgen]
 impl Client {
 	/// Allows starting an RPC request. Returns a `Promise` containing the result of that request.
 	#[wasm_bindgen(js_name = "rpcSend")]
-	pub fn rpc_send(&mut self, rpc: &str) -> js_sys::Promise {
-		let rpc_session = RpcSession::new(mpsc01::channel(1).0);
-		let (tx, rx) = oneshot::channel();
-		let _ = self.rpc_send_tx.unbounded_send(RpcMessage {
-			rpc_json: rpc.to_owned(),
-			session: rpc_session,
-			send_back: tx,
-		});
-		wasm_bindgen_futures::future_to_promise(async {
-			match rx.await {
-				Ok(fut) => {
-					fut.await
-						.map(|s| JsValue::from_str(&s))
-						.ok_or_else(|| JsValue::NULL)
-				},
-				Err(_) => Err(JsValue::NULL)
-			}
-		})
+	pub fn rpc_send(&mut self, _rpc: &str) -> js_sys::Promise {
+		todo!()
+		// let rpc_session = RpcSession::new(mpsc01::channel(1).0);
+		// let (tx, rx) = oneshot::channel();
+		// let _ = self.rpc_send_tx.unbounded_send(RpcMessage {
+		// 	rpc_json: rpc.to_owned(),
+		// 	session: rpc_session,
+		// 	send_back: tx,
+		// });
+		// wasm_bindgen_futures::future_to_promise(async {
+		// 	match rx.await {
+		// 		Ok(fut) => {
+		// 			fut.await
+		// 				.map(|s| JsValue::from_str(&s))
+		// 				.ok_or_else(|| JsValue::NULL)
+		// 		},
+		// 		Err(_) => Err(JsValue::NULL)
+		// 	}
+		// })
 	}
 
 	/// Subscribes to an RPC pubsub endpoint.
 	#[wasm_bindgen(js_name = "rpcSubscribe")]
-	pub fn rpc_subscribe(&mut self, rpc: &str, callback: js_sys::Function) {
-		let (tx, rx) = mpsc01::channel(4);
-		let rpc_session = RpcSession::new(tx);
-		let (fut_tx, fut_rx) = oneshot::channel();
-		let _ = self.rpc_send_tx.unbounded_send(RpcMessage {
-			rpc_json: rpc.to_owned(),
-			session: rpc_session.clone(),
-			send_back: fut_tx,
-		});
-		wasm_bindgen_futures::spawn_local(async {
-			if let Ok(fut) = fut_rx.await {
-				fut.await;
-			}
-		});
+	pub fn rpc_subscribe(&mut self, _rpc: &str, _callback: js_sys::Function) {
+		todo!()
+		// let (tx, rx) = mpsc01::channel(4);
+		// let rpc_session = RpcSession::new(tx);
+		// let (fut_tx, fut_rx) = oneshot::channel();
+		// let _ = self.rpc_send_tx.unbounded_send(RpcMessage {
+		// 	rpc_json: rpc.to_owned(),
+		// 	session: rpc_session.clone(),
+		// 	send_back: fut_tx,
+		// });
+		// wasm_bindgen_futures::spawn_local(async {
+		// 	if let Ok(fut) = fut_rx.await {
+		// 		fut.await;
+		// 	}
+		// });
 
-		wasm_bindgen_futures::spawn_local(async move {
-			let _ = rx.compat()
-				.try_for_each(|s| {
-					let _ = callback.call1(&callback, &JsValue::from_str(&s));
-					ok(())
-				})
-				.await;
+		// wasm_bindgen_futures::spawn_local(async move {
+		// 	let _ = rx.compat()
+		// 		.try_for_each(|s| {
+		// 			let _ = callback.call1(&callback, &JsValue::from_str(&s));
+		// 			ok(())
+		// 		})
+		// 		.await;
 
-			// We need to keep `rpc_session` alive.
-			debug!("RPC subscription has ended");
-			drop(rpc_session);
-		});
+		// 	// We need to keep `rpc_session` alive.
+		// 	debug!("RPC subscription has ended");
+		// 	drop(rpc_session);
+		// });
 	}
 }

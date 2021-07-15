@@ -79,8 +79,7 @@ where
 
 /// Build a tokio runtime with all features
 pub fn build_runtime() -> std::result::Result<tokio::runtime::Runtime, std::io::Error> {
-	tokio::runtime::Builder::new()
-		.threaded_scheduler()
+	tokio::runtime::Builder::new_multi_thread()
 		.on_thread_start(|| {
 			TOKIO_THREADS_ALIVE.inc();
 			TOKIO_THREADS_TOTAL.inc();
@@ -93,7 +92,7 @@ pub fn build_runtime() -> std::result::Result<tokio::runtime::Runtime, std::io::
 }
 
 fn run_until_exit<F, E>(
-	mut tokio_runtime: tokio::runtime::Runtime,
+	tokio_runtime: tokio::runtime::Runtime,
 	future: F,
 	task_manager: TaskManager,
 ) -> std::result::Result<(), E>
@@ -166,7 +165,7 @@ impl<C: SubstrateCli> Runner<C> {
 	/// A helper function that runs a node with tokio and stops if the process receives the signal
 	/// `SIGTERM` or `SIGINT`.
 	pub fn run_node_until_exit<F, E>(
-		mut self,
+		self,
 		initialize: impl FnOnce(Configuration) -> F,
 	) -> std::result::Result<(), E>
 	where

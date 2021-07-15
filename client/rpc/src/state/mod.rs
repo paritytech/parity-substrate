@@ -25,18 +25,23 @@ mod state_light;
 mod tests;
 
 use std::sync::Arc;
-use jsonrpc_pubsub::{typed::Subscriber, SubscriptionId, manager::SubscriptionManager};
-use rpc::{Result as RpcResult, futures::{Future, future::result}};
+
+use crate::SubscriptionTaskExecutor;
+
+use futures::future;
+use jsonrpsee::types::error::{Error as JsonRpseeError, CallError as JsonRpseeCallError};
+use jsonrpsee::{RpcModule, ws_server::SubscriptionSink};
+use futures::FutureExt;
 
 use sc_rpc_api::{DenyUnsafe, state::ReadProof};
 use sc_client_api::light::{RemoteBlockchain, Fetcher};
-use sp_core::{Bytes, storage::{StorageKey, PrefixedStorageKey, StorageData, StorageChangeSet}};
+use sp_core::{Bytes, storage::{PrefixedStorageKey, StorageChangeSet, StorageData, StorageKey}};
 use sp_version::RuntimeVersion;
-use sp_runtime::traits::Block as BlockT;
+use sp_runtime::{traits::Block as BlockT};
 
 use sp_api::{Metadata, ProvideRuntimeApi, CallApiAt};
 
-use self::error::{Error, FutureResult};
+use self::error::Error;
 
 pub use sc_rpc_api::state::*;
 pub use sc_rpc_api::child_state::*;
@@ -48,142 +53,127 @@ use sp_blockchain::{HeaderMetadata, HeaderBackend};
 const STORAGE_KEYS_PAGED_MAX_COUNT: u32 = 1000;
 
 /// State backend API.
+#[async_trait::async_trait]
 pub trait StateBackend<Block: BlockT, Client>: Send + Sync + 'static
 	where
 		Block: BlockT + 'static,
 		Client: Send + Sync + 'static,
 {
 	/// Call runtime method at given block.
-	fn call(
+	async fn call(
 		&self,
 		block: Option<Block::Hash>,
 		method: String,
 		call_data: Bytes,
-	) -> FutureResult<Bytes>;
+	) -> Result<Bytes, Error>;
 
 	/// Returns the keys with prefix, leave empty to get all the keys.
-	fn storage_keys(
+	async fn storage_keys(
 		&self,
 		block: Option<Block::Hash>,
 		prefix: StorageKey,
-	) -> FutureResult<Vec<StorageKey>>;
+	) -> Result<Vec<StorageKey>, Error>;
 
 	/// Returns the keys with prefix along with their values, leave empty to get all the pairs.
-	fn storage_pairs(
+	async fn storage_pairs(
 		&self,
 		block: Option<Block::Hash>,
 		prefix: StorageKey,
-	) -> FutureResult<Vec<(StorageKey, StorageData)>>;
+	) -> Result<Vec<(StorageKey, StorageData)>, Error>;
 
 	/// Returns the keys with prefix with pagination support.
-	fn storage_keys_paged(
+	async fn storage_keys_paged(
 		&self,
 		block: Option<Block::Hash>,
 		prefix: Option<StorageKey>,
 		count: u32,
 		start_key: Option<StorageKey>,
-	) -> FutureResult<Vec<StorageKey>>;
+	) -> Result<Vec<StorageKey>, Error>;
 
 	/// Returns a storage entry at a specific block's state.
-	fn storage(
+	async fn storage(
 		&self,
 		block: Option<Block::Hash>,
 		key: StorageKey,
-	) -> FutureResult<Option<StorageData>>;
+	) -> Result<Option<StorageData>, Error>;
 
 	/// Returns the hash of a storage entry at a block's state.
-	fn storage_hash(
+	async fn storage_hash(
 		&self,
 		block: Option<Block::Hash>,
 		key: StorageKey,
-	) -> FutureResult<Option<Block::Hash>>;
+	) -> Result<Option<Block::Hash>, Error>;
 
 	/// Returns the size of a storage entry at a block's state.
 	///
 	/// If data is available at `key`, it is returned. Else, the sum of values who's key has `key`
 	/// prefix is returned, i.e. all the storage (double) maps that have this prefix.
-	fn storage_size(
+	async fn storage_size(
 		&self,
 		block: Option<Block::Hash>,
 		key: StorageKey,
-	) -> FutureResult<Option<u64>>;
+	) -> Result<Option<u64>, Error>;
 
 	/// Returns the runtime metadata as an opaque blob.
-	fn metadata(&self, block: Option<Block::Hash>) -> FutureResult<Bytes>;
+	async fn metadata(&self, block: Option<Block::Hash>) -> Result<Bytes, Error>;
 
 	/// Get the runtime version.
-	fn runtime_version(&self, block: Option<Block::Hash>) -> FutureResult<RuntimeVersion>;
+	async fn runtime_version(&self, block: Option<Block::Hash>) -> Result<RuntimeVersion, Error>;
 
 	/// Query historical storage entries (by key) starting from a block given as the second parameter.
 	///
 	/// NOTE This first returned result contains the initial state of storage for all keys.
 	/// Subsequent values in the vector represent changes to the previous state (diffs).
-	fn query_storage(
+	async fn query_storage(
 		&self,
 		from: Block::Hash,
 		to: Option<Block::Hash>,
 		keys: Vec<StorageKey>,
-	) -> FutureResult<Vec<StorageChangeSet<Block::Hash>>>;
+	) -> Result<Vec<StorageChangeSet<Block::Hash>>, Error>;
 
 	/// Query storage entries (by key) starting at block hash given as the second parameter.
-	fn query_storage_at(
+	async fn query_storage_at(
 		&self,
 		keys: Vec<StorageKey>,
 		at: Option<Block::Hash>
-	) -> FutureResult<Vec<StorageChangeSet<Block::Hash>>>;
+	) -> Result<Vec<StorageChangeSet<Block::Hash>>, Error>;
 
 	/// Returns proof of storage entries at a specific block's state.
-	fn read_proof(
+	async fn read_proof(
 		&self,
 		block: Option<Block::Hash>,
 		keys: Vec<StorageKey>,
-	) -> FutureResult<ReadProof<Block::Hash>>;
-
-	/// New runtime version subscription
-	fn subscribe_runtime_version(
-		&self,
-		_meta: crate::Metadata,
-		subscriber: Subscriber<RuntimeVersion>,
-	);
-
-	/// Unsubscribe from runtime version subscription
-	fn unsubscribe_runtime_version(
-		&self,
-		_meta: Option<crate::Metadata>,
-		id: SubscriptionId,
-	) -> RpcResult<bool>;
-
-	/// New storage subscription
-	fn subscribe_storage(
-		&self,
-		_meta: crate::Metadata,
-		subscriber: Subscriber<StorageChangeSet<Block::Hash>>,
-		keys: Option<Vec<StorageKey>>,
-	);
-
-	/// Unsubscribe from storage subscription
-	fn unsubscribe_storage(
-		&self,
-		_meta: Option<crate::Metadata>,
-		id: SubscriptionId,
-	) -> RpcResult<bool>;
+	) -> Result<ReadProof<Block::Hash>, Error>;
 
 	/// Trace storage changes for block
-	fn trace_block(
+	async fn trace_block(
 		&self,
 		block: Block::Hash,
 		targets: Option<String>,
 		storage_keys: Option<String>,
-	) -> FutureResult<sp_rpc::tracing::TraceBlockResponse>;
+	) -> Result<sp_rpc::tracing::TraceBlockResponse, Error>;
+
+	/// New runtime version subscription
+	fn subscribe_runtime_version(
+		&self,
+		sink: SubscriptionSink,
+	) -> Result<(), Error>;
+
+	/// New storage subscription
+	fn subscribe_storage(
+		&self,
+		sink: SubscriptionSink,
+		keys: Option<Vec<StorageKey>>,
+	) -> Result<(), Error>;
 }
 
 /// Create new state API that works on full node.
 pub fn new_full<BE, Block: BlockT, Client>(
 	client: Arc<Client>,
-	subscriptions: SubscriptionManager,
+	executor: Arc<SubscriptionTaskExecutor>,
 	deny_unsafe: DenyUnsafe,
 	rpc_max_payload: Option<usize>,
-) -> (State<Block, Client>, ChildState<Block, Client>)
+) -> (StateApi<Block, Client>, ChildState<Block, Client>)
 	where
 		Block: BlockT + 'static,
 		BE: Backend<Block> + 'static,
@@ -194,22 +184,22 @@ pub fn new_full<BE, Block: BlockT, Client>(
 		Client::Api: Metadata<Block>,
 {
 	let child_backend = Box::new(
-		self::state_full::FullState::new(
-			client.clone(), subscriptions.clone(), rpc_max_payload
-		)
+		self::state_full::FullState::new(client.clone(), executor.clone(), rpc_max_payload)
 	);
-	let backend = Box::new(self::state_full::FullState::new(client, subscriptions, rpc_max_payload));
-	(State { backend, deny_unsafe }, ChildState { backend: child_backend })
+	let backend = Box::new(
+		self::state_full::FullState::new(client.clone(), executor, rpc_max_payload)
+	);
+	(StateApi { backend, deny_unsafe }, ChildState { backend: child_backend })
 }
 
 /// Create new state API that works on light node.
 pub fn new_light<BE, Block: BlockT, Client, F: Fetcher<Block>>(
 	client: Arc<Client>,
-	subscriptions: SubscriptionManager,
+	executor: Arc<SubscriptionTaskExecutor>,
 	remote_blockchain: Arc<dyn RemoteBlockchain<Block>>,
 	fetcher: Arc<F>,
 	deny_unsafe: DenyUnsafe,
-) -> (State<Block, Client>, ChildState<Block, Client>)
+) -> (StateApi<Block, Client>, ChildState<Block, Client>)
 	where
 		Block: BlockT + 'static,
 		BE: Backend<Block> + 'static,
@@ -221,222 +211,278 @@ pub fn new_light<BE, Block: BlockT, Client, F: Fetcher<Block>>(
 {
 	let child_backend = Box::new(self::state_light::LightState::new(
 			client.clone(),
-			subscriptions.clone(),
+			executor.clone(),
 			remote_blockchain.clone(),
 			fetcher.clone(),
 	));
 
 	let backend = Box::new(self::state_light::LightState::new(
-			client,
-			subscriptions,
+			client.clone(),
+			executor.clone(),
 			remote_blockchain,
 			fetcher,
 	));
-	(State { backend, deny_unsafe }, ChildState { backend: child_backend })
+	(
+		StateApi { backend, deny_unsafe },
+		ChildState { backend: child_backend }
+	)
 }
 
 /// State API with subscriptions support.
-pub struct State<Block, Client> {
+pub struct StateApi<Block, Client> {
 	backend: Box<dyn StateBackend<Block, Client>>,
 	/// Whether to deny unsafe calls
 	deny_unsafe: DenyUnsafe,
 }
 
-impl<Block, Client> StateApi<Block::Hash> for State<Block, Client>
+impl<Block, Client> StateApi<Block, Client>
 	where
 		Block: BlockT + 'static,
-		Client: Send + Sync + 'static,
+		Client: BlockchainEvents<Block> + CallApiAt<Block> + HeaderBackend<Block>
+			 + Send + Sync + 'static,
 {
-	type Metadata = crate::Metadata;
+	/// Convert this to a RPC module.
+	pub fn into_rpc_module(self) -> Result<RpcModule<Self>, JsonRpseeError> {
+		let mut module = RpcModule::new(self);
 
-	fn call(&self, method: String, data: Bytes, block: Option<Block::Hash>) -> FutureResult<Bytes> {
-		self.backend.call(block, method, data)
-	}
+		module.register_async_method("state_call", |params, state| {
+			let (method, data, block) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e)),
+			};
 
-	fn storage_keys(
-		&self,
-		key_prefix: StorageKey,
-		block: Option<Block::Hash>,
-	) -> FutureResult<Vec<StorageKey>> {
-		self.backend.storage_keys(block, key_prefix)
-	}
+			async move {
+				state.backend.call(block, method, data).await.map_err(call_err)
+			}.boxed()
+		})?;
 
-	fn storage_pairs(
-		&self,
-		key_prefix: StorageKey,
-		block: Option<Block::Hash>,
-	) -> FutureResult<Vec<(StorageKey, StorageData)>> {
-		if let Err(err) = self.deny_unsafe.check_if_safe() {
-			return Box::new(result(Err(err.into())))
-		}
+		module.register_alias("state_callAt", "state_call")?;
 
-		self.backend.storage_pairs(block, key_prefix)
-	}
+		module.register_async_method("state_getKeys", |params, state| {
+			let (key_prefix, block) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e)),
+			};
+			async move {
+				state.backend.storage_keys(block, key_prefix).await.map_err(call_err)
+			}.boxed()
+		})?;
 
-	fn storage_keys_paged(
-		&self,
-		prefix: Option<StorageKey>,
-		count: u32,
-		start_key: Option<StorageKey>,
-		block: Option<Block::Hash>,
-	) -> FutureResult<Vec<StorageKey>> {
-		if count > STORAGE_KEYS_PAGED_MAX_COUNT {
-			return Box::new(result(Err(
-				Error::InvalidCount {
-					value: count,
-					max: STORAGE_KEYS_PAGED_MAX_COUNT,
+		module.register_async_method("state_getPairs", |params, state| {
+			let (key_prefix, block) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e)),
+			};
+			async move {
+				state.deny_unsafe.check_if_safe()?;
+				state.backend.storage_pairs(block, key_prefix).await.map_err(call_err)
+			}.boxed()
+		})?;
+
+		module.register_async_method("state_getKeysPaged", |params, state| {
+			let (prefix, count, start_key, block) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e)),
+			};
+			async move {
+				if count > STORAGE_KEYS_PAGED_MAX_COUNT {
+					return Err(JsonRpseeCallError::Failed(Box::new(Error::InvalidCount {
+							value: count,
+							max: STORAGE_KEYS_PAGED_MAX_COUNT,
+						})
+					));
 				}
-			)));
-		}
-		self.backend.storage_keys_paged(block, prefix, count, start_key)
-	}
+				state.backend.storage_keys_paged(block, prefix, count,start_key)
+					.await
+					.map_err(call_err)
+			}.boxed()
+		})?;
 
-	fn storage(&self, key: StorageKey, block: Option<Block::Hash>) -> FutureResult<Option<StorageData>> {
-		self.backend.storage(block, key)
-	}
+		module.register_alias("state_getKeysPagedAt", "state_getKeysPaged")?;
 
-	fn storage_hash(&self, key: StorageKey, block: Option<Block::Hash>) -> FutureResult<Option<Block::Hash>> {
-		self.backend.storage_hash(block, key)
-	}
+		module.register_async_method("state_getStorage", |params, state| {
+			let (key, block) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e)),
+			};
+			async move {
+				state.backend.storage(block, key).await.map_err(call_err)
+			}.boxed()
+		})?;
 
-	fn storage_size(&self, key: StorageKey, block: Option<Block::Hash>) -> FutureResult<Option<u64>> {
-		self.backend.storage_size(block, key)
-	}
+		module.register_alias("state_getStorageAt", "state_getStorage")?;
 
-	fn metadata(&self, block: Option<Block::Hash>) -> FutureResult<Bytes> {
-		self.backend.metadata(block)
-	}
+		module.register_async_method("state_getStorageHash", |params, state| {
+			let (key, block) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e)),
+			};
+			async move {
+				state.backend.storage(block, key).await.map_err(call_err)
+			}.boxed()
+		})?;
 
-	fn query_storage(
-		&self,
-		keys: Vec<StorageKey>,
-		from: Block::Hash,
-		to: Option<Block::Hash>
-	) -> FutureResult<Vec<StorageChangeSet<Block::Hash>>> {
-		if let Err(err) = self.deny_unsafe.check_if_safe() {
-			return Box::new(result(Err(err.into())))
-		}
+		module.register_alias("state_getStorageHashAt", "state_getStorageHash")?;
 
-		self.backend.query_storage(from, to, keys)
-	}
+		module.register_async_method("state_getStorageSize", |params, state| {
+			let (key, block) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e)),
+			};
+			async move {
+				state.backend.storage_size(block, key).await.map_err(call_err)
+			}.boxed()
+		})?;
 
-	fn query_storage_at(
-		&self,
-		keys: Vec<StorageKey>,
-		at: Option<Block::Hash>
-	) -> FutureResult<Vec<StorageChangeSet<Block::Hash>>> {
-		self.backend.query_storage_at(keys, at)
-	}
+		module.register_alias("state_getStorageSizeAt", "state_getStorageSize")?;
 
-	fn read_proof(&self, keys: Vec<StorageKey>, block: Option<Block::Hash>) -> FutureResult<ReadProof<Block::Hash>> {
-		self.backend.read_proof(block, keys)
-	}
+		module.register_async_method("state_getMetadata", |params, state| {
+			let maybe_block = params.one().ok();
+			async move {
+				state.backend.metadata(maybe_block).await.map_err(call_err)
+			}.boxed()
+		})?;
 
-	fn subscribe_storage(
-		&self,
-		meta: Self::Metadata,
-		subscriber: Subscriber<StorageChangeSet<Block::Hash>>,
-		keys: Option<Vec<StorageKey>>
-	) {
-		self.backend.subscribe_storage(meta, subscriber, keys);
-	}
+		module.register_async_method("state_getRuntimeVersion", |params, state| {
+			let at = params.one().ok();
+			async move {
+				state.deny_unsafe.check_if_safe()?;
+				state.backend.runtime_version(at).await.map_err(call_err)
+			}.boxed()
+		})?;
 
-	fn unsubscribe_storage(&self, meta: Option<Self::Metadata>, id: SubscriptionId) -> RpcResult<bool> {
-		self.backend.unsubscribe_storage(meta, id)
-	}
+		module.register_alias("chain_getRuntimeVersion", "state_getRuntimeVersion")?;
 
-	fn runtime_version(&self, at: Option<Block::Hash>) -> FutureResult<RuntimeVersion> {
-		self.backend.runtime_version(at)
-	}
+		module.register_async_method("state_queryStorage", |params, state| {
+			let (keys, from, to) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e)),
+			};
+			async move {
+				state.deny_unsafe.check_if_safe()?;
+				state.backend.query_storage(from, to, keys).await
+					.map_err(call_err)
+			}.boxed()
+		})?;
 
-	fn subscribe_runtime_version(&self, meta: Self::Metadata, subscriber: Subscriber<RuntimeVersion>) {
-		self.backend.subscribe_runtime_version(meta, subscriber);
-	}
+		module.register_async_method("state_queryStorageAt", |params, state| {
+			let (keys, at) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e)),
+			};
+			async move {
+				state.deny_unsafe.check_if_safe()?;
+				state.backend.query_storage_at(keys, at).await
+					.map_err(call_err)
+			}.boxed()
+		})?;
 
-	fn unsubscribe_runtime_version(
-		&self,
-		meta: Option<Self::Metadata>,
-		id: SubscriptionId,
-	) -> RpcResult<bool> {
-		self.backend.unsubscribe_runtime_version(meta, id)
-	}
+		module.register_async_method("state_getReadProof", |params, state| {
+			let (keys, block) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e)),
+			};
+			async move {
+				state.deny_unsafe.check_if_safe()?;
+				state.backend.read_proof(block, keys).await.map_err(call_err)
+			}.boxed()
+		})?;
 
-	/// Re-execute the given block with the tracing targets given in `targets`
-	/// and capture all state changes.
-	///
-	/// Note: requires the node to run with `--rpc-methods=Unsafe`.
-	/// Note: requires runtimes compiled with wasm tracing support, `--features with-tracing`.
-	fn trace_block(
-		&self, block: Block::Hash,
-		targets: Option<String>,
-		storage_keys: Option<String>
-	) -> FutureResult<sp_rpc::tracing::TraceBlockResponse> {
-		if let Err(err) = self.deny_unsafe.check_if_safe() {
-			return Box::new(result(Err(err.into())))
-		}
+		module.register_async_method("state_traceBlock", |params, state| {
+			let (block, targets, storage_keys) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e)),
+			};
+			async move {
+				state.deny_unsafe.check_if_safe()?;
+				state.backend.trace_block(block, targets, storage_keys).await
+					.map_err(call_err)
+			}.boxed()
+		})?;
 
-		self.backend.trace_block(block, targets, storage_keys)
+		module.register_subscription(
+			"state_subscribeRuntimeVersion",
+			"state_unsubscribeRuntimeVersion",
+			|_params, sink, ctx| {
+				ctx.backend.subscribe_runtime_version(sink).map_err(Into::into)
+		})?;
+
+		module.register_alias("chain_subscribeRuntimeVersion", "state_subscribeRuntimeVersion")?;
+		module.register_alias("chain_unsubscribeRuntimeVersion", "state_unsubscribeRuntimeVersion")?;
+
+		module.register_subscription(
+			"state_subscribeStorage",
+			"state_unsubscribeStorage",
+			|params, sink, ctx| {
+				let keys = params.one::<Option<Vec<StorageKey>>>()?;
+				ctx.backend.subscribe_storage(sink, keys).map_err(Into::into)
+		})?;
+
+
+		Ok(module)
 	}
 }
 
 /// Child state backend API.
-pub trait ChildStateBackend<Block: BlockT, Client>: Send + Sync + 'static
+#[async_trait::async_trait]
+pub trait ChildStateBackend<Block, Client>: Send + Sync + 'static
 	where
 		Block: BlockT + 'static,
 		Client: Send + Sync + 'static,
 {
 	/// Returns proof of storage for a child key entries at a specific block's state.
-	fn read_child_proof(
+	async fn read_child_proof(
 		&self,
 		block: Option<Block::Hash>,
 		storage_key: PrefixedStorageKey,
 		keys: Vec<StorageKey>,
-	) -> FutureResult<ReadProof<Block::Hash>>;
+	) -> Result<ReadProof<Block::Hash>, Error>;
 
 	/// Returns the keys with prefix from a child storage,
 	/// leave prefix empty to get all the keys.
-	fn storage_keys(
+	async fn storage_keys(
 		&self,
 		block: Option<Block::Hash>,
 		storage_key: PrefixedStorageKey,
 		prefix: StorageKey,
-	) -> FutureResult<Vec<StorageKey>>;
+	) -> Result<Vec<StorageKey>, Error>;
 
 	/// Returns the keys with prefix from a child storage with pagination support.
-	fn storage_keys_paged(
+	async fn storage_keys_paged(
 		&self,
 		block: Option<Block::Hash>,
 		storage_key: PrefixedStorageKey,
 		prefix: Option<StorageKey>,
 		count: u32,
 		start_key: Option<StorageKey>,
-	) -> FutureResult<Vec<StorageKey>>;
+	) -> Result<Vec<StorageKey>, Error>;
 
 	/// Returns a child storage entry at a specific block's state.
-	fn storage(
+	async fn storage(
 		&self,
 		block: Option<Block::Hash>,
 		storage_key: PrefixedStorageKey,
 		key: StorageKey,
-	) -> FutureResult<Option<StorageData>>;
+	) -> Result<Option<StorageData>, Error>;
 
 	/// Returns the hash of a child storage entry at a block's state.
-	fn storage_hash(
+	async fn storage_hash(
 		&self,
 		block: Option<Block::Hash>,
 		storage_key: PrefixedStorageKey,
 		key: StorageKey,
-	) -> FutureResult<Option<Block::Hash>>;
+	) -> Result<Option<Block::Hash>, Error>;
 
 	/// Returns the size of a child storage entry at a block's state.
-	fn storage_size(
+	async fn storage_size(
 		&self,
 		block: Option<Block::Hash>,
 		storage_key: PrefixedStorageKey,
 		key: StorageKey,
-	) -> FutureResult<Option<u64>> {
-		Box::new(self.storage(block, storage_key, key)
-			.map(|x| x.map(|x| x.0.len() as u64)))
+	) -> Result<Option<u64>, Error> {
+		self.storage(block, storage_key, key)
+			.await
+			.map(|x| x.map(|x| x.0.len() as u64))
 	}
 }
 
@@ -445,71 +491,109 @@ pub struct ChildState<Block, Client> {
 	backend: Box<dyn ChildStateBackend<Block, Client>>,
 }
 
-impl<Block, Client> ChildStateApi<Block::Hash> for ChildState<Block, Client>
+impl<Block, Client> ChildState<Block, Client>
 	where
 		Block: BlockT + 'static,
 		Client: Send + Sync + 'static,
 {
-	type Metadata = crate::Metadata;
+	/// Convert this to a RPC module.
+	pub fn into_rpc_module(self) -> Result<RpcModule<Self>, JsonRpseeError> {
+		let mut module = RpcModule::new(self);
 
-	fn read_child_proof(
-		&self,
-		child_storage_key: PrefixedStorageKey,
-		keys: Vec<StorageKey>,
-		block: Option<Block::Hash>,
-	) -> FutureResult<ReadProof<Block::Hash>> {
-		self.backend.read_child_proof(block, child_storage_key, keys)
-	}
+		// DEPRECATED: Please use `childstate_getKeysPaged` with proper paging support.
+		// Returns the keys with prefix from a child storage, leave empty to get all the keys
+		module.register_async_method("childstate_getKeys", |params, state| {
+			let (storage_key, key, block) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e)),
+			};
+			async move {
+				state.backend.storage_keys(block, storage_key, key)
+					.await
+					.map_err(call_err)
+			}.boxed()
+		})?;
 
-	fn storage(
-		&self,
-		storage_key: PrefixedStorageKey,
-		key: StorageKey,
-		block: Option<Block::Hash>
-	) -> FutureResult<Option<StorageData>> {
-		self.backend.storage(block, storage_key, key)
-	}
+		// Returns the keys with prefix from a child storage with pagination support.
+		// Up to `count` keys will be returned.
+		// If `start_key` is passed, return next keys in storage in lexicographic order.
+		module.register_async_method("childstate_getKeysPaged", |params, state| {
+			// TODO: (dp) what is the order of the params here? https://polkadot.js.org/docs/substrate/rpc/#getkeyspagedkey-storagekey-count-u32-startkey-storagekey-at-blockhash-vecstoragekey is a bit unclear on what the `prefix` is here.
+			let (storage_key, prefix, count, start_key, block) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e)),
+			};
 
-	fn storage_keys(
-		&self,
-		storage_key: PrefixedStorageKey,
-		key_prefix: StorageKey,
-		block: Option<Block::Hash>
-	) -> FutureResult<Vec<StorageKey>> {
-		self.backend.storage_keys(block, storage_key, key_prefix)
-	}
+			async move {
+				state.backend.storage_keys_paged(block, storage_key, prefix, count, start_key)
+        			.await
+        			.map_err(call_err)
+			}.boxed()
+		})?;
 
-	fn storage_keys_paged(
-		&self,
-		storage_key: PrefixedStorageKey,
-		prefix: Option<StorageKey>,
-		count: u32,
-		start_key: Option<StorageKey>,
-		block: Option<Block::Hash>,
-	) -> FutureResult<Vec<StorageKey>> {
-		self.backend.storage_keys_paged(block, storage_key, prefix, count, start_key)
-	}
+		// Returns a child storage entry at a specific block's state.
+		module.register_async_method("childstate_getStorage", |params, state| {
+			let (storage_key, key, block) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e)),
+			};
+			async move {
+				state.backend.storage(block, storage_key, key)
+					.await
+					.map_err(call_err)
+			}.boxed()
+		})?;
 
-	fn storage_hash(
-		&self,
-		storage_key: PrefixedStorageKey,
-		key: StorageKey,
-		block: Option<Block::Hash>
-	) -> FutureResult<Option<Block::Hash>> {
-		self.backend.storage_hash(block, storage_key, key)
-	}
+		// Returns the hash of a child storage entry at a block's state.
+		module.register_async_method("childstate_getStorageHash", |params, state| {
+			let (storage_key, key, block) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e)),
+			};
+			async move {
+				state.backend.storage_hash(block, storage_key, key)
+					.await
+					.map_err(call_err)
+			}.boxed()
+		})?;
 
-	fn storage_size(
-		&self,
-		storage_key: PrefixedStorageKey,
-		key: StorageKey,
-		block: Option<Block::Hash>
-	) -> FutureResult<Option<u64>> {
-		self.backend.storage_size(block, storage_key, key)
+		// Returns the size of a child storage entry at a block's state.
+		module.register_async_method("childstate_getStorageSize", |params, state| {
+			let (storage_key, key, block) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e)),
+			};
+			async move {
+				state.backend.storage_size(block, storage_key, key)
+					.await
+					.map_err(call_err)
+			}.boxed()
+		})?;
+
+		// Returns proof of storage for child key entries at a specific block's state.
+		module.register_async_method("childstate_getChildReadProof", |params, state| {
+			let (storage_key, keys, block) = match params.parse() {
+				Ok(params) => params,
+				Err(e) => return Box::pin(future::err(e))
+			};
+			async move {
+				state.backend.read_child_proof(block, storage_key, keys)
+        			.await
+        			.map_err(call_err)
+			}.boxed()
+		})?;
+
+		module.register_alias("childstate_getChildReadProof", "state_getChildReadProof")?;
+
+		Ok(module)
 	}
 
 }
 
 fn client_err(err: sp_blockchain::Error) -> Error {
 	Error::Client(Box::new(err))
+}
+
+fn call_err(err: Error) -> JsonRpseeCallError {
+	JsonRpseeCallError::Failed(Box::new(err))
 }

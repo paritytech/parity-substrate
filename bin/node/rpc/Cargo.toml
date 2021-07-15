@@ -11,28 +11,13 @@ repository = "https://github.com/paritytech/substrate/"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+# TODO: (dp) remove when we remove `create_full`
 jsonrpc-core = "15.1.0"
 node-primitives = { version = "2.0.0", path = "../primitives" }
-pallet-contracts-rpc = { version = "4.0.0-dev", path = "../../../frame/contracts/rpc/" }
-pallet-mmr-rpc = { version = "3.0.0", path = "../../../frame/merkle-mountain-range/rpc/" }
-pallet-transaction-payment-rpc = { version = "4.0.0-dev", path = "../../../frame/transaction-payment/rpc/" }
 sc-client-api = { version = "4.0.0-dev", path = "../../../client/api" }
 sc-consensus-babe = { version = "0.10.0-dev", path = "../../../client/consensus/babe" }
-sc-consensus-babe-rpc = { version = "0.10.0-dev", path = "../../../client/consensus/babe/rpc" }
 sc-consensus-epochs = { version = "0.10.0-dev", path = "../../../client/consensus/epochs" }
-sc-chain-spec = { version = "4.0.0-dev", path = "../../../client/chain-spec" }
 sc-finality-grandpa = { version = "0.10.0-dev", path = "../../../client/finality-grandpa" }
-sc-finality-grandpa-rpc = { version = "0.10.0-dev", path = "../../../client/finality-grandpa/rpc" }
-sc-keystore = { version = "4.0.0-dev", path = "../../../client/keystore" }
 sc-rpc-api = { version = "0.10.0-dev", path = "../../../client/rpc-api" }
 sc-rpc = { version = "4.0.0-dev", path = "../../../client/rpc" }
-sc-sync-state-rpc = { version = "0.10.0-dev", path = "../../../client/sync-state-rpc" }
-sp-api = { version = "4.0.0-dev", path = "../../../primitives/api" }
-sp-block-builder = { version = "4.0.0-dev", path = "../../../primitives/block-builder" }
-sp-blockchain = { version = "4.0.0-dev", path = "../../../primitives/blockchain" }
 sp-keystore = { version = "0.10.0-dev", path = "../../../primitives/keystore" }
-sp-consensus = { version = "0.10.0-dev", path = "../../../primitives/consensus/common" }
-sp-consensus-babe = { version = "0.10.0-dev", path = "../../../primitives/consensus/babe" }
-sp-runtime = { version = "4.0.0-dev", path = "../../../primitives/runtime" }
-sc-transaction-pool-api = { version = "4.0.0-dev", path = "../../../client/transaction-pool/api" }
-substrate-frame-rpc-system = { version = "4.0.0-dev", path = "../../../utils/frame/rpc/system" }

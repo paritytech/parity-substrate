@@ -26,9 +26,7 @@ use futures::{compat::Future01CompatExt, FutureExt};
 use rpc::futures::future::{Executor, ExecuteError, Future};
 use sp_core::traits::SpawnNamed;
 use std::sync::Arc;
-
-pub use sc_rpc_api::{DenyUnsafe, Metadata};
-pub use rpc::IoHandlerExtension as RpcExtension;
+pub use sc_rpc_api::DenyUnsafe;
 
 pub mod author;
 pub mod chain;
@@ -48,8 +46,14 @@ impl SubscriptionTaskExecutor {
 	pub fn new(spawn: impl SpawnNamed + 'static) -> Self {
 		Self(Arc::new(spawn))
 	}
+
+	/// Execute task on executor.
+	pub fn execute_new(&self, fut: futures::future::BoxFuture<'static, ()>) {
+		let _ = self.0.spawn("substrate-rpc-subscriber", fut);
+	}
 }
 
+// TODO(niklasad1): remove, kept for now to make it compile ^^
 impl Executor<Box<dyn Future<Item = (), Error = ()> + Send>> for SubscriptionTaskExecutor {
 	fn execute(
 		&self,

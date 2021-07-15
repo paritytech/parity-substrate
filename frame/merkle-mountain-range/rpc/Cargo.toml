@@ -14,18 +14,13 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0" }
-jsonrpc-core = "15.1.0"
-jsonrpc-core-client = "15.1.0"
-jsonrpc-derive = "15.1.0"
+jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", branch = "master", features = ["server"] }
+serde_json = "1"
 serde = { version = "1.0.126", features = ["derive"] }
 
 sp-api = { version = "4.0.0-dev", path = "../../../primitives/api" }
 sp-blockchain = { version = "4.0.0-dev", path = "../../../primitives/blockchain" }
 sp-core = { version = "4.0.0-dev", path = "../../../primitives/core" }
-sp-rpc = { version = "4.0.0-dev", path = "../../../primitives/rpc" }
 sp-runtime = { version = "4.0.0-dev", path = "../../../primitives/runtime" }
 
 pallet-mmr-primitives = { version = "4.0.0-dev", path = "../primitives" }
-
-[dev-dependencies]
-serde_json = "1.0.41"

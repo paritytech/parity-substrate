@@ -34,14 +34,13 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # third-party dependencies
-codec = { package = "parity-scale-codec", version = "2.0.0" }
+jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", branch = "master", features = ["server"] }
 serde = { version = "1.0.126", features = ["derive"] }
 futures = { version = "0.3.9", features = ["compat"] }
 hex-literal = "0.3.1"
 log = "0.4.8"
 rand = "0.7.2"
 structopt = { version = "0.3.8", optional = true }
-parking_lot = "0.11.1"
 
 # primitives
 sp-authority-discovery = { version = "4.0.0-dev",  path = "../../../primitives/authority-discovery" }
@@ -59,6 +58,14 @@ sp-consensus = { version = "0.10.0-dev", path = "../../../primitives/consensus/c
 sp-transaction-pool = { version = "4.0.0-dev", path = "../../../primitives/transaction-pool" }
 
 # client dependencies
+sc-consensus-babe-rpc = { version = "0.10.0-dev", path = "../../../client/consensus/babe/rpc" }
+sc-finality-grandpa-rpc = { version = "0.10.0-dev", path = "../../../client/finality-grandpa/rpc" }
+sc-sync-state-rpc = { version = "0.10.0-dev", path = "../../../client/sync-state-rpc" }
+pallet-transaction-payment-rpc = { version = "4.0.0-dev", path = "../../../frame/transaction-payment/rpc/" }
+substrate-frame-rpc-system = { version = "4.0.0-dev", path = "../../../utils/frame/rpc/system/" }
+pallet-mmr-rpc = { version = "3.0.0", path = "../../../frame/merkle-mountain-range/rpc/" }
+pallet-contracts-rpc = { version = "4.0.0-dev", path = "../../../frame/contracts/rpc/" }
+
 sc-client-api = { version = "4.0.0-dev", path = "../../../client/api" }
 sc-chain-spec = { version = "4.0.0-dev", path = "../../../client/chain-spec" }
 sc-consensus = { version = "0.10.0-dev", path = "../../../client/consensus/common" }

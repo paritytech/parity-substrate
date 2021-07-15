@@ -24,8 +24,7 @@ use sp_keyring::sr25519::Keyring::Alice;
 use std::str::FromStr;
 use sp_runtime::traits::Header;
 use futures::channel::mpsc;
-use jsonrpc_core::MetaIoHandler;
-use manual_seal::{run_manual_seal, EngineCommand, ManualSealParams, import_queue, rpc::{ManualSeal, ManualSealApi}};
+use manual_seal::{run_manual_seal, EngineCommand, ManualSealParams, import_queue};
 use sc_client_api::backend::Backend;
 use sc_service::{
     build_network, spawn_tasks, BuildNetworkParams, SpawnTasksParams, TFullBackend,
@@ -41,7 +40,6 @@ use sp_offchain::OffchainWorkerApi;
 use std::sync::Arc;
 
 type ClientParts<T> = (
-    Arc<MetaIoHandler<sc_rpc::Metadata, sc_rpc_server::RpcMiddleware>>,
     TaskManager,
     Arc<TFullClient<<T as ChainInfo>::Block, <T as ChainInfo>::RuntimeApi, <T as ChainInfo>::Executor>>,
     Arc<dyn TransactionPool<
@@ -152,9 +150,7 @@ pub fn client_parts<T>(config_or_chain_spec: ConfigOrChainSpec) -> Result<Client
     // Channel for the rpc handler to communicate with the authorship task.
     let (command_sink, commands_stream) = mpsc::channel(10);
 
-    let rpc_sink = command_sink.clone();
-
-    let rpc_handlers = {
+    let _rpc_handlers = {
         let params = SpawnTasksParams {
             config,
             client: client.clone(),
@@ -163,13 +159,15 @@ pub fn client_parts<T>(config_or_chain_spec: ConfigOrChainSpec) -> Result<Client
             keystore: keystore.sync_keystore(),
             on_demand: None,
             transaction_pool: transaction_pool.clone(),
-            rpc_extensions_builder: Box::new(move |_, _| {
-                let mut io = jsonrpc_core::IoHandler::default();
-                io.extend_with(
-                    ManualSealApi::to_delegate(ManualSeal::new(rpc_sink.clone()))
-                );
-                io
-            }),
+			// TODO: (dp) implement with ManualSeal
+			rpc_builder: Box::new(|_, _| jsonrpsee::RpcModule::new(())),
+            // rpc_extensions_builder: Box::new(move |_, _| {
+            //     let mut io = jsonrpc_core::IoHandler::default();
+            //     io.extend_with(
+            //         ManualSealApi::to_delegate(ManualSeal::new(rpc_sink.clone()))
+            //     );
+            //     io
+            // }),
             remote_blockchain: None,
             network,
             system_rpc_tx,
@@ -206,10 +204,8 @@ pub fn client_parts<T>(config_or_chain_spec: ConfigOrChainSpec) -> Result<Client
         .spawn("manual-seal", authorship_future);
 
     network_starter.start_network();
-    let rpc_handler = rpc_handlers.io_handler();
 
     Ok((
-        rpc_handler,
         task_manager,
         client,
         transaction_pool,

@@ -15,11 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0" }
 derive_more = "0.99.2"
-futures = { version = "0.3.1", features = ["compat"] }
-jsonrpc-core = "15.1.0"
-jsonrpc-core-client = "15.1.0"
-jsonrpc-derive = "15.1.0"
-jsonrpc-pubsub = "15.1.0"
+futures = { version = "0.3" }
 log = "0.4.8"
 parking_lot = "0.11.1"
 sp-core = { version = "4.0.0-dev", path = "../../primitives/core" }
@@ -28,6 +24,9 @@ sp-runtime = { path = "../../primitives/runtime", version = "4.0.0-dev" }
 sc-chain-spec = { path = "../chain-spec", version = "4.0.0-dev" }
 serde = { version = "1.0.126", features = ["derive"] }
 serde_json = "1.0.41"
+
+jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", branch = "master", features = ["server"] }
+
 sc-transaction-pool-api = { version = "4.0.0-dev", path = "../transaction-pool/api" }
 sp-rpc = { version = "4.0.0-dev", path = "../../primitives/rpc" }
 sp-tracing = { version = "4.0.0-dev", path = "../../primitives/tracing" }

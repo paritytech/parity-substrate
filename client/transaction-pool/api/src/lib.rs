@@ -27,7 +27,7 @@ use std::{
 	pin::Pin,
 };
 use futures::{Future, Stream};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, Member, NumberFor},
@@ -180,7 +180,7 @@ pub trait TransactionPool: Send + Sync {
 	/// Block type.
 	type Block: BlockT;
 	/// Transaction hash type.
-	type Hash: Hash + Eq + Member + Serialize;
+	type Hash: Hash + Eq + Member + Serialize + DeserializeOwned;
 	/// In-pool transaction type.
 	type InPoolTransaction: InPoolTransaction<
 		Transaction = TransactionFor<Self>,

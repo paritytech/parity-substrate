@@ -17,29 +17,33 @@
 
 //! Node-specific RPC methods for interaction with contracts.
 
-use std::sync::Arc;
+#![warn(unused_crate_dependencies)]
+
+use std::{marker::PhantomData, sync::Arc};
 
 use codec::Codec;
-use jsonrpc_core::{Error, ErrorCode, Result};
-use jsonrpc_derive::rpc;
-use pallet_contracts_primitives::RentProjection;
+use jsonrpsee::RpcModule;
+use jsonrpsee::types::error::{CallError, Error as JsonRpseeError};
+use pallet_contracts_primitives::{
+	Code, ContractExecResult, ContractInstantiateResult, RentProjection,
+};
 use serde::{Deserialize, Serialize};
+use serde_json::value::to_raw_value;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::{Bytes, H256};
 use sp_rpc::number::NumberOrHex;
 use sp_runtime::{
 	generic::BlockId,
-	traits::{Block as BlockT, Header as HeaderT},
+	traits::{self, Block as BlockT, Header as HeaderT},
 };
 use std::convert::{TryFrom, TryInto};
-use pallet_contracts_primitives::{Code, ContractExecResult, ContractInstantiateResult};
 
 pub use pallet_contracts_rpc_runtime_api::ContractsApi as ContractsRuntimeApi;
 
-const RUNTIME_ERROR: i64 = 1;
-const CONTRACT_DOESNT_EXIST: i64 = 2;
-const CONTRACT_IS_A_TOMBSTONE: i64 = 3;
+const RUNTIME_ERROR: i32 = 1;
+const CONTRACT_DOESNT_EXIST: i32 = 2;
+const CONTRACT_IS_A_TOMBSTONE: i32 = 3;
 
 pub type Weight = u64;
 
@@ -59,17 +63,17 @@ const GAS_LIMIT: Weight = 5 * GAS_PER_SECOND;
 
 /// A private newtype for converting `ContractAccessError` into an RPC error.
 struct ContractAccessError(pallet_contracts_primitives::ContractAccessError);
-impl From<ContractAccessError> for Error {
-	fn from(e: ContractAccessError) -> Error {
+impl From<ContractAccessError> for CallError {
+	fn from(e: ContractAccessError) -> CallError {
 		use pallet_contracts_primitives::ContractAccessError::*;
 		match e.0 {
-			DoesntExist => Error {
-				code: ErrorCode::ServerError(CONTRACT_DOESNT_EXIST),
+			DoesntExist => CallError::Custom {
+				code: CONTRACT_DOESNT_EXIST,
 				message: "The specified contract doesn't exist.".into(),
 				data: None,
 			},
-			IsTombstone => Error {
-				code: ErrorCode::ServerError(CONTRACT_IS_A_TOMBSTONE),
+			IsTombstone => CallError::Custom {
+				code: CONTRACT_IS_A_TOMBSTONE,
 				message: "The contract is a tombstone and doesn't have any storage.".into(),
 				data: None,
 			},
@@ -103,217 +107,201 @@ pub struct InstantiateRequest<AccountId, Hash> {
 }
 
 /// Contracts RPC methods.
-#[rpc]
-pub trait ContractsApi<BlockHash, BlockNumber, AccountId, Balance, Hash> {
-	/// Executes a call to a contract.
-	///
-	/// This call is performed locally without submitting any transactions. Thus executing this
-	/// won't change any state. Nonetheless, the calling state-changing contracts is still possible.
-	///
-	/// This method is useful for calling getter-like methods on contracts.
-	#[rpc(name = "contracts_call")]
-	fn call(
-		&self,
-		call_request: CallRequest<AccountId>,
-		at: Option<BlockHash>,
-	) -> Result<ContractExecResult>;
-
-	/// Instantiate a new contract.
-	///
-	/// This call is performed locally without submitting any transactions. Thus the contract
-	/// is not actually created.
-	///
-	/// This method is useful for UIs to dry-run contract instantiations.
-	#[rpc(name = "contracts_instantiate")]
-	fn instantiate(
-		&self,
-		instantiate_request: InstantiateRequest<AccountId, Hash>,
-		at: Option<BlockHash>,
-	) -> Result<ContractInstantiateResult<AccountId, BlockNumber>>;
-
-	/// Returns the value under a specified storage `key` in a contract given by `address` param,
-	/// or `None` if it is not set.
-	#[rpc(name = "contracts_getStorage")]
-	fn get_storage(
-		&self,
-		address: AccountId,
-		key: H256,
-		at: Option<BlockHash>,
-	) -> Result<Option<Bytes>>;
-
-	/// Returns the projected time a given contract will be able to sustain paying its rent.
-	///
-	/// The returned projection is relevant for the given block, i.e. it is as if the contract was
-	/// accessed at the beginning of that block.
-	///
-	/// Returns `None` if the contract is exempted from rent.
-	#[rpc(name = "contracts_rentProjection")]
-	fn rent_projection(
-		&self,
-		address: AccountId,
-		at: Option<BlockHash>,
-	) -> Result<Option<BlockNumber>>;
+pub struct ContractsRpc<Client, Block, AccountId, Balance, Hash> {
+	client: Arc<Client>,
+	_block: PhantomData<Block>,
+	_account_id: PhantomData<AccountId>,
+	_balance: PhantomData<Balance>,
+	_hash: PhantomData<Hash>,
 }
 
-/// An implementation of contract specific RPC methods.
-pub struct Contracts<C, B> {
-	client: Arc<C>,
-	_marker: std::marker::PhantomData<B>,
-}
-
-impl<C, B> Contracts<C, B> {
-	/// Create new `Contracts` with the given reference to the client.
-	pub fn new(client: Arc<C>) -> Self {
-		Contracts {
-			client,
-			_marker: Default::default(),
-		}
-	}
-}
-impl<C, Block, AccountId, Balance, Hash>
-	ContractsApi<
-		<Block as BlockT>::Hash,
-		<<Block as BlockT>::Header as HeaderT>::Number,
-		AccountId,
-		Balance,
-		Hash,
-	> for Contracts<C, Block>
+impl<Client, Block, AccountId, Balance, Hash> ContractsRpc<Client, Block, AccountId, Balance, Hash>
 where
 	Block: BlockT,
-	C: Send + Sync + 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block>,
-	C::Api: ContractsRuntimeApi<
+	Client: Send + Sync + 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block>,
+	Client::Api: ContractsRuntimeApi<
 		Block,
 		AccountId,
 		Balance,
 		<<Block as BlockT>::Header as HeaderT>::Number,
 		Hash,
 	>,
-	AccountId: Codec,
-	Balance: Codec + TryFrom<NumberOrHex>,
-	Hash: Codec,
+	AccountId: traits::MaybeSerializeDeserialize + Codec + Send + Sync + 'static,
+	Balance: Codec + TryFrom<NumberOrHex> + Send + Sync + 'static,
+	Hash: traits::MaybeSerializeDeserialize + Codec + Send + Sync + 'static,
 {
-	fn call(
-		&self,
-		call_request: CallRequest<AccountId>,
-		at: Option<<Block as BlockT>::Hash>,
-	) -> Result<ContractExecResult> {
-		let api = self.client.runtime_api();
-		let at = BlockId::hash(at.unwrap_or_else(||
-			// If the block hash is not supplied assume the best block.
-			self.client.info().best_hash));
-
-		let CallRequest {
-			origin,
-			dest,
-			value,
-			gas_limit,
-			input_data,
-		} = call_request;
-
-		let value: Balance = decode_hex(value, "balance")?;
-		let gas_limit: Weight = decode_hex(gas_limit, "weight")?;
-		limit_gas(gas_limit)?;
-
-		let exec_result = api
-			.call(&at, origin, dest, value, gas_limit, input_data.to_vec())
-			.map_err(runtime_error_into_rpc_err)?;
-
-		Ok(exec_result)
+	pub fn new(client: Arc<Client>) -> Self {
+		Self {
+			client,
+			_block: Default::default(),
+			_account_id: Default::default(),
+			_balance: Default::default(),
+			_hash: Default::default(),
+		}
 	}
 
-	fn instantiate(
-		&self,
-		instantiate_request: InstantiateRequest<AccountId, Hash>,
-		at: Option<<Block as BlockT>::Hash>,
-	) -> Result<ContractInstantiateResult<AccountId, <<Block as BlockT>::Header as HeaderT>::Number>> {
-		let api = self.client.runtime_api();
-		let at = BlockId::hash(at.unwrap_or_else(||
-			// If the block hash is not supplied assume the best block.
-			self.client.info().best_hash));
+	/// Convert a [`ContractsRpc`] to an [`RpcModule`]. Registers all the RPC methods available with the RPC server.
+	pub fn into_rpc_module(self) -> Result<RpcModule<Self>, JsonRpseeError> {
+		let mut module = RpcModule::new(self);
 
-		let InstantiateRequest {
-			origin,
-			endowment,
-			gas_limit,
-			code,
-			data,
-			salt,
-		} = instantiate_request;
+		// Executes a call to a contract.
+		//
+		// This call is performed locally without submitting any transactions. Thus executing this
+		// won't change any state. Nonetheless, calling state-changing contracts is still possible.
+		//
+		// This method is useful for calling getter-like methods on contracts.
+		module.register_method(
+			"contracts_call",
+			|params, contracts| -> Result<ContractExecResult, CallError> {
+				let (call_request, at): (CallRequest<AccountId>, Option<<Block as BlockT>::Hash>) = params.parse()?;
+				let api = contracts.client.runtime_api();
+				let at = BlockId::hash(at.unwrap_or_else(|| contracts.client.info().best_hash));
 
-		let endowment: Balance = decode_hex(endowment, "balance")?;
-		let gas_limit: Weight = decode_hex(gas_limit, "weight")?;
-		limit_gas(gas_limit)?;
+				let CallRequest {
+					origin,
+					dest,
+					value,
+					gas_limit,
+					input_data,
+				} = call_request;
 
-		let exec_result = api
-			.instantiate(&at, origin, endowment, gas_limit, code, data.to_vec(), salt.to_vec())
-			.map_err(runtime_error_into_rpc_err)?;
+				let value: Balance = decode_hex(value, "balance")?;
+				let gas_limit: Weight = decode_hex(gas_limit, "weight")?;
+				limit_gas(gas_limit)?;
 
-		Ok(exec_result)
-	}
+				let exec_result = api
+					.call(&at, origin, dest, value, gas_limit, input_data.to_vec())
+					.map_err(runtime_error_into_rpc_err)?;
 
-	fn get_storage(
-		&self,
-		address: AccountId,
-		key: H256,
-		at: Option<<Block as BlockT>::Hash>,
-	) -> Result<Option<Bytes>> {
-		let api = self.client.runtime_api();
-		let at = BlockId::hash(at.unwrap_or_else(||
-			// If the block hash is not supplied assume the best block.
-			self.client.info().best_hash));
+				Ok(exec_result)
+			},
+		)?;
 
-		let result = api
-			.get_storage(&at, address, key.into())
-			.map_err(runtime_error_into_rpc_err)?
-			.map_err(ContractAccessError)?
-			.map(Bytes);
+		// Instantiate a new contract.
+		//
+		// This call is performed locally without submitting any transactions. Thus the contract
+		// is not actually created.
+		//
+		// This method is useful for UIs to dry-run contract instantiations.
+		module.register_method(
+			"contracts_instantiate",
+			|params, contracts| -> Result<
+				ContractInstantiateResult<
+					AccountId,
+					<<Block as BlockT>::Header as HeaderT>::Number,
+				>,
+				CallError,
+			> {
+				let (instantiate_request, at): (
+					InstantiateRequest<AccountId, Hash>,
+					Option<<Block as BlockT>::Hash>,
+				) = params.parse()?;
 
-		Ok(result)
-	}
+				let api = contracts.client.runtime_api();
+				let at = BlockId::hash(at.unwrap_or_else(|| contracts.client.info().best_hash));
+				let InstantiateRequest {
+					origin,
+					endowment,
+					gas_limit,
+					code,
+					data,
+					salt,
+				} = instantiate_request;
 
-	fn rent_projection(
-		&self,
-		address: AccountId,
-		at: Option<<Block as BlockT>::Hash>,
-	) -> Result<Option<<<Block as BlockT>::Header as HeaderT>::Number>> {
-		let api = self.client.runtime_api();
-		let at = BlockId::hash(at.unwrap_or_else(||
-			// If the block hash is not supplied assume the best block.
-			self.client.info().best_hash));
+				let endowment: Balance = decode_hex(endowment, "balance")?;
+				let gas_limit: Weight = decode_hex(gas_limit, "weight")?;
+				limit_gas(gas_limit)?;
 
-		let result = api
-			.rent_projection(&at, address)
-			.map_err(runtime_error_into_rpc_err)?
-			.map_err(ContractAccessError)?;
+				let exec_result = api
+					.instantiate(
+						&at,
+						origin,
+						endowment,
+						gas_limit,
+						code,
+						data.to_vec(),
+						salt.to_vec(),
+					)
+					.map_err(runtime_error_into_rpc_err)?;
 
-		Ok(match result {
-			RentProjection::NoEviction => None,
-			RentProjection::EvictionAt(block_num) => Some(block_num),
-		})
+				Ok(exec_result)
+			},
+		)?;
+
+		// Returns the value under a specified storage `key` in a contract given by `address` param,
+		// or `None` if it is not set.
+		module.register_method(
+			"contracts_getStorage",
+			|params, contracts| -> Result<Option<Bytes>, CallError> {
+				let (address, key, at): (AccountId, H256, Option<<Block as BlockT>::Hash>) =
+					params.parse()?;
+
+				let api = contracts.client.runtime_api();
+				let at = BlockId::hash(at.unwrap_or_else(|| contracts.client.info().best_hash));
+				let result = api
+					.get_storage(&at, address, key.into())
+					.map_err(runtime_error_into_rpc_err)?
+					.map_err(ContractAccessError)?
+					.map(Bytes);
+
+				Ok(result)
+			},
+		)?;
+
+		// Returns the projected time a given contract will be able to sustain paying its rent.
+		//
+		// The returned projection is relevant for the given block, i.e. it is as if the contract was
+		// accessed at the beginning of that block.
+		//
+		// Returns `None` if the contract is exempted from rent.
+		module.register_method(
+			"contracts_rentProjection",
+			|params, contracts| -> Result<Option<<<Block as BlockT>::Header as HeaderT>::Number>, CallError>
+		{
+			let (address, at): (AccountId, Option<<Block as BlockT>::Hash>) = params.parse()?;
+
+			let api = contracts.client.runtime_api();
+			let at = BlockId::hash(at.unwrap_or_else(|| contracts.client.info().best_hash));
+
+			let result = api
+				.rent_projection(&at, address)
+				.map_err(runtime_error_into_rpc_err)?
+				.map_err(ContractAccessError)?;
+
+			Ok(match result {
+				RentProjection::NoEviction => None,
+				RentProjection::EvictionAt(block_num) => Some(block_num),
+			})
+		})?;
+
+		Ok(module)
 	}
 }
 
 /// Converts a runtime trap into an RPC error.
-fn runtime_error_into_rpc_err(err: impl std::fmt::Debug) -> Error {
-	Error {
-		code: ErrorCode::ServerError(RUNTIME_ERROR),
+fn runtime_error_into_rpc_err(err: impl std::fmt::Debug) -> CallError {
+	CallError::Custom {
+		code: RUNTIME_ERROR,
 		message: "Runtime error".into(),
-		data: Some(format!("{:?}", err).into()),
+		data: to_raw_value(&format!("{:?}", err)).ok(),
 	}
 }
 
-fn decode_hex<H: std::fmt::Debug + Copy, T: TryFrom<H>>(from: H, name: &str) -> Result<T> {
-	from.try_into().map_err(|_| Error {
-		code: ErrorCode::InvalidParams,
+fn decode_hex<H: std::fmt::Debug + Copy, T: TryFrom<H>>(
+	from: H,
+	name: &str,
+) -> Result<T, CallError> {
+	from.try_into().map_err(|_| CallError::Custom {
+		code: -32602, // TODO: was `ErrorCode::InvalidParams`
 		message: format!("{:?} does not fit into the {} type", from, name),
 		data: None,
 	})
 }
 
-fn limit_gas(gas_limit: Weight) -> Result<()> {
+fn limit_gas(gas_limit: Weight) -> Result<(), CallError> {
 	if gas_limit > GAS_LIMIT {
-		Err(Error {
-			code: ErrorCode::InvalidParams,
+		Err(CallError::Custom {
+			code: -32602, // TODO: was `ErrorCode::InvalidParams,`
 			message: format!(
 				"Requested gas limit is greater than maximum allowed: {} > {}",
 				gas_limit, GAS_LIMIT
@@ -329,6 +317,7 @@ fn limit_gas(gas_limit: Weight) -> Result<()> {
 mod tests {
 	use super::*;
 	use sp_core::U256;
+	use pallet_contracts_primitives::{ContractExecResult, ContractInstantiateResult};
 
 	fn trim(json: &str) -> String {
 		json.chars().filter(|c| !c.is_whitespace()).collect()

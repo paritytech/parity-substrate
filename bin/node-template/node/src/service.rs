@@ -12,6 +12,7 @@ use sc_finality_grandpa::SharedVoterState;
 use sc_keystore::LocalKeystore;
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_consensus::SlotData;
+use jsonrpsee::RpcModule;
 
 // Our native executor instance.
 native_executor_instance!(
@@ -113,6 +114,7 @@ pub fn new_partial(config: &Configuration) -> Result<sc_service::PartialComponen
 		keystore_container,
 		select_chain,
 		transaction_pool,
+		rpc_builder: Box::new(|_, _| RpcModule::new(())),
 		other: (grandpa_block_import, grandpa_link, telemetry),
 	})
 }
@@ -134,6 +136,7 @@ pub fn new_full(mut config: Configuration) -> Result<TaskManager, ServiceError> 
 		mut keystore_container,
 		select_chain,
 		transaction_pool,
+		rpc_builder: _rpc_builder,
 		other: (block_import, grandpa_link, mut telemetry),
 	} = new_partial(&config)?;
 
@@ -173,21 +176,6 @@ pub fn new_full(mut config: Configuration) -> Result<TaskManager, ServiceError> 
 	let enable_grandpa = !config.disable_grandpa;
 	let prometheus_registry = config.prometheus_registry().cloned();
 
-	let rpc_extensions_builder = {
-		let client = client.clone();
-		let pool = transaction_pool.clone();
-
-		Box::new(move |deny_unsafe, _| {
-			let deps = crate::rpc::FullDeps {
-				client: client.clone(),
-				pool: pool.clone(),
-				deny_unsafe,
-			};
-
-			crate::rpc::create_full(deps)
-		})
-	};
-
 	let _rpc_handlers = sc_service::spawn_tasks(
 		sc_service::SpawnTasksParams {
 			network: network.clone(),
@@ -195,7 +183,8 @@ pub fn new_full(mut config: Configuration) -> Result<TaskManager, ServiceError> 
 			keystore: keystore_container.sync_keystore(),
 			task_manager: &mut task_manager,
 			transaction_pool: transaction_pool.clone(),
-			rpc_extensions_builder,
+			// TODO: (dp) implement
+			rpc_builder: Box::new(|_, _| { RpcModule::new(()) }),
 			on_demand: None,
 			remote_blockchain: None,
 			backend,
@@ -413,7 +402,8 @@ pub fn new_light(mut config: Configuration) -> Result<TaskManager, ServiceError>
 		transaction_pool,
 		task_manager: &mut task_manager,
 		on_demand: Some(on_demand),
-		rpc_extensions_builder: Box::new(|_, _| ()),
+		// TODO: (dp) implement
+		rpc_builder: Box::new(|_, _| RpcModule::new(())),
 		config,
 		client,
 		keystore: keystore_container.sync_keystore(),

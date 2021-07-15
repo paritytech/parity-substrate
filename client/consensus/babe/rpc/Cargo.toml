@@ -13,11 +13,9 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", branch = "master", features = ["server"] }
 sc-consensus-babe = { version = "0.10.0-dev", path = "../" }
 sc-rpc-api = { version = "0.10.0-dev", path = "../../../rpc-api" }
-jsonrpc-core = "15.1.0"
-jsonrpc-core-client = "15.1.0"
-jsonrpc-derive = "15.1.0"
 sp-consensus-babe = { version = "0.10.0-dev", path = "../../../../primitives/consensus/babe" }
 serde = { version = "1.0.126", features=["derive"] }
 sp-blockchain = { version = "4.0.0-dev", path = "../../../../primitives/blockchain" }

@@ -17,7 +17,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::{
-	error::Error, MallocSizeOfWasm, RpcHandlers,
+	error::Error, MallocSizeOfWasm,
 	start_rpc_servers, build_network_future, TransactionPoolAdapter, TaskManager, SpawnTaskHandle,
 	metrics::MetricsService,
 	client::{light, Client, ClientConfig},
@@ -32,7 +32,7 @@ use sp_consensus::{
 	block_validation::{BlockAnnounceValidator, DefaultBlockAnnounceValidator, Chain},
 	import_queue::ImportQueue,
 };
-use jsonrpc_pubsub::manager::SubscriptionManager;
+use sc_rpc::{DenyUnsafe, SubscriptionTaskExecutor};
 use futures::{
 	FutureExt, StreamExt,
 	future::ready,
@@ -76,67 +76,7 @@ use sc_client_api::{
 	execution_extensions::ExecutionExtensions
 };
 use sp_blockchain::{HeaderMetadata, HeaderBackend};
-
-/// A utility trait for building an RPC extension given a `DenyUnsafe` instance.
-/// This is useful since at service definition time we don't know whether the
-/// specific interface where the RPC extension will be exposed is safe or not.
-/// This trait allows us to lazily build the RPC extension whenever we bind the
-/// service to an interface.
-pub trait RpcExtensionBuilder {
-	/// The type of the RPC extension that will be built.
-	type Output: sc_rpc::RpcExtension<sc_rpc::Metadata>;
-
-	/// Returns an instance of the RPC extension for a particular `DenyUnsafe`
-	/// value, e.g. the RPC extension might not expose some unsafe methods.
-	fn build(
-		&self,
-		deny: sc_rpc::DenyUnsafe,
-		subscription_executor: sc_rpc::SubscriptionTaskExecutor,
-	) -> Self::Output;
-}
-
-impl<F, R> RpcExtensionBuilder for F where
-	F: Fn(sc_rpc::DenyUnsafe, sc_rpc::SubscriptionTaskExecutor) -> R,
-	R: sc_rpc::RpcExtension<sc_rpc::Metadata>,
-{
-	type Output = R;
-
-	fn build(
-		&self,
-		deny: sc_rpc::DenyUnsafe,
-		subscription_executor: sc_rpc::SubscriptionTaskExecutor,
-	) -> Self::Output {
-		(*self)(deny, subscription_executor)
-	}
-}
-
-/// A utility struct for implementing an `RpcExtensionBuilder` given a cloneable
-/// `RpcExtension`, the resulting builder will simply ignore the provided
-/// `DenyUnsafe` instance and return a static `RpcExtension` instance.
-pub struct NoopRpcExtensionBuilder<R>(pub R);
-
-impl<R> RpcExtensionBuilder for NoopRpcExtensionBuilder<R> where
-	R: Clone + sc_rpc::RpcExtension<sc_rpc::Metadata>,
-{
-	type Output = R;
-
-	fn build(
-		&self,
-		_deny: sc_rpc::DenyUnsafe,
-		_subscription_executor: sc_rpc::SubscriptionTaskExecutor,
-	) -> Self::Output {
-		self.0.clone()
-	}
-}
-
-impl<R> From<R> for NoopRpcExtensionBuilder<R> where
-	R: sc_rpc::RpcExtension<sc_rpc::Metadata>,
-{
-	fn from(e: R) -> NoopRpcExtensionBuilder<R> {
-		NoopRpcExtensionBuilder(e)
-	}
-}
-
+use jsonrpsee::RpcModule;
 
 /// Full client type.
 pub type TFullClient<TBl, TRtApi, TExecDisp> = Client<
@@ -499,7 +439,7 @@ pub fn new_client<E, Block, RA>(
 }
 
 /// Parameters to pass into `build`.
-pub struct SpawnTasksParams<'a, TBl: BlockT, TCl, TExPool, TRpc, Backend> {
+pub struct SpawnTasksParams<'a, TBl: BlockT, TCl, TExPool, Backend> {
 	/// The service configuration.
 	pub config: Configuration,
 	/// A shared client returned by `new_full_parts`/`new_light_parts`.
@@ -514,9 +454,8 @@ pub struct SpawnTasksParams<'a, TBl: BlockT, TCl, TExPool, TRpc, Backend> {
 	pub on_demand: Option<Arc<OnDemand<TBl>>>,
 	/// A shared transaction pool.
 	pub transaction_pool: Arc<TExPool>,
-	/// A RPC extension builder. Use `NoopRpcExtensionBuilder` if you just want to pass in the
-	/// extensions directly.
-	pub rpc_extensions_builder: Box<dyn RpcExtensionBuilder<Output = TRpc> + Send>,
+	/// Builds additional [`RpcModule`]s that should be added to the server
+	pub rpc_builder: Box<dyn FnOnce(DenyUnsafe, Arc<SubscriptionTaskExecutor>) -> RpcModule<()>>,
 	/// An optional, shared remote blockchain instance. Used for light clients.
 	pub remote_blockchain: Option<Arc<dyn RemoteBlockchain<TBl>>>,
 	/// A shared network instance.
@@ -559,9 +498,9 @@ pub fn build_offchain_workers<TBl, TCl>(
 }
 
 /// Spawn the tasks that are required to run a node.
-pub fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
-	params: SpawnTasksParams<TBl, TCl, TExPool, TRpc, TBackend>,
-) -> Result<RpcHandlers, Error>
+pub fn spawn_tasks<TBl, TBackend, TExPool, TCl>(
+	params: SpawnTasksParams<TBl, TCl, TExPool, TBackend>,
+) -> Result<(), Error>
 	where
 		TCl: ProvideRuntimeApi<TBl> + HeaderMetadata<TBl, Error=sp_blockchain::Error> + Chain<TBl> +
 		BlockBackend<TBl> + BlockIdTo<TBl, Error=sp_blockchain::Error> + ProofProvider<TBl> +
@@ -577,7 +516,6 @@ pub fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
 		TBackend: 'static + sc_client_api::backend::Backend<TBl> + Send,
 		TExPool: MaintainedTransactionPool<Block=TBl, Hash = <TBl as BlockT>::Hash> +
 			MallocSizeOfWasm + 'static,
-		TRpc: sc_rpc::RpcExtension<sc_rpc::Metadata>
 {
 	let SpawnTasksParams {
 		mut config,
@@ -587,7 +525,7 @@ pub fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
 		backend,
 		keystore,
 		transaction_pool,
-		rpc_extensions_builder,
+		rpc_builder,
 		remote_blockchain,
 		network,
 		system_rpc_tx,
@@ -657,23 +595,26 @@ pub fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
 		)
 	);
 
-	// RPC
-	let gen_handler = |
-		deny_unsafe: sc_rpc::DenyUnsafe,
-		rpc_middleware: sc_rpc_server::RpcMiddleware
-	| gen_handler(
-		deny_unsafe, rpc_middleware, &config, task_manager.spawn_handle(),
-		client.clone(), transaction_pool.clone(), keystore.clone(),
-		on_demand.clone(), remote_blockchain.clone(), &*rpc_extensions_builder,
-		backend.offchain_storage(), system_rpc_tx.clone()
-	);
-	let rpc_metrics = sc_rpc_server::RpcMetrics::new(config.prometheus_registry())?;
-	let rpc = start_rpc_servers(&config, gen_handler, rpc_metrics.clone())?;
-	// This is used internally, so don't restrict access to unsafe RPC
-	let rpc_handlers = RpcHandlers(Arc::new(gen_handler(
-		sc_rpc::DenyUnsafe::No,
-		sc_rpc_server::RpcMiddleware::new(rpc_metrics, "inbrowser")
-	).into()));
+	// jsonrpsee RPC
+	let gen_rpc_module = |deny_unsafe: DenyUnsafe| {
+		gen_rpc_module(
+			deny_unsafe,
+			task_manager.spawn_handle(),
+			client.clone(),
+			on_demand.clone(),
+			remote_blockchain.clone(),
+			transaction_pool.clone(),
+			keystore.clone(),
+			system_rpc_tx.clone(),
+			&config,
+			backend.offchain_storage(),
+			rpc_builder,
+		)
+	};
+
+	// TODO(niklasad1): this will block the current thread until the servers have been started
+	// we could spawn it in the background but then the errors must be handled via a channel or something
+	let rpc = futures::executor::block_on(start_rpc_servers(&config, gen_rpc_module))?;
 
 	// Spawn informant task
 	spawn_handle.spawn("informant", sc_informant::build(
@@ -683,9 +624,11 @@ pub fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
 		config.informant_output_format,
 	));
 
-	task_manager.keep_alive((config.base_path, rpc, rpc_handlers.clone()));
+	// NOTE(niklasad1): we spawn jsonrpsee in seperate thread now.
+	// this will not shutdown the server.
+	task_manager.keep_alive((config.base_path, rpc));
 
-	Ok(rpc_handlers)
+	Ok(())
 }
 
 async fn transaction_notifications<TBl, TExPool>(
@@ -741,34 +684,37 @@ fn init_telemetry<TBl: BlockT, TCl: BlockBackend<TBl>>(
 	Ok(telemetry.handle())
 }
 
-fn gen_handler<TBl, TBackend, TExPool, TRpc, TCl>(
-	deny_unsafe: sc_rpc::DenyUnsafe,
-	rpc_middleware: sc_rpc_server::RpcMiddleware,
-	config: &Configuration,
+// Maciej: This is very WIP, mocking the original `gen_handler`. All of the `jsonrpsee`
+// specific logic should be merged back to `gen_handler` down the road.
+fn gen_rpc_module<TBl, TBackend, TCl, TExPool>(
+	_deny_unsafe: DenyUnsafe,
 	spawn_handle: SpawnTaskHandle,
 	client: Arc<TCl>,
-	transaction_pool: Arc<TExPool>,
-	keystore: SyncCryptoStorePtr,
 	on_demand: Option<Arc<OnDemand<TBl>>>,
 	remote_blockchain: Option<Arc<dyn RemoteBlockchain<TBl>>>,
-	rpc_extensions_builder: &(dyn RpcExtensionBuilder<Output = TRpc> + Send),
+	transaction_pool: Arc<TExPool>,
+	keystore: SyncCryptoStorePtr,
+	system_rpc_tx: TracingUnboundedSender<sc_rpc::system::Request<TBl>>,
+	config: &Configuration,
 	offchain_storage: Option<<TBackend as sc_client_api::backend::Backend<TBl>>::OffchainStorage>,
-	system_rpc_tx: TracingUnboundedSender<sc_rpc::system::Request<TBl>>
-) -> sc_rpc_server::RpcHandler<sc_rpc::Metadata>
+	rpc_builder: Box<dyn FnOnce(DenyUnsafe, Arc<SubscriptionTaskExecutor>) -> RpcModule<()>>,
+) -> RpcModule<()>
 	where
 		TBl: BlockT,
 		TCl: ProvideRuntimeApi<TBl> + BlockchainEvents<TBl> + HeaderBackend<TBl> +
 		HeaderMetadata<TBl, Error=sp_blockchain::Error> + ExecutorProvider<TBl> +
 		CallApiAt<TBl> + ProofProvider<TBl> +
 		StorageProvider<TBl, TBackend> + BlockBackend<TBl> + Send + Sync + 'static,
-		TExPool: MaintainedTransactionPool<Block=TBl, Hash = <TBl as BlockT>::Hash> + 'static,
 		TBackend: sc_client_api::backend::Backend<TBl> + 'static,
-		TRpc: sc_rpc::RpcExtension<sc_rpc::Metadata>,
 		<TCl as ProvideRuntimeApi<TBl>>::Api:
 			sp_session::SessionKeys<TBl> +
 			sp_api::Metadata<TBl>,
+		TExPool: MaintainedTransactionPool<Block=TBl, Hash = <TBl as BlockT>::Hash> + 'static,
 {
-	use sc_rpc::{chain, state, author, system, offchain};
+	const UNIQUE_METHOD_NAMES_PROOF: &str = "Method names are unique; qed";
+
+	// TODO(niklasad1): expose CORS to jsonrpsee to handle this propely.
+	let deny_unsafe = DenyUnsafe::No;
 
 	let system_info = sc_rpc::system::SystemInfo {
 		chain_name: config.chain_spec.name().into(),
@@ -777,66 +723,79 @@ fn gen_handler<TBl, TBackend, TExPool, TRpc, TCl>(
 		properties: config.chain_spec.properties(),
 		chain_type: config.chain_spec.chain_type(),
 	};
+	let task_executor = Arc::new(SubscriptionTaskExecutor::new(spawn_handle));
 
-	let task_executor = sc_rpc::SubscriptionTaskExecutor::new(spawn_handle);
-	let subscriptions = SubscriptionManager::new(Arc::new(task_executor.clone()));
+	let mut rpc_api = RpcModule::new(());
 
 	let (chain, state, child_state) = if let (Some(remote_blockchain), Some(on_demand)) =
 		(remote_blockchain, on_demand) {
 		// Light clients
 		let chain = sc_rpc::chain::new_light(
 			client.clone(),
-			subscriptions.clone(),
+			task_executor.clone(),
 			remote_blockchain.clone(),
 			on_demand.clone(),
-		);
+		).into_rpc_module().expect(UNIQUE_METHOD_NAMES_PROOF);
 		let (state, child_state) = sc_rpc::state::new_light(
 			client.clone(),
-			subscriptions.clone(),
+			task_executor.clone(),
 			remote_blockchain.clone(),
 			on_demand,
 			deny_unsafe,
 		);
-		(chain, state, child_state)
-
+		(
+			chain,
+			state.into_rpc_module().expect(UNIQUE_METHOD_NAMES_PROOF),
+			child_state.into_rpc_module().expect(UNIQUE_METHOD_NAMES_PROOF)
+		)
 	} else {
 		// Full nodes
-		let chain = sc_rpc::chain::new_full(client.clone(), subscriptions.clone());
+		let chain = sc_rpc::chain::new_full(client.clone(), task_executor.clone())
+			.into_rpc_module()
+			.expect(UNIQUE_METHOD_NAMES_PROOF);
+
 		let (state, child_state) = sc_rpc::state::new_full(
 			client.clone(),
-			subscriptions.clone(),
+			task_executor.clone(),
 			deny_unsafe,
-			config.rpc_max_payload,
+			config.rpc_max_payload
 		);
+		let state = state.into_rpc_module().expect(UNIQUE_METHOD_NAMES_PROOF);
+		let child_state = child_state.into_rpc_module().expect(UNIQUE_METHOD_NAMES_PROOF);
+
 		(chain, state, child_state)
 	};
 
 	let author = sc_rpc::author::Author::new(
-		client,
+		client.clone(),
 		transaction_pool,
-		subscriptions,
 		keystore,
 		deny_unsafe,
-	);
-	let system = system::System::new(system_info, system_rpc_tx, deny_unsafe);
+		task_executor.clone()
+	).into_rpc_module().expect(UNIQUE_METHOD_NAMES_PROOF);
 
-	let maybe_offchain_rpc = offchain_storage.map(|storage| {
-		let offchain = sc_rpc::offchain::Offchain::new(storage, deny_unsafe);
-		offchain::OffchainApi::to_delegate(offchain)
-	});
+	let system = sc_rpc::system::System::new(system_info, system_rpc_tx, deny_unsafe)
+		.into_rpc_module()
+		.expect(UNIQUE_METHOD_NAMES_PROOF);
 
-	sc_rpc_server::rpc_handler(
-		(
-			state::StateApi::to_delegate(state),
-			state::ChildStateApi::to_delegate(child_state),
-			chain::ChainApi::to_delegate(chain),
-			maybe_offchain_rpc,
-			author::AuthorApi::to_delegate(author),
-			system::SystemApi::to_delegate(system),
-			rpc_extensions_builder.build(deny_unsafe, task_executor),
-		),
-		rpc_middleware
-	)
+	if let Some(storage) = offchain_storage {
+		let offchain = sc_rpc::offchain::Offchain::new(storage, deny_unsafe)
+			.into_rpc_module()
+			.expect(UNIQUE_METHOD_NAMES_PROOF);
+
+		rpc_api.merge(offchain).expect(UNIQUE_METHOD_NAMES_PROOF);
+	}
+
+	rpc_api.merge(chain).expect(UNIQUE_METHOD_NAMES_PROOF);
+	rpc_api.merge(author).expect(UNIQUE_METHOD_NAMES_PROOF);
+	rpc_api.merge(system).expect(UNIQUE_METHOD_NAMES_PROOF);
+	rpc_api.merge(state).expect(UNIQUE_METHOD_NAMES_PROOF);
+	rpc_api.merge(child_state).expect(UNIQUE_METHOD_NAMES_PROOF);
+	// Additional [`RpcModule`]s defined in the node to fit the specific blockchain
+	let extra_rpcs = rpc_builder(deny_unsafe, task_executor.clone());
+	rpc_api.merge(extra_rpcs).expect(UNIQUE_METHOD_NAMES_PROOF);
+
+	rpc_api
 }
 
 /// Parameters to pass into `build_network`.

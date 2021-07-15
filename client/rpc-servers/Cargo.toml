@@ -13,9 +13,6 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-futures = "0.1.6"
-jsonrpc-core = "15.1.0"
-pubsub = { package = "jsonrpc-pubsub", version = "15.1.0" }
 log = "0.4.8"
 prometheus-endpoint = { package = "substrate-prometheus-endpoint", path = "../../utils/prometheus", version = "0.9.0"}
 serde = "1.0.126"
@@ -23,6 +20,6 @@ serde_json = "1.0.41"
 sp-runtime = { version = "4.0.0-dev", path = "../../primitives/runtime" }
 
 [target.'cfg(not(target_os = "unknown"))'.dependencies]
-http = { package = "jsonrpc-http-server", version = "15.1.0" }
-ipc = { package = "jsonrpc-ipc-server", version = "15.1.0" }
-ws = { package = "jsonrpc-ws-server", version = "15.1.0" }
+futures-channel = "0.3"
+jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", branch = "master", features = ["server"] }
+tokio = { version = "1", features = ["full"] }

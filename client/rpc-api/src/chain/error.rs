@@ -18,21 +18,17 @@
 
 //! Error helpers for Chain RPC module.
 
-use crate::errors;
-use jsonrpc_core as rpc;
+use jsonrpsee::types::error::CallError;
 
 /// Chain RPC Result type.
 pub type Result<T> = std::result::Result<T, Error>;
-
-/// Chain RPC future Result type.
-pub type FutureResult<T> = Box<dyn rpc::futures::Future<Item = T, Error = Error> + Send>;
 
 /// Chain RPC errors.
 #[derive(Debug, derive_more::Display, derive_more::From)]
 pub enum Error {
 	/// Client error.
 	#[display(fmt="Client error: {}", _0)]
-	Client(Box<dyn std::error::Error + Send>),
+	Client(Box<dyn std::error::Error + Send + Sync>),
 	/// Other error type.
 	Other(String),
 }
@@ -47,17 +43,26 @@ impl std::error::Error for Error {
 }
 
 /// Base error code for all chain errors.
-const BASE_ERROR: i64 = 3000;
+const BASE_ERROR: i32 = 3000;
 
-impl From<Error> for rpc::Error {
+impl From<Error> for CallError {
 	fn from(e: Error) -> Self {
 		match e {
-			Error::Other(message) => rpc::Error {
-				code: rpc::ErrorCode::ServerError(BASE_ERROR + 1),
+			Error::Other(message) => Self::Custom {
+				code: BASE_ERROR + 1,
 				message,
 				data: None,
 			},
-			e => errors::internal(e),
+			e => Self::Failed(Box::new(e)),
+		}
+	}
+}
+
+impl From<Error> for jsonrpsee::types::Error {
+	fn from(e: Error) -> Self {
+		match e {
+			Error::Other(msg) => Self::Custom(msg),
+			Error::Client(e) => Self::Custom(e.to_string()),
 		}
 	}
 }

@@ -16,26 +16,27 @@
 // limitations under the License.
 
 #![warn(missing_docs)]
+#![warn(unused_crate_dependencies)]
 
 //! Node-specific RPC methods for interaction with Merkle Mountain Range pallet.
 
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 
 use codec::{Codec, Encode};
-use jsonrpc_core::{Error, ErrorCode, Result};
-use jsonrpc_derive::rpc;
+use jsonrpsee::RpcModule;
+use jsonrpsee::types::{error::CallError, Error as JsonRpseeError};
+use pallet_mmr_primitives::{Error as MmrError, Proof};
 use serde::{Deserialize, Serialize};
-
+use serde_json::value::to_raw_value;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::Bytes;
-use sp_runtime::{
-	generic::BlockId,
-	traits::{Block as BlockT},
-};
-use pallet_mmr_primitives::{Error as MmrError, Proof};
+use sp_runtime::{generic::BlockId, traits::Block as BlockT};
 
 pub use pallet_mmr_primitives::MmrApi as MmrRuntimeApi;
+
+const RUNTIME_ERROR: i32 = 8000;
+const MMR_ERROR: i32 = 8010;
 
 /// Retrieved MMR leaf and its proof.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -51,11 +52,8 @@ pub struct LeafProof<BlockHash> {
 
 impl<BlockHash> LeafProof<BlockHash> {
 	/// Create new `LeafProof` from given concrete `leaf` and `proof`.
-	pub fn new<Leaf, MmrHash>(
-		block_hash: BlockHash,
-		leaf: Leaf,
-		proof: Proof<MmrHash>,
-	) -> Self where
+	pub fn new<Leaf, MmrHash>(block_hash: BlockHash, leaf: Leaf, proof: Proof<MmrHash>) -> Self
+	where
 		Leaf: Encode,
 		MmrHash: Encode,
 	{
@@ -68,104 +66,86 @@ impl<BlockHash> LeafProof<BlockHash> {
 }
 
 /// MMR RPC methods.
-#[rpc]
-pub trait MmrApi<BlockHash> {
-	/// Generate MMR proof for given leaf index.
-	///
-	/// This method calls into a runtime with MMR pallet included and attempts to generate
-	/// MMR proof for leaf at given `leaf_index`.
-	/// Optionally, a block hash at which the runtime should be queried can be specified.
-	///
-	/// Returns the (full) leaf itself and a proof for this leaf (compact encoding, i.e. hash of
-	/// the leaf). Both parameters are SCALE-encoded.
-	#[rpc(name = "mmr_generateProof")]
-	fn generate_proof(
-		&self,
-		leaf_index: u64,
-		at: Option<BlockHash>,
-	) -> Result<LeafProof<BlockHash>>;
+pub struct MmrRpc<Client, Block> {
+	client: Arc<Client>,
+	_marker: PhantomData<Block>,
 }
 
-/// An implementation of MMR specific RPC methods.
-pub struct Mmr<C, B> {
-	client: Arc<C>,
-	_marker: std::marker::PhantomData<B>,
-}
-
-impl<C, B> Mmr<C, B> {
-	/// Create new `Mmr` with the given reference to the client.
-	pub fn new(client: Arc<C>) -> Self {
-		Self {
+impl<Client, Block, MmrHash> MmrRpc<Client, (Block, MmrHash)>
+where
+	Block: BlockT,
+	Client: Send + Sync + 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block>,
+	Client::Api: MmrRuntimeApi<Block, MmrHash>,
+	MmrHash: Codec + Send + Sync + 'static,
+{
+	/// Create a new [`MmrRpc`].
+	pub fn new(client: Arc<Client>) -> Self {
+		MmrRpc {
 			client,
 			_marker: Default::default(),
 		}
 	}
-}
 
-impl<C, Block, MmrHash> MmrApi<<Block as BlockT>::Hash,> for Mmr<C, (Block, MmrHash)>
-where
-	Block: BlockT,
-	C: Send + Sync + 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block>,
-	C::Api: MmrRuntimeApi<
-		Block,
-		MmrHash,
-	>,
-	MmrHash: Codec + Send + Sync + 'static,
-{
-	fn generate_proof(
-		&self,
-		leaf_index: u64,
-		at: Option<<Block as BlockT>::Hash>,
-	) -> Result<LeafProof<<Block as BlockT>::Hash>> {
-		let api = self.client.runtime_api();
-		let block_hash = at.unwrap_or_else(||
-			// If the block hash is not supplied assume the best block.
-			self.client.info().best_hash
-		);
+	/// Convert this [`MmrRpc`] to an [`RpcModule`].
+	pub fn into_rpc_module(self) -> Result<RpcModule<Self>, JsonRpseeError> {
+		let mut module = RpcModule::new(self);
 
-		let (leaf, proof) = api
-			.generate_proof_with_context(
-				&BlockId::hash(block_hash),
-				sp_core::ExecutionContext::OffchainCall(None),
-				leaf_index,
-			)
-			.map_err(runtime_error_into_rpc_error)?
-			.map_err(mmr_error_into_rpc_error)?;
+		// Generate MMR proof for given leaf index.
+		//
+		// This method calls into a runtime with MMR pallet included and attempts to generate
+		// MMR proof for leaf at given `leaf_index`.
+		// Optionally, a block hash at which the runtime should be queried can be specified.
+		//
+		// Returns the (full) leaf itself and a proof for this leaf (compact encoding, i.e. hash of
+		// the leaf). Both parameters are SCALE-encoded.
+		module.register_method("mmr_generateProof", |params, mmr| {
+			let (leaf_index, at): (u64, Option<<Block as BlockT>::Hash>) = params.parse()?;
+			let api = mmr.client.runtime_api();
+			let block_hash = at.unwrap_or_else(|| mmr.client.info().best_hash);
 
-		Ok(LeafProof::new(block_hash, leaf, proof))
+			let (leaf, proof) = api
+				.generate_proof_with_context(
+					&BlockId::hash(block_hash),
+					sp_core::ExecutionContext::OffchainCall(None),
+					leaf_index,
+				)
+				.map_err(runtime_error_into_rpc_error)?
+				.map_err(mmr_error_into_rpc_error)?;
+
+			Ok(LeafProof::new(block_hash, leaf, proof))
+		})?;
+
+		Ok(module)
 	}
 }
 
-const RUNTIME_ERROR: i64 = 8000;
-const MMR_ERROR: i64 = 8010;
-
-/// Converts a mmr-specific error into an RPC error.
-fn mmr_error_into_rpc_error(err: MmrError) -> Error {
+/// Converts a mmr-specific error into a [`CallError`].
+fn mmr_error_into_rpc_error(err: MmrError) -> CallError {
 	match err {
-		MmrError::LeafNotFound => Error {
-			code: ErrorCode::ServerError(MMR_ERROR + 1),
+		MmrError::LeafNotFound => CallError::Custom {
+			code: MMR_ERROR + 1,
 			message: "Leaf was not found".into(),
-			data: Some(format!("{:?}", err).into()),
+			data: to_raw_value(&format!("{:?}", err)).ok(),
 		},
-		MmrError::GenerateProof => Error {
-			code: ErrorCode::ServerError(MMR_ERROR + 2),
+		MmrError::GenerateProof => CallError::Custom {
+			code: MMR_ERROR + 2,
 			message: "Error while generating the proof".into(),
-			data: Some(format!("{:?}", err).into()),
+			data: to_raw_value(&format!("{:?}", err)).ok(),
 		},
-		_ => Error {
-			code: ErrorCode::ServerError(MMR_ERROR),
+		_ => CallError::Custom {
+			code: MMR_ERROR,
 			message: "Unexpected MMR error".into(),
-			data: Some(format!("{:?}", err).into()),
+			data: to_raw_value(&format!("{:?}", err)).ok(),
 		},
 	}
 }
 
-/// Converts a runtime trap into an RPC error.
-fn runtime_error_into_rpc_error(err: impl std::fmt::Debug) -> Error {
-	Error {
-		code: ErrorCode::ServerError(RUNTIME_ERROR),
+/// Converts a runtime trap into a [`CallError`].
+fn runtime_error_into_rpc_error(err: impl std::fmt::Debug) -> CallError {
+	CallError::Custom {
+		code: RUNTIME_ERROR,
 		message: "Runtime trapped".into(),
-		data: Some(format!("{:?}", err).into()),
+		data: to_raw_value(&format!("{:?}", err)).ok(),
 	}
 }
 

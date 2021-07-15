@@ -14,15 +14,14 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 thiserror = "1.0.21"
-jsonrpc-core = "15.0"
-jsonrpc-core-client = "15.0"
-jsonrpc-derive = "15.0"
+anyhow = "1"
+jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", branch = "master", features = ["server"] }
+
 sc-chain-spec = { version = "4.0.0-dev", path = "../chain-spec" }
 sc-client-api = { version = "4.0.0-dev", path = "../api" }
 sc-consensus-babe = { version = "0.10.0-dev", path = "../consensus/babe" }
 sc-consensus-epochs = { version = "0.10.0-dev", path = "../consensus/epochs" }
 sc-finality-grandpa = { version = "0.10.0-dev", path = "../finality-grandpa" }
 sc-rpc-api = { version = "0.10.0-dev", path = "../rpc-api" }
-serde_json = "1.0.58"
 sp-blockchain = { version = "4.0.0-dev", path = "../../primitives/blockchain" }
 sp-runtime = { version = "4.0.0-dev", path = "../../primitives/runtime" }

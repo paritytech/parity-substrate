@@ -451,7 +451,7 @@ pub(crate) mod tests {
 				Ok(sc_service_test::TestNetComponents::new(task_manager, client, network, transaction_pool))
 			},
 			|config| {
-				let (keep_alive, _, client, network, transaction_pool) = new_light_base(config)?;
+				let (keep_alive, client, network, transaction_pool) = new_light_base(config)?;
 				Ok(sc_service_test::TestNetComponents::new(keep_alive, client, network, transaction_pool))
 			}
 		);

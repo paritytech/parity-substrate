@@ -13,12 +13,13 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+async-trait = "0.1"
+derive_more = "0.99.2"
+serde_json = "1"
 sc-client-api = { version = "4.0.0-dev", path = "../../../../client/api" }
 codec = { package = "parity-scale-codec", version = "2.0.0" }
 futures = { version = "0.3.4", features = ["compat"] }
-jsonrpc-core = "15.1.0"
-jsonrpc-core-client = "15.1.0"
-jsonrpc-derive = "15.1.0"
+jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", branch = "master", features = ["server"] }
 log = "0.4.8"
 serde = { version = "1.0.126", features = ["derive"] }
 sp-runtime = { version = "4.0.0-dev", path = "../../../../primitives/runtime" }

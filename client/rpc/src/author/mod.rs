@@ -22,29 +22,28 @@
 mod tests;
 
 use std::{sync::Arc, convert::TryInto};
-use log::warn;
 
+use crate::SubscriptionTaskExecutor;
+
+use futures::{StreamExt, FutureExt};
 use sp_blockchain::HeaderBackend;
-
-use rpc::futures::{Sink, Future, future::result};
-use futures::{StreamExt as _, compat::Compat};
-use futures::future::{ready, FutureExt, TryFutureExt};
 use sc_rpc_api::DenyUnsafe;
-use jsonrpc_pubsub::{typed::Subscriber, SubscriptionId, manager::SubscriptionManager};
+use jsonrpsee::RpcModule;
+use jsonrpsee::types::error::{Error as JsonRpseeError, CallError as RpseeCallError};
 use codec::{Encode, Decode};
 use sp_core::Bytes;
 use sp_keystore::{SyncCryptoStorePtr, SyncCryptoStore};
 use sp_api::ProvideRuntimeApi;
 use sp_runtime::generic;
 use sc_transaction_pool_api::{
-	TransactionPool, InPoolTransaction, TransactionStatus, TransactionSource,
-	BlockHash, TxHash, TransactionFor, error::IntoPoolError,
+	TransactionPool, InPoolTransaction, TransactionSource,
+	TxHash, TransactionFor, error::IntoPoolError,
 };
 use sp_session::SessionKeys;
 
 /// Re-export the API for backward compatibility.
 pub use sc_rpc_api::author::*;
-use self::error::{Error, FutureResult, Result};
+use self::error::{Error, Result};
 
 /// Authoring API
 pub struct Author<P, Client> {
@@ -52,30 +51,170 @@ pub struct Author<P, Client> {
 	client: Arc<Client>,
 	/// Transactions pool
 	pool: Arc<P>,
-	/// Subscriptions manager
-	subscriptions: SubscriptionManager,
 	/// The key store.
 	keystore: SyncCryptoStorePtr,
 	/// Whether to deny unsafe calls
 	deny_unsafe: DenyUnsafe,
+	/// Executor to spawn subscriptions.
+	executor: Arc<SubscriptionTaskExecutor>,
 }
+
 
 impl<P, Client> Author<P, Client> {
 	/// Create new instance of Authoring API.
 	pub fn new(
 		client: Arc<Client>,
 		pool: Arc<P>,
-		subscriptions: SubscriptionManager,
 		keystore: SyncCryptoStorePtr,
 		deny_unsafe: DenyUnsafe,
+		executor: Arc<SubscriptionTaskExecutor>,
 	) -> Self {
 		Author {
 			client,
 			pool,
-			subscriptions,
 			keystore,
 			deny_unsafe,
+			executor,
 		}
+	}
+}
+
+impl<P, Client> Author<P, Client>
+	where
+		P: TransactionPool + Sync + Send + 'static,
+		Client: HeaderBackend<P::Block> + ProvideRuntimeApi<P::Block> + Send + Sync + 'static,
+		Client::Api: SessionKeys<P::Block>,
+{
+	/// Convert a [`Author`] to an [`RpcModule`]. Registers all the RPC methods available with the RPC server.
+	pub fn into_rpc_module(self) -> std::result::Result<RpcModule<Self>, JsonRpseeError> {
+		let mut module = RpcModule::new(self);
+
+		module.register_method("author_insertKey", |params, author| {
+			author.deny_unsafe.check_if_safe()?;
+			let (key_type, suri, public): (String, String, Bytes) = params.parse()?;
+			let key_type = key_type.as_str().try_into().map_err(|_| Error::BadKeyType)?;
+			SyncCryptoStore::insert_unknown(
+				&*author.keystore,
+				key_type, &suri,
+				&public[..]
+			)
+			.map_err(|_| Error::KeyStoreUnavailable)?;
+			Ok(())
+		})?;
+
+		module.register_method::<Bytes, _>("author_rotateKeys", |_params, author| {
+			author.deny_unsafe.check_if_safe()?;
+
+			let best_block_hash = author.client.info().best_hash;
+			author.client.runtime_api().generate_session_keys(
+				&generic::BlockId::Hash(best_block_hash),
+				None,
+			)
+			.map(Into::into)
+			.map_err(|api_err| Error::Client(Box::new(api_err)).into())
+		})?;
+
+		module.register_method("author_hasSessionKeys", |params, author| {
+			author.deny_unsafe.check_if_safe()?;
+
+			let session_keys: Bytes = params.one()?;
+			let best_block_hash = author.client.info().best_hash;
+			let keys = author.client.runtime_api().decode_session_keys(
+				&generic::BlockId::Hash(best_block_hash),
+				session_keys.to_vec(),
+			).map_err(|e| RpseeCallError::Failed(Box::new(e)))?
+			.ok_or_else(|| Error::InvalidSessionKeys)?;
+
+			Ok(SyncCryptoStore::has_keys(&*author.keystore, &keys))
+		})?;
+
+		module.register_method("author_hasKey", |params, author| {
+			author.deny_unsafe.check_if_safe()?;
+
+			let (public_key, key_type)  = params.parse::<(Vec<u8>, String)>()?;
+			let key_type = key_type.as_str().try_into().map_err(|_| Error::BadKeyType)?;
+			Ok(SyncCryptoStore::has_keys(&*author.keystore, &[(public_key, key_type)]))
+		})?;
+
+		module.register_async_method::<TxHash<P>, _>("author_submitExtrinsic", |params, author| {
+			let ext: Bytes = match params.one() {
+				Ok(ext) => ext,
+				Err(e) => return Box::pin(futures::future::err(e)),
+			};
+			async move {
+				let xt = match Decode::decode(&mut &ext[..]) {
+					Ok(xt) => xt,
+					Err(err) => return Err(RpseeCallError::Failed(err.into())),
+				};
+				let best_block_hash = author.client.info().best_hash;
+				author.pool.submit_one(&generic::BlockId::hash(best_block_hash), TX_SOURCE, xt)
+					.await
+					.map_err(|e| e.into_pool_error()
+						.map(|e| RpseeCallError::Failed(Box::new(e)))
+						.unwrap_or_else(|e| RpseeCallError::Failed(Box::new(e))))
+			}.boxed()
+		})?;
+
+		module.register_method::<Vec<Bytes>, _>("author_pendingExtrinsics", |_, author| {
+			Ok(author.pool.ready().map(|tx| tx.data().encode().into()).collect())
+		})?;
+
+		module.register_method::<Vec<TxHash<P>>, _>("author_removeExtrinsic", |params, author| {
+			author.deny_unsafe.check_if_safe()?;
+
+			let bytes_or_hash: Vec<hash::ExtrinsicOrHash<TxHash<P>>> = params.parse()?;
+			let hashes = bytes_or_hash.into_iter()
+				.map(|x| match x {
+					hash::ExtrinsicOrHash::Hash(h) => Ok(h),
+					hash::ExtrinsicOrHash::Extrinsic(bytes) => {
+						let xt = Decode::decode(&mut &bytes[..])?;
+						Ok(author.pool.hash_of(&xt))
+					}
+				})
+				.collect::<Result<Vec<_>>>()?;
+
+			Ok(
+				author.pool
+					.remove_invalid(&hashes)
+					.into_iter()
+					.map(|tx| tx.hash().clone())
+					.collect()
+			)
+		})?;
+
+		module.register_subscription(
+			"author_submitAndWatchExtrinsic",
+			"author_unwatchExtrinsic",
+			|params, mut sink, ctx|
+		{
+			let xt: Bytes = params.one()?;
+			let best_block_hash = ctx.client.info().best_hash;
+			let dxt = TransactionFor::<P>::decode(&mut &xt[..]).map_err(|e| JsonRpseeError::Custom(e.to_string()))?;
+
+			let executor = ctx.executor.clone();
+			let fut = async move {
+				let stream = match ctx.pool
+					.submit_and_watch(&generic::BlockId::hash(best_block_hash), TX_SOURCE, dxt)
+					.await
+				{
+					Ok(stream) => stream,
+					Err(e) => {
+						let _ = sink.send(&format!("txpool subscription failed: {:?}; subscription useless", e));
+						return;
+					}
+				};
+
+				stream.for_each(|item| {
+					let _ = sink.send(&item);
+					futures::future::ready(())
+				}).await;
+			};
+
+			executor.execute_new(Box::pin(fut));
+			Ok(())
+		})?;
+
+		Ok(module)
 	}
 }
 
@@ -85,153 +224,3 @@ impl<P, Client> Author<P, Client> {
 /// of such transactions, so that the block authors can inject
 /// some unique transactions via RPC and have them included in the pool.
 const TX_SOURCE: TransactionSource = TransactionSource::External;
-
-impl<P, Client> AuthorApi<TxHash<P>, BlockHash<P>> for Author<P, Client>
-	where
-		P: TransactionPool + Sync + Send + 'static,
-		Client: HeaderBackend<P::Block> + ProvideRuntimeApi<P::Block> + Send + Sync + 'static,
-		Client::Api: SessionKeys<P::Block>,
-{
-	type Metadata = crate::Metadata;
-
-	fn insert_key(
-		&self,
-		key_type: String,
-		suri: String,
-		public: Bytes,
-	) -> Result<()> {
-		self.deny_unsafe.check_if_safe()?;
-
-		let key_type = key_type.as_str().try_into().map_err(|_| Error::BadKeyType)?;
-		SyncCryptoStore::insert_unknown(&*self.keystore, key_type, &suri, &public[..])
-			.map_err(|_| Error::KeyStoreUnavailable)?;
-		Ok(())
-	}
-
-	fn rotate_keys(&self) -> Result<Bytes> {
-		self.deny_unsafe.check_if_safe()?;
-
-		let best_block_hash = self.client.info().best_hash;
-		self.client.runtime_api().generate_session_keys(
-			&generic::BlockId::Hash(best_block_hash),
-			None,
-		).map(Into::into).map_err(|e| Error::Client(Box::new(e)))
-	}
-
-	fn has_session_keys(&self, session_keys: Bytes) -> Result<bool> {
-		self.deny_unsafe.check_if_safe()?;
-
-		let best_block_hash = self.client.info().best_hash;
-		let keys = self.client.runtime_api().decode_session_keys(
-			&generic::BlockId::Hash(best_block_hash),
-			session_keys.to_vec(),
-		).map_err(|e| Error::Client(Box::new(e)))?
-			.ok_or_else(|| Error::InvalidSessionKeys)?;
-
-		Ok(SyncCryptoStore::has_keys(&*self.keystore, &keys))
-	}
-
-	fn has_key(&self, public_key: Bytes, key_type: String) -> Result<bool> {
-		self.deny_unsafe.check_if_safe()?;
-
-		let key_type = key_type.as_str().try_into().map_err(|_| Error::BadKeyType)?;
-		Ok(SyncCryptoStore::has_keys(&*self.keystore, &[(public_key.to_vec(), key_type)]))
-	}
-
-	fn submit_extrinsic(&self, ext: Bytes) -> FutureResult<TxHash<P>> {
-		let xt = match Decode::decode(&mut &ext[..]) {
-			Ok(xt) => xt,
-			Err(err) => return Box::new(result(Err(err.into()))),
-		};
-		let best_block_hash = self.client.info().best_hash;
-		Box::new(self.pool
-			.submit_one(&generic::BlockId::hash(best_block_hash), TX_SOURCE, xt)
-			.compat()
-			.map_err(|e| e.into_pool_error()
-				.map(Into::into)
-				.unwrap_or_else(|e| error::Error::Verification(Box::new(e)).into()))
-		)
-	}
-
-	fn pending_extrinsics(&self) -> Result<Vec<Bytes>> {
-		Ok(self.pool.ready().map(|tx| tx.data().encode().into()).collect())
-	}
-
-	fn remove_extrinsic(
-		&self,
-		bytes_or_hash: Vec<hash::ExtrinsicOrHash<TxHash<P>>>,
-	) -> Result<Vec<TxHash<P>>> {
-		self.deny_unsafe.check_if_safe()?;
-
-		let hashes = bytes_or_hash.into_iter()
-			.map(|x| match x {
-				hash::ExtrinsicOrHash::Hash(h) => Ok(h),
-				hash::ExtrinsicOrHash::Extrinsic(bytes) => {
-					let xt = Decode::decode(&mut &bytes[..])?;
-					Ok(self.pool.hash_of(&xt))
-				},
-			})
-			.collect::<Result<Vec<_>>>()?;
-
-		Ok(
-			self.pool
-				.remove_invalid(&hashes)
-				.into_iter()
-				.map(|tx| tx.hash().clone())
-				.collect()
-		)
-	}
-
-	fn watch_extrinsic(&self,
-		_metadata: Self::Metadata,
-		subscriber: Subscriber<TransactionStatus<TxHash<P>, BlockHash<P>>>,
-		xt: Bytes,
-	) {
-		let submit = || -> Result<_> {
-			let best_block_hash = self.client.info().best_hash;
-			let dxt = TransactionFor::<P>::decode(&mut &xt[..])
-				.map_err(error::Error::from)?;
-			Ok(
-				self.pool
-					.submit_and_watch(&generic::BlockId::hash(best_block_hash), TX_SOURCE, dxt)
-					.map_err(|e| e.into_pool_error()
-						.map(error::Error::from)
-						.unwrap_or_else(|e| error::Error::Verification(Box::new(e)).into())
-					)
-			)
-		};
-
-		let subscriptions = self.subscriptions.clone();
-		let future = ready(submit())
-			.and_then(|res| res)
-			// convert the watcher into a `Stream`
-			.map(|res| res.map(|stream| stream.map(|v| Ok::<_, ()>(Ok(v)))))
-			// now handle the import result,
-			// start a new subscrition
-			.map(move |result| match result {
-				Ok(watcher) => {
-					subscriptions.add(subscriber, move |sink| {
-						sink
-							.sink_map_err(|e| log::debug!("Subscription sink failed: {:?}", e))
-							.send_all(Compat::new(watcher))
-							.map(|_| ())
-					});
-				},
-				Err(err) => {
-					warn!("Failed to submit extrinsic: {}", err);
-					// reject the subscriber (ignore errors - we don't care if subscriber is no longer there).
-					let _ = subscriber.reject(err.into());
-				},
-			});
-
-		let res = self.subscriptions.executor()
-			.execute(Box::new(Compat::new(future.map(|_| Ok(())))));
-		if res.is_err() {
-			warn!("Error spawning subscription RPC task.");
-		}
-	}
-
-	fn unwatch_extrinsic(&self, _metadata: Option<Self::Metadata>, id: SubscriptionId) -> Result<bool> {
-		Ok(self.subscriptions.cancel(id))
-	}
-}

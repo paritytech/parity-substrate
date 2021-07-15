@@ -36,16 +36,15 @@ pub use sp_keyring::{
 pub use sp_keystore::{SyncCryptoStorePtr, SyncCryptoStore};
 pub use sp_runtime::{Storage, StorageChild};
 pub use sp_state_machine::ExecutionStrategy;
-pub use sc_service::{RpcHandlers, RpcSession, client};
+pub use sc_service::client;
 pub use self::client_ext::{ClientExt, ClientBlockImportExt};
 
 use std::pin::Pin;
 use std::sync::Arc;
 use std::collections::{HashSet, HashMap};
-use futures::{future::{Future, FutureExt}, stream::StreamExt};
-use serde::Deserialize;
+use futures::{future::Future, stream::StreamExt};
 use sp_core::storage::ChildInfo;
-use sp_runtime::{OpaqueExtrinsic, codec::Encode, traits::{Block as BlockT, BlakeTwo256}};
+use sp_runtime::{traits::{Block as BlockT, BlakeTwo256}};
 use sc_service::client::{LocalCallExecutor, ClientConfig};
 use sc_client_api::BlockchainEvents;
 
@@ -288,100 +287,103 @@ impl<Block: BlockT, E, Backend, G: GenesisInit> TestClientBuilder<
 	}
 }
 
-/// The output of an RPC transaction.
-pub struct RpcTransactionOutput {
-	/// The output string of the transaction if any.
-	pub result: Option<String>,
-	/// The session object.
-	pub session: RpcSession,
-	/// An async receiver if data will be returned via a callback.
-	pub receiver: futures01::sync::mpsc::Receiver<String>,
-}
+// TODO: (dp) This is **not** dead code; used in polkadot and cumulus for testing. See https://github.com/paritytech/substrate/pull/9264
+// 		 We need a solution for this.
 
-impl std::fmt::Debug for RpcTransactionOutput {
-	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-		write!(f, "RpcTransactionOutput {{ result: {:?}, session, receiver }}", self.result)
-	}
-}
+// /// The output of an RPC transaction.
+// pub struct RpcTransactionOutput {
+// 	/// The output string of the transaction if any.
+// 	pub result: Option<String>,
+// 	/// The session object.
+// 	pub session: RpcSession,
+// 	/// An async receiver if data will be returned via a callback.
+// 	pub receiver: futures01::sync::mpsc::Receiver<String>,
+// }
 
-/// An error for when the RPC call fails.
-#[derive(Deserialize, Debug)]
-pub struct RpcTransactionError {
-	/// A Number that indicates the error type that occurred.
-	pub code: i64,
-	/// A String providing a short description of the error.
-	pub message: String,
-	/// A Primitive or Structured value that contains additional information about the error.
-	pub data: Option<serde_json::Value>,
-}
+// impl std::fmt::Debug for RpcTransactionOutput {
+// 	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+// 		write!(f, "RpcTransactionOutput {{ result: {:?}, session, receiver }}", self.result)
+// 	}
+// }
 
-impl std::fmt::Display for RpcTransactionError {
-	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-		std::fmt::Debug::fmt(self, f)
-	}
-}
+// /// An error for when the RPC call fails.
+// #[derive(Deserialize, Debug)]
+// pub struct RpcTransactionError {
+// 	/// A Number that indicates the error type that occurred.
+// 	pub code: i64,
+// 	/// A String providing a short description of the error.
+// 	pub message: String,
+// 	/// A Primitive or Structured value that contains additional information about the error.
+// 	pub data: Option<serde_json::Value>,
+// }
 
-/// An extension trait for `RpcHandlers`.
-pub trait RpcHandlersExt {
-	/// Send a transaction through the RpcHandlers.
-	fn send_transaction(
-		&self,
-		extrinsic: OpaqueExtrinsic,
-	) -> Pin<Box<dyn Future<Output = Result<RpcTransactionOutput, RpcTransactionError>> + Send>>;
-}
+// impl std::fmt::Display for RpcTransactionError {
+// 	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+// 		std::fmt::Debug::fmt(self, f)
+// 	}
+// }
 
-impl RpcHandlersExt for RpcHandlers {
-	fn send_transaction(
-		&self,
-		extrinsic: OpaqueExtrinsic,
-	) -> Pin<Box<dyn Future<Output = Result<RpcTransactionOutput, RpcTransactionError>> + Send>> {
-		let (tx, rx) = futures01::sync::mpsc::channel(0);
-		let mem = RpcSession::new(tx.into());
-		Box::pin(self
-			.rpc_query(
-				&mem,
-				&format!(
-					r#"{{
-						"jsonrpc": "2.0",
-						"method": "author_submitExtrinsic",
-						"params": ["0x{}"],
-						"id": 0
-					}}"#,
-					hex::encode(extrinsic.encode())
-				),
-			)
-			.map(move |result| parse_rpc_result(result, mem, rx))
-		)
-	}
-}
+// /// An extension trait for `RpcHandlers`.
+// pub trait RpcHandlersExt {
+// 	/// Send a transaction through the RpcHandlers.
+// 	fn send_transaction(
+// 		&self,
+// 		extrinsic: OpaqueExtrinsic,
+// 	) -> Pin<Box<dyn Future<Output = Result<RpcTransactionOutput, RpcTransactionError>> + Send>>;
+// }
 
-pub(crate) fn parse_rpc_result(
-	result: Option<String>,
-	session: RpcSession,
-	receiver: futures01::sync::mpsc::Receiver<String>,
-) -> Result<RpcTransactionOutput, RpcTransactionError> {
-	if let Some(ref result) = result {
-		let json: serde_json::Value = serde_json::from_str(result)
-			.expect("the result can only be a JSONRPC string; qed");
-		let error = json
-			.as_object()
-			.expect("JSON result is always an object; qed")
-			.get("error");
+// impl RpcHandlersExt for RpcHandlers {
+// 	fn send_transaction(
+// 		&self,
+// 		extrinsic: OpaqueExtrinsic,
+// 	) -> Pin<Box<dyn Future<Output = Result<RpcTransactionOutput, RpcTransactionError>> + Send>> {
+// 		let (tx, rx) = futures01::sync::mpsc::channel(0);
+// 		let mem = RpcSession::new(tx.into());
+// 		Box::pin(self
+// 			.rpc_query(
+// 				&mem,
+// 				&format!(
+// 					r#"{{
+// 						"jsonrpc": "2.0",
+// 						"method": "author_submitExtrinsic",
+// 						"params": ["0x{}"],
+// 						"id": 0
+// 					}}"#,
+// 					hex::encode(extrinsic.encode())
+// 				),
+// 			)
+// 			.map(move |result| parse_rpc_result(result, mem, rx))
+// 		)
+// 	}
+// }
 
-		if let Some(error) = error {
-			return Err(
-				serde_json::from_value(error.clone())
-					.expect("the JSONRPC result's error is always valid; qed")
-			)
-		}
-	}
+// pub(crate) fn parse_rpc_result(
+// 	result: Option<String>,
+// 	session: RpcSession,
+// 	receiver: futures01::sync::mpsc::Receiver<String>,
+// ) -> Result<RpcTransactionOutput, RpcTransactionError> {
+// 	if let Some(ref result) = result {
+// 		let json: serde_json::Value = serde_json::from_str(result)
+// 			.expect("the result can only be a JSONRPC string; qed");
+// 		let error = json
+// 			.as_object()
+// 			.expect("JSON result is always an object; qed")
+// 			.get("error");
 
-	Ok(RpcTransactionOutput {
-		result,
-		session,
-		receiver,
-	})
-}
+// 		if let Some(error) = error {
+// 			return Err(
+// 				serde_json::from_value(error.clone())
+// 					.expect("the JSONRPC result's error is always valid; qed")
+// 			)
+// 		}
+// 	}
+
+// 	Ok(RpcTransactionOutput {
+// 		result,
+// 		session,
+// 		receiver,
+// 	})
+// }
 
 /// An extension trait for `BlockchainEvents`.
 pub trait BlockchainEventsExt<C, B>

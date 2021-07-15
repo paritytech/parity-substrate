@@ -45,7 +45,7 @@ pub enum Error {
 	TemporarilyBanned,
 
 	#[error("[{0:?}] Already imported")]
-	AlreadyImported(Box<dyn std::any::Any + Send>),
+	AlreadyImported(Box<dyn std::any::Any + Send + Sync>),
 
 	#[error("Too low priority ({} > {})", old, new)]
 	TooLowPriority {
@@ -72,7 +72,7 @@ pub enum Error {
 }
 
 /// Transaction pool error conversion.
-pub trait IntoPoolError: std::error::Error + Send + Sized {
+pub trait IntoPoolError: std::error::Error + Send + Sized + Sync {
 	/// Try to extract original `Error`
 	///
 	/// This implementation is optional and used only to
