@@ -343,7 +343,7 @@ fn start_rpc_servers<
 >(
 	config: &Configuration,
 	mut gen_handler: H,
-	rpc_metrics: sc_rpc_server::RpcMetrics,
+	rpc_metrics: Option<sc_rpc_server::RpcMetrics>,
 ) -> Result<Box<dyn std::any::Any + Send + Sync>, error::Error> {
 	fn maybe_start_server<T, F>(address: Option<SocketAddr>, mut start: F) -> Result<Option<T>, io::Error>
 		where F: FnMut(&SocketAddr) -> Result<T, io::Error>,

@@ -18,46 +18,69 @@
 
 //! Middleware for RPC requests.
 
+use std::time::Instant;
+
 use jsonrpc_core::{
 	Middleware as RequestMiddleware, Metadata,
-	Request, Response, FutureResponse, FutureOutput
+	FutureResponse, FutureOutput
 };
-use prometheus_endpoint::{
-	Registry, CounterVec, PrometheusError,
-	Opts, register, U64
-};
+use prometheus_endpoint::{GaugeVec, HistogramOpts, HistogramVec, Opts, PrometheusError, Registry, U64, register};
 
 use futures::{future::Either, Future};
 
 /// Metrics for RPC middleware
 #[derive(Debug, Clone)]
 pub struct RpcMetrics {
-	rpc_calls: Option<CounterVec<U64>>,
+	rpc_calls: HistogramVec,
+	started: GaugeVec<U64>,
+	finished: GaugeVec<U64>
 }
 
 impl RpcMetrics {
 	/// Create an instance of metrics
-	pub fn new(metrics_registry: Option<&Registry>) -> Result<Self, PrometheusError> {
-		Ok(Self {
-			rpc_calls: metrics_registry.map(|r|
-				register(
-					CounterVec::new(
-						Opts::new(
-							"rpc_calls_total",
-							"Number of rpc calls received",
+	pub fn new(metrics_registry: Option<&Registry>) -> Result<Option<Self>, PrometheusError> {
+		if let Some(r) = metrics_registry {
+			Ok(Some(Self {
+				rpc_calls: register(
+					HistogramVec::new(
+						HistogramOpts::new(
+							"rpc_calls_time",
+							"Total time [ms] of processed RPC calls",
 						),
-						&["protocol"]
+						&["protocol", "method"]
 					)?,
 					r,
-				)
-			).transpose()?,
-		})
+				)?,
+				started: register(
+					GaugeVec::new(
+						Opts::new(
+							"rpc_calls_started",
+							"Number of received RPC calls (unique un-batched requests)"
+						),
+						&["protocol", "method"]
+					)?,
+					r
+				)?,
+				finished: register(
+					GaugeVec::new(
+						Opts::new(
+							"rpc_calls_finished",
+							"Number of processed RPC calls (unique un-batched requests)"
+						),
+						&["protocol", "method", "is_error"]
+					)?,
+					r
+				)?,
+			}))
+		} else {
+			Ok(None)
+		}
 	}
 }
 
 /// Middleware for RPC calls
 pub struct RpcMiddleware {
-	metrics: RpcMetrics,
+	metrics: Option<RpcMetrics>,
 	transport_label: String,
 }
 
@@ -66,7 +89,7 @@ impl RpcMiddleware {
 	///
 	/// - `metrics`: Will be used to report statistics.
 	/// - `transport_label`: The label that is used when reporting the statistics.
-	pub fn new(metrics: RpcMetrics, transport_label: &str) -> Self {
+	pub fn new(metrics: Option<RpcMetrics>, transport_label: &str) -> Self {
 		RpcMiddleware {
 			metrics,
 			transport_label: String::from(transport_label),
@@ -78,15 +101,52 @@ impl<M: Metadata> RequestMiddleware<M> for RpcMiddleware {
 	type Future = FutureResponse;
 	type CallFuture = FutureOutput;
 
-	fn on_request<F, X>(&self, request: Request, meta: M, next: F) -> Either<FutureResponse, X>
+	fn on_call<F, X>(&self, call: jsonrpc_core::Call, meta: M, next: F) -> Either<Self::CallFuture, X>
 	where
-		F: Fn(Request, M) -> X + Send + Sync,
-		X: Future<Item = Option<Response>, Error = ()> + Send + 'static,
+		F: Fn(jsonrpc_core::Call, M) -> X + Send + Sync,
+		X: Future<Item = Option<jsonrpc_core::Output>, Error = ()> + Send + 'static,
 	{
-		if let Some(ref rpc_calls) = self.metrics.rpc_calls {
-			rpc_calls.with_label_values(&[self.transport_label.as_str()]).inc();
+		let start = Instant::now();
+		let name = call_name(&call).to_owned();
+		let metrics = self.metrics.clone();
+		let transport_label = self.transport_label.clone();
+		log::trace!(target: "rpc_metrics", "[{}] {} call: {:?}", transport_label, name, &call);
+		if let Some(ref metrics) = metrics {
+			metrics.started.with_label_values(&[
+				transport_label.as_str(),
+				name.as_str(),
+			]).inc();
 		}
+		Either::A(Box::new(next(call, meta).then(move |r| {
+			let millis = start.elapsed().as_millis();
+			if let Some(ref metrics) = metrics {
+				metrics.rpc_calls.with_label_values(&[
+					transport_label.as_str(),
+					name.as_str(),
+				]).observe(millis as _);
+				metrics.finished.with_label_values(&[
+					transport_label.as_str(),
+					name.as_str(),
+					format!("{}", is_success(&r)).as_str(),
+				]).inc();
+			}
+			log::debug!(target: "rpc_metrics", "[{}] {} call took {} ms", transport_label, name, millis);
+			r
+		})))
+	}
+}
 
-		Either::B(next(request, meta))
+fn call_name(call: &jsonrpc_core::Call) -> &str {
+	match call {
+		jsonrpc_core::Call::Invalid { .. } => "invalid",
+		jsonrpc_core::Call::MethodCall(ref call) => &*call.method,
+		jsonrpc_core::Call::Notification(ref notification) => &*notification.method,
+	}
+}
+
+fn is_success(output: &Result<Option<jsonrpc_core::Output>, ()>) -> bool {
+	match output {
+		Ok(Some(jsonrpc_core::Output::Success(..))) => true,
+		_ => false,
 	}
 }
