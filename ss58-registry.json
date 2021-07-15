@@ -443,6 +443,15 @@
 			"website": "https://neatcoin.org"
 		},
 		{
+			"prefix": 50,
+			"network": "nftmart",
+			"displayName": "MFTMart",
+			"symbols": ["NMT"],
+			"decimals": [12],
+			"standardAccount": "*25519",
+			"website": "https://www.nftmart.io"
+		},
+		{
 			"prefix": 63,
 			"network": "hydradx",
 			"displayName": "HydraDX",

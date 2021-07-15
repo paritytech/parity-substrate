@@ -569,6 +569,8 @@ ss58_address_format!(
 		(47, "reserved47", "Reserved for future use (47).")
 	NeatcoinAccount =>
 		(48, "neatcoin", "Neatcoin mainnet, standard account (*25519).")
+	NFTMartAccount =>
+		(50, "nftmart", "NFTMart Network, standard account (*25519).")
 	HydraDXAccount =>
 		(63, "hydradx", "HydraDX standard account (*25519).")
 	AventusAccount =>
