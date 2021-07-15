@@ -2575,7 +2575,7 @@ mod tests {
 			// as part of a patch: return is OK (but it interrupted the batch)
 			assert_ok!(
 				ctx.ext.call_runtime(Call::Utility(UtilCall::batch(vec![
-					allowed_call.clone(), forbidden_call, allowed_call
+					Box::new(allowed_call.clone()), Box::new(forbidden_call), Box::new(allowed_call)
 				]))),
 			);
 

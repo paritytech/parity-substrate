@@ -301,7 +301,7 @@ pub mod pallet {
 		///
 		/// This extrinsic must be called by the Manager origin.
 		#[pallet::weight(T::WeightInfo::set_calls(calls.len() as u32))]
-		pub fn set_calls(origin: OriginFor<T>, calls: Vec<<T as Config>::Call>) -> DispatchResult {
+		pub fn set_calls(origin: OriginFor<T>, calls: Vec<Box<<T as Config>::Call>>) -> DispatchResult {
 			T::ManagerOrigin::ensure_origin(origin)?;
 			ensure!(calls.len() <= T::MaxCalls::get() as usize, Error::<T>::TooManyCalls);
 			if calls.is_empty() {
@@ -395,7 +395,7 @@ impl<T: Config> Pallet<T> {
 	}
 
 	// Converts a vector of calls into a vector of call indices.
-	fn calls_to_indices(calls: &[<T as Config>::Call]) -> Result<Vec<CallIndex>, DispatchError> {
+	fn calls_to_indices(calls: &[Box<<T as Config>::Call>]) -> Result<Vec<CallIndex>, DispatchError> {
 		let mut indices = Vec::with_capacity(calls.len());
 		for c in calls.iter() {
 			let index = Self::call_to_index(c)?;

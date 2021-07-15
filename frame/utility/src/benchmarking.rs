@@ -32,13 +32,16 @@ fn assert_last_event<T: Config>(generic_event: <T as Config>::Event) {
 benchmarks! {
 	batch {
 		let c in 0 .. 1000;
-		let mut calls: Vec<<T as Config>::Call> = Vec::new();
+		let mut calls = Vec::new();
 		for i in 0 .. c {
-			let call = frame_system::Call::remark(vec![]).into();
-			calls.push(call);
+			calls.push(Box::new(frame_system::Call::remark(vec![]).into()));
 		}
 		let caller = whitelisted_caller();
-	}: _(RawOrigin::Signed(caller), calls)
+		let call = <Call<T>>::batch(calls).encode();
+	}: {
+		let call = <Call<T>>::decode(&mut &call[..]).expect("encoding is valid");
+		call.dispatch_bypass_filter(RawOrigin::Signed(caller).into())?;
+	}
 	verify {
 		assert_last_event::<T>(Event::BatchCompleted.into())
 	}
@@ -53,13 +56,16 @@ benchmarks! {
 
 	batch_all {
 		let c in 0 .. 1000;
-		let mut calls: Vec<<T as Config>::Call> = Vec::new();
+		let mut calls = Vec::new();
 		for i in 0 .. c {
-			let call = frame_system::Call::remark(vec![]).into();
-			calls.push(call);
+			calls.push(Box::new(frame_system::Call::remark(vec![]).into()));
 		}
 		let caller = whitelisted_caller();
-	}: _(RawOrigin::Signed(caller), calls)
+		let call = <Call<T>>::batch_all(calls).encode();
+	}: {
+		let call = <Call<T>>::decode(&mut &call[..]).expect("encoding is valid");
+		call.dispatch_bypass_filter(RawOrigin::Signed(caller).into())?;
+	}
 	verify {
 		assert_last_event::<T>(Event::BatchCompleted.into())
 	}

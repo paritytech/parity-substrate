@@ -149,7 +149,7 @@ pub mod pallet {
 		})]
 		pub fn batch(
 			origin: OriginFor<T>,
-			calls: Vec<<T as Config>::Call>,
+			calls: Vec<Box<<T as Config>::Call>>,
 		) -> DispatchResultWithPostInfo {
 			let is_root = ensure_root(origin.clone()).is_ok();
 			let calls_len = calls.len();
@@ -256,7 +256,7 @@ pub mod pallet {
 		#[transactional]
 		pub fn batch_all(
 			origin: OriginFor<T>,
-			calls: Vec<<T as Config>::Call>,
+			calls: Vec<Box<<T as Config>::Call>>,
 		) -> DispatchResultWithPostInfo {
 			let is_root = ensure_root(origin.clone()).is_ok();
 			let calls_len = calls.len();

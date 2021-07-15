@@ -328,7 +328,7 @@ fn filtering_works() {
 		assert_ok!(Proxy::proxy(Origin::signed(4), 1, None, call.clone()));
 		System::assert_last_event(ProxyEvent::ProxyExecuted(Err(DispatchError::BadOrigin)).into());
 
-		let call = Box::new(Call::Utility(UtilityCall::batch(vec![*inner])));
+		let call = Box::new(Call::Utility(UtilityCall::batch(vec![inner])));
 		assert_ok!(Proxy::proxy(Origin::signed(2), 1, None, call.clone()));
 		expect_events(vec![UtilityEvent::BatchCompleted.into(), ProxyEvent::ProxyExecuted(Ok(())).into()]);
 		assert_ok!(Proxy::proxy(Origin::signed(3), 1, None, call.clone()));
@@ -340,7 +340,7 @@ fn filtering_works() {
 		]);
 
 		let inner = Box::new(Call::Proxy(ProxyCall::add_proxy(5, ProxyType::Any, 0)));
-		let call = Box::new(Call::Utility(UtilityCall::batch(vec![*inner])));
+		let call = Box::new(Call::Utility(UtilityCall::batch(vec![inner])));
 		assert_ok!(Proxy::proxy(Origin::signed(2), 1, None, call.clone()));
 		expect_events(vec![UtilityEvent::BatchCompleted.into(), ProxyEvent::ProxyExecuted(Ok(())).into()]);
 		assert_ok!(Proxy::proxy(Origin::signed(3), 1, None, call.clone()));

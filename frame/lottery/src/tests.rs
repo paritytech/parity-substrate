@@ -44,8 +44,8 @@ fn basic_end_to_end_works() {
 		let length = 20;
 		let delay = 5;
 		let calls = vec![
-			Call::Balances(BalancesCall::force_transfer(0, 0, 0)),
-			Call::Balances(BalancesCall::transfer(0, 0)),
+			Box::new(Call::Balances(BalancesCall::force_transfer(0, 0, 0))),
+			Box::new(Call::Balances(BalancesCall::transfer(0, 0))),
 		];
 
 		// Set calls for the lottery
@@ -103,17 +103,17 @@ fn set_calls_works() {
 		assert!(!CallIndices::<Test>::exists());
 
 		let calls = vec![
-			Call::Balances(BalancesCall::force_transfer(0, 0, 0)),
-			Call::Balances(BalancesCall::transfer(0, 0)),
+			Box::new(Call::Balances(BalancesCall::force_transfer(0, 0, 0))),
+			Box::new(Call::Balances(BalancesCall::transfer(0, 0))),
 		];
 
 		assert_ok!(Lottery::set_calls(Origin::root(), calls));
 		assert!(CallIndices::<Test>::exists());
 
 		let too_many_calls = vec![
-			Call::Balances(BalancesCall::force_transfer(0, 0, 0)),
-			Call::Balances(BalancesCall::transfer(0, 0)),
-			Call::System(SystemCall::remark(vec![])),
+			Box::new(Call::Balances(BalancesCall::force_transfer(0, 0, 0))),
+			Box::new(Call::Balances(BalancesCall::transfer(0, 0))),
+			Box::new(Call::System(SystemCall::remark(vec![]))),
 		];
 
 		assert_noop!(
@@ -165,8 +165,8 @@ fn buy_ticket_works_as_simple_passthrough() {
 
 		// Lottery is set up, but too expensive to enter, so `do_buy_ticket` fails.
 		let calls = vec![
-			Call::Balances(BalancesCall::force_transfer(0, 0, 0)),
-			Call::Balances(BalancesCall::transfer(0, 0)),
+			Box::new(Call::Balances(BalancesCall::force_transfer(0, 0, 0))),
+			Box::new(Call::Balances(BalancesCall::transfer(0, 0))),
 		];
 		assert_ok!(Lottery::set_calls(Origin::root(), calls));
 
@@ -205,8 +205,8 @@ fn buy_ticket_works() {
 	new_test_ext().execute_with(|| {
 		// Set calls for the lottery.
 		let calls = vec![
-			Call::System(SystemCall::remark(vec![])),
-			Call::Balances(BalancesCall::transfer(0, 0)),
+			Box::new(Call::System(SystemCall::remark(vec![]))),
+			Box::new(Call::Balances(BalancesCall::transfer(0, 0))),
 		];
 		assert_ok!(Lottery::set_calls(Origin::root(), calls));
 

@@ -273,9 +273,9 @@ fn batch_with_root_works() {
 		assert_eq!(Balances::free_balance(1), 10);
 		assert_eq!(Balances::free_balance(2), 10);
 		assert_ok!(Utility::batch(Origin::root(), vec![
-			Call::Balances(BalancesCall::force_transfer(1, 2, 5)),
-			Call::Balances(BalancesCall::force_transfer(1, 2, 5)),
-			call, // Check filters are correctly bypassed
+			Box::new(Call::Balances(BalancesCall::force_transfer(1, 2, 5))),
+			Box::new(Call::Balances(BalancesCall::force_transfer(1, 2, 5))),
+			Box::new(call), // Check filters are correctly bypassed
 		]));
 		assert_eq!(Balances::free_balance(1), 0);
 		assert_eq!(Balances::free_balance(2), 20);
@@ -290,8 +290,8 @@ fn batch_with_signed_works() {
 		assert_eq!(Balances::free_balance(2), 10);
 		assert_ok!(
 			Utility::batch(Origin::signed(1), vec![
-				Call::Balances(BalancesCall::transfer(2, 5)),
-				Call::Balances(BalancesCall::transfer(2, 5))
+				Box::new(Call::Balances(BalancesCall::transfer(2, 5))),
+				Box::new(Call::Balances(BalancesCall::transfer(2, 5)))
 			]),
 		);
 		assert_eq!(Balances::free_balance(1), 0);
@@ -304,7 +304,7 @@ fn batch_with_signed_filters() {
 	new_test_ext().execute_with(|| {
 		assert_ok!(
 			Utility::batch(Origin::signed(1), vec![
-				Call::Balances(pallet_balances::Call::transfer_keep_alive(2, 1))
+				Box::new(Call::Balances(pallet_balances::Call::transfer_keep_alive(2, 1)))
 			]),
 		);
 		System::assert_last_event(utility::Event::BatchInterrupted(0, DispatchError::BadOrigin).into());
@@ -318,9 +318,9 @@ fn batch_early_exit_works() {
 		assert_eq!(Balances::free_balance(2), 10);
 		assert_ok!(
 			Utility::batch(Origin::signed(1), vec![
-				Call::Balances(BalancesCall::transfer(2, 5)),
-				Call::Balances(BalancesCall::transfer(2, 10)),
-				Call::Balances(BalancesCall::transfer(2, 5)),
+				Box::new(Call::Balances(BalancesCall::transfer(2, 5))),
+				Box::new(Call::Balances(BalancesCall::transfer(2, 10))),
+				Box::new(Call::Balances(BalancesCall::transfer(2, 5))),
 			]),
 		);
 		assert_eq!(Balances::free_balance(1), 5);
@@ -337,9 +337,9 @@ fn batch_weight_calculation_doesnt_overflow() {
 
 		// 3 * 50% saturates to 100%
 		let batch_call = Call::Utility(crate::Call::batch(vec![
-			big_call.clone(),
-			big_call.clone(),
-			big_call.clone(),
+			Box::new(big_call.clone()),
+			Box::new(big_call.clone()),
+			Box::new(big_call.clone()),
 		]));
 
 		assert_eq!(batch_call.get_dispatch_info().weight, Weight::max_value());
@@ -356,7 +356,7 @@ fn batch_handles_weight_refund() {
 
 		// Full weight when ok
 		let inner_call = Call::Example(ExampleCall::foobar(false, start_weight, None));
-		let batch_calls = vec![inner_call; batch_len as usize];
+		let batch_calls = vec![Box::new(inner_call); batch_len as usize];
 		let call = Call::Utility(UtilityCall::batch(batch_calls));
 		let info = call.get_dispatch_info();
 		let result = call.dispatch(Origin::signed(1));
@@ -365,7 +365,7 @@ fn batch_handles_weight_refund() {
 
 		// Refund weight when ok
 		let inner_call = Call::Example(ExampleCall::foobar(false, start_weight, Some(end_weight)));
-		let batch_calls = vec![inner_call; batch_len as usize];
+		let batch_calls = vec![Box::new(inner_call); batch_len as usize];
 		let call = Call::Utility(UtilityCall::batch(batch_calls));
 		let info = call.get_dispatch_info();
 		let result = call.dispatch(Origin::signed(1));
@@ -376,7 +376,7 @@ fn batch_handles_weight_refund() {
 		// Full weight when err
 		let good_call = Call::Example(ExampleCall::foobar(false, start_weight, None));
 		let bad_call = Call::Example(ExampleCall::foobar(true, start_weight, None));
-		let batch_calls = vec![good_call, bad_call];
+		let batch_calls = vec![Box::new(good_call), Box::new(bad_call)];
 		let call = Call::Utility(UtilityCall::batch(batch_calls));
 		let info = call.get_dispatch_info();
 		let result = call.dispatch(Origin::signed(1));
@@ -388,7 +388,7 @@ fn batch_handles_weight_refund() {
 		// Refund weight when err
 		let good_call = Call::Example(ExampleCall::foobar(false, start_weight, Some(end_weight)));
 		let bad_call = Call::Example(ExampleCall::foobar(true, start_weight, Some(end_weight)));
-		let batch_calls = vec![good_call, bad_call];
+		let batch_calls = vec![Box::new(good_call), Box::new(bad_call)];
 		let batch_len = batch_calls.len() as Weight;
 		let call = Call::Utility(UtilityCall::batch(batch_calls));
 		let info = call.get_dispatch_info();
@@ -400,7 +400,7 @@ fn batch_handles_weight_refund() {
 		// Partial batch completion
 		let good_call = Call::Example(ExampleCall::foobar(false, start_weight, Some(end_weight)));
 		let bad_call = Call::Example(ExampleCall::foobar(true, start_weight, Some(end_weight)));
-		let batch_calls = vec![good_call, bad_call.clone(), bad_call];
+		let batch_calls = vec![Box::new(good_call), Box::new(bad_call.clone()), Box::new(bad_call)];
 		let call = Call::Utility(UtilityCall::batch(batch_calls));
 		let info = call.get_dispatch_info();
 		let result = call.dispatch(Origin::signed(1));
@@ -421,8 +421,8 @@ fn batch_all_works() {
 		assert_eq!(Balances::free_balance(2), 10);
 		assert_ok!(
 			Utility::batch_all(Origin::signed(1), vec![
-				Call::Balances(BalancesCall::transfer(2, 5)),
-				Call::Balances(BalancesCall::transfer(2, 5))
+				Box::new(Call::Balances(BalancesCall::transfer(2, 5))),
+				Box::new(Call::Balances(BalancesCall::transfer(2, 5)))
 			]),
 		);
 		assert_eq!(Balances::free_balance(1), 0);
@@ -440,9 +440,9 @@ fn batch_all_revert() {
 		assert_eq!(Balances::free_balance(2), 10);
 		assert_noop!(
 			Utility::batch_all(Origin::signed(1), vec![
-				Call::Balances(BalancesCall::transfer(2, 5)),
-				Call::Balances(BalancesCall::transfer(2, 10)),
-				Call::Balances(BalancesCall::transfer(2, 5)),
+				Box::new(Call::Balances(BalancesCall::transfer(2, 5))),
+				Box::new(Call::Balances(BalancesCall::transfer(2, 10))),
+				Box::new(Call::Balances(BalancesCall::transfer(2, 5))),
 			]),
 			DispatchErrorWithPostInfo {
 				post_info: PostDispatchInfo {
@@ -467,7 +467,7 @@ fn batch_all_handles_weight_refund() {
 
 		// Full weight when ok
 		let inner_call = Call::Example(ExampleCall::foobar(false, start_weight, None));
-		let batch_calls = vec![inner_call; batch_len as usize];
+		let batch_calls = vec![Box::new(inner_call); batch_len as usize];
 		let call = Call::Utility(UtilityCall::batch_all(batch_calls));
 		let info = call.get_dispatch_info();
 		let result = call.dispatch(Origin::signed(1));
@@ -476,7 +476,7 @@ fn batch_all_handles_weight_refund() {
 
 		// Refund weight when ok
 		let inner_call = Call::Example(ExampleCall::foobar(false, start_weight, Some(end_weight)));
-		let batch_calls = vec![inner_call; batch_len as usize];
+		let batch_calls = vec![Box::new(inner_call); batch_len as usize];
 		let call = Call::Utility(UtilityCall::batch_all(batch_calls));
 		let info = call.get_dispatch_info();
 		let result = call.dispatch(Origin::signed(1));
@@ -487,7 +487,7 @@ fn batch_all_handles_weight_refund() {
 		// Full weight when err
 		let good_call = Call::Example(ExampleCall::foobar(false, start_weight, None));
 		let bad_call = Call::Example(ExampleCall::foobar(true, start_weight, None));
-		let batch_calls = vec![good_call, bad_call];
+		let batch_calls = vec![Box::new(good_call), Box::new(bad_call)];
 		let call = Call::Utility(UtilityCall::batch_all(batch_calls));
 		let info = call.get_dispatch_info();
 		let result = call.dispatch(Origin::signed(1));
@@ -498,7 +498,7 @@ fn batch_all_handles_weight_refund() {
 		// Refund weight when err
 		let good_call = Call::Example(ExampleCall::foobar(false, start_weight, Some(end_weight)));
 		let bad_call = Call::Example(ExampleCall::foobar(true, start_weight, Some(end_weight)));
-		let batch_calls = vec![good_call, bad_call];
+		let batch_calls = vec![Box::new(good_call), Box::new(bad_call)];
 		let batch_len = batch_calls.len() as Weight;
 		let call = Call::Utility(UtilityCall::batch_all(batch_calls));
 		let info = call.get_dispatch_info();
@@ -509,7 +509,7 @@ fn batch_all_handles_weight_refund() {
 		// Partial batch completion
 		let good_call = Call::Example(ExampleCall::foobar(false, start_weight, Some(end_weight)));
 		let bad_call = Call::Example(ExampleCall::foobar(true, start_weight, Some(end_weight)));
-		let batch_calls = vec![good_call, bad_call.clone(), bad_call];
+		let batch_calls = vec![Box::new(good_call), Box::new(bad_call.clone()), Box::new(bad_call)];
 		let call = Call::Utility(UtilityCall::batch_all(batch_calls));
 		let info = call.get_dispatch_info();
 		let result = call.dispatch(Origin::signed(1));
@@ -528,9 +528,9 @@ fn batch_all_does_not_nest() {
 		let batch_all = Call::Utility(
 			UtilityCall::batch_all(
 				vec![
-					Call::Balances(BalancesCall::transfer(2, 1)),
-					Call::Balances(BalancesCall::transfer(2, 1)),
-					Call::Balances(BalancesCall::transfer(2, 1)),
+					Box::new(Call::Balances(BalancesCall::transfer(2, 1))),
+					Box::new(Call::Balances(BalancesCall::transfer(2, 1))),
+					Box::new(Call::Balances(BalancesCall::transfer(2, 1))),
 				]
 			)
 		);
@@ -541,7 +541,7 @@ fn batch_all_does_not_nest() {
 		assert_eq!(Balances::free_balance(2), 10);
 		// A nested batch_all call will not pass the filter, and fail with `BadOrigin`.
 		assert_noop!(
-			Utility::batch_all(Origin::signed(1), vec![batch_all.clone()]),
+			Utility::batch_all(Origin::signed(1), vec![Box::new(batch_all.clone())]),
 			DispatchErrorWithPostInfo {
 				post_info: PostDispatchInfo {
 					actual_weight: Some(<Test as Config>::WeightInfo::batch_all(1) + info.weight),
@@ -553,10 +553,10 @@ fn batch_all_does_not_nest() {
 
 		// And for those who want to get a little fancy, we check that the filter persists across
 		// other kinds of dispatch wrapping functions... in this case `batch_all(batch(batch_all(..)))`
-		let batch_nested = Call::Utility(UtilityCall::batch(vec![batch_all]));
+		let batch_nested = Call::Utility(UtilityCall::batch(vec![Box::new(batch_all)]));
 		// Batch will end with `Ok`, but does not actually execute as we can see from the event
 		// and balances.
-		assert_ok!(Utility::batch_all(Origin::signed(1), vec![batch_nested]));
+		assert_ok!(Utility::batch_all(Origin::signed(1), vec![Box::new(batch_nested)]));
 		System::assert_has_event(utility::Event::BatchInterrupted(0, DispatchError::BadOrigin).into());
 		assert_eq!(Balances::free_balance(1), 10);
 		assert_eq!(Balances::free_balance(2), 10);

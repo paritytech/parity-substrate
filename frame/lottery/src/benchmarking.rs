@@ -35,11 +35,11 @@ fn setup_lottery<T: Config>(repeat: bool) -> Result<(), &'static str> {
 	let delay = 5u32.into();
 	// Calls will be maximum length...
 	let mut calls = vec![
-		frame_system::Call::<T>::set_code(vec![]).into();
+		Box::new(frame_system::Call::<T>::set_code(vec![]).into());
 		T::MaxCalls::get().saturating_sub(1) as usize
 	];
 	// Last call will be the match for worst case scenario.
-	calls.push(frame_system::Call::<T>::remark(vec![]).into());
+	calls.push(Box::new(frame_system::Call::<T>::remark(vec![]).into()));
 	let origin = T::ManagerOrigin::successful_origin();
 	Lottery::<T>::set_calls(origin.clone(), calls)?;
 	Lottery::<T>::start_lottery(origin, price, length, delay, repeat)?;
@@ -72,12 +72,16 @@ benchmarks! {
 
 	set_calls {
 		let n in 0 .. T::MaxCalls::get() as u32;
-		let calls = vec![frame_system::Call::<T>::remark(vec![]).into(); n as usize];
+		let calls = vec![Box::new(frame_system::Call::<T>::remark(vec![]).into()); n as usize];
 
 		let call = Call::<T>::set_calls(calls);
 		let origin = T::ManagerOrigin::successful_origin();
 		assert!(CallIndices::<T>::get().is_empty());
-	}: { call.dispatch_bypass_filter(origin)? }
+		let call = call.encode();
+	}: {
+		let call = <Call<T>>::decode(&mut &call[..]).expect("encoding is valid");
+		call.dispatch_bypass_filter(origin)?;
+	}
 	verify {
 		if !n.is_zero() {
 			assert!(!CallIndices::<T>::get().is_empty());
