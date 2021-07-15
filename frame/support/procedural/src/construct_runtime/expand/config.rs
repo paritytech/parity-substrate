@@ -18,7 +18,7 @@
 use crate::construct_runtime::Pallet;
 use inflector::Inflector;
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
+use quote::{ToTokens, format_ident, quote};
 use syn::Ident;
 
 pub fn expand_outer_config(
@@ -35,6 +35,7 @@ pub fn expand_outer_config(
 		if let Some(pallet_entry) = decl.find_part("Config") {
 			let path = &decl.path;
 			let pallet_name = &decl.name;
+			let path_str = path.into_token_stream().to_string();
 			let config = format_ident!("{}Config", pallet_name);
 			let field_name = &Ident::new(
 				&pallet_name.to_string().to_snake_case(),
@@ -47,6 +48,8 @@ pub fn expand_outer_config(
 			build_storage_calls.extend(expand_config_build_storage_call(scrate, runtime, decl, &field_name));
 			query_genesis_config_part_macros.push(quote! {
 				#path::__substrate_genesis_config_check::is_genesis_config_defined!(#pallet_name);
+				#[cfg(feature = "std")]
+				#path::__substrate_genesis_config_check::is_std_enabled_for_genesis!(#pallet_name, #path_str);
 			});
 		}
 	}

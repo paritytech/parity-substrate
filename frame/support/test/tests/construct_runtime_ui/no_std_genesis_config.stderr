@@ -1,0 +1,66 @@
+error: `Pallet` does not have the std feature enabled, this will cause the `test_pallet::GenesisConfig` type to be undefined.
+  --> $DIR/no_std_genesis_config.rs:13:1
+   |
+13 | / construct_runtime! {
+14 | |     pub enum Runtime where
+15 | |         Block = Block,
+16 | |         NodeBlock = Block,
+...  |
+21 | |     }
+22 | | }
+   | |_^
+   |
+   = note: this error originates in a macro (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0433]: failed to resolve: use of undeclared crate or module `system`
+  --> $DIR/no_std_genesis_config.rs:19:11
+   |
+19 |         System: system::{Pallet, Call, Storage, Config, Event<T>},
+   |                 ^^^^^^ use of undeclared crate or module `system`
+
+error[E0433]: failed to resolve: use of undeclared crate or module `system`
+  --> $DIR/no_std_genesis_config.rs:13:1
+   |
+13 | / construct_runtime! {
+14 | |     pub enum Runtime where
+15 | |         Block = Block,
+16 | |         NodeBlock = Block,
+...  |
+21 | |     }
+22 | | }
+   | |_^ not found in `system`
+   |
+   = note: this error originates in a macro (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this enum
+   |
+1  | use frame_system::RawOrigin;
+   |
+
+error[E0412]: cannot find type `GenesisConfig` in crate `test_pallet`
+  --> $DIR/no_std_genesis_config.rs:13:1
+   |
+13 | / construct_runtime! {
+14 | |     pub enum Runtime where
+15 | |         Block = Block,
+16 | |         NodeBlock = Block,
+...  |
+21 | |     }
+22 | | }
+   | |_^ not found in `test_pallet`
+   |
+   = note: this error originates in a macro (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+   |
+1  | use frame_system::GenesisConfig;
+   |
+
+error[E0277]: the trait bound `Runtime: frame_system::pallet::Config` is not satisfied
+  --> $DIR/no_std_genesis_config.rs:11:6
+   |
+11 | impl test_pallet::Config for Runtime {}
+   |      ^^^^^^^^^^^^^^^^^^^ the trait `frame_system::pallet::Config` is not implemented for `Runtime`
+   |
+  ::: $WORKSPACE/frame/support/test/pallet/src/lib.rs
+   |
+   |     pub trait Config: frame_system::Config {}
+   |                       -------------------- required by this bound in `Config`

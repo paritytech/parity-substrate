@@ -23,39 +23,60 @@ use syn::{Ident, spanned::Spanned};
 pub fn expand_genesis_config(def: &mut Def) -> proc_macro2::TokenStream {
 	let count = COUNTER.with(|counter| counter.borrow_mut().inc());
 
-	let (genesis_config, macro_ident) = if let Some(genesis_config) = &def.genesis_config {
-		let ident = Ident::new(
-			&format!("__is_genesis_config_defined_{}", count),
-			genesis_config.genesis_config.span(),
-		);
-		(genesis_config, ident)
-	} else {
-		let macro_ident = Ident::new(
-			&format!("__is_genesis_config_defined_{}", count),
-			def.item.span(),
-		);
+	let (genesis_config, def_macro_ident, std_macro_ident) =
+		if let Some(genesis_config) = &def.genesis_config {
+			let def_macro_ident = Ident::new(
+				&format!("__is_genesis_config_defined_{}", count),
+				genesis_config.genesis_config.span(),
+			);
 
-		return quote::quote! {
-			#[doc(hidden)]
-			pub mod __substrate_genesis_config_check {
-				#[macro_export]
+			let std_macro_ident = Ident::new(
+				&format!("__is_std_macro_defined_for_genesis_{}", count),
+				genesis_config.genesis_config.span(),
+			);
+
+			(genesis_config, def_macro_ident, std_macro_ident)
+		} else {
+			let def_macro_ident = Ident::new(
+				&format!("__is_genesis_config_defined_{}", count),
+				def.item.span(),
+			);
+
+			let std_macro_ident = Ident::new(
+				&format!("__is_std_enabled_for_genesis_{}", count),
+				def.item.span(),
+			);
+
+			return quote::quote! {
 				#[doc(hidden)]
-				macro_rules! #macro_ident {
-					($pallet_name:ident) => {
-						compile_error!(concat!(
-							"`",
-							stringify!($pallet_name),
-							"` does not have #[pallet::genesis_config] defined, perhaps you should \
-							remove `Config` from construct_runtime?",
-						));
+				pub mod __substrate_genesis_config_check {
+					#[macro_export]
+					#[doc(hidden)]
+					macro_rules! #def_macro_ident {
+						($pallet_name:ident) => {
+							compile_error!(concat!(
+								"`",
+								stringify!($pallet_name),
+								"` does not have #[pallet::genesis_config] defined, perhaps you should \
+								remove `Config` from construct_runtime?",
+							));
+						}
 					}
+
+					#[macro_export]
+					#[doc(hidden)]
+					macro_rules! #std_macro_ident {
+						($pallet_name:ident, $pallet_path:expr) => {};
+					}
+
+					#[doc(hidden)]
+					pub use #def_macro_ident as is_genesis_config_defined;
+					#[doc(hidden)]
+					pub use #std_macro_ident as is_std_enabled_for_genesis;
 				}
-	
-				#[doc(hidden)]
-				pub use #macro_ident as is_genesis_config_defined;
-			}
+			};
 		};
-	};
+
 	let frame_support = &def.frame_support;
 
 	let genesis_config_item = &mut def.item.content.as_mut()
@@ -94,12 +115,36 @@ pub fn expand_genesis_config(def: &mut Def) -> proc_macro2::TokenStream {
 		pub mod __substrate_genesis_config_check {
 			#[macro_export]
 			#[doc(hidden)]
-			macro_rules! #macro_ident {
+			macro_rules! #def_macro_ident {
 				($pallet_name:ident) => {};
 			}
-	
+
+			#[cfg(not(feature = "std"))]
+			#[macro_export]
 			#[doc(hidden)]
-			pub use #macro_ident as is_genesis_config_defined;
+			macro_rules! #std_macro_ident {
+				($pallet_name:ident, $pallet_path:expr) => {
+					compile_error!(concat!(
+						"`",
+						stringify!($pallet_name),
+						"` does not have the std feature enabled, this will cause the `",
+						$pallet_path,
+						"::GenesisConfig` type to be undefined."
+					));
+				};
+			}
+
+			#[cfg(feature = "std")]
+			#[macro_export]
+			#[doc(hidden)]
+			macro_rules! #std_macro_ident {
+				($pallet_name:ident, $pallet_path:expr) => {};
+			}
+
+			#[doc(hidden)]
+			pub use #def_macro_ident as is_genesis_config_defined;
+			#[doc(hidden)]
+			pub use #std_macro_ident as is_std_enabled_for_genesis;
 		}
 	}
 }
