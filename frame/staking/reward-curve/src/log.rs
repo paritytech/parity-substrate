@@ -46,14 +46,14 @@ pub fn log2(p: u32, q: u32) -> u32 {
 
 	// find the power of 2 where q * 2^n <= p < q * 2^(n+1)
 	let mut n = 0u32;
-	while !(p >= pow2!(n) * q) || !(p < pow2!(n + 1) * q) {
+	while (p < pow2!(n) * q) || (p >= pow2!(n + 1) * q) {
 		n += 1;
 		assert!(n < 32); // cannot represent 2^32 in u32
 	}
 	assert!(p < pow2!(n + 1) * q);
 
-	let y_num: u32 = (p - pow2!(n) * q).try_into().unwrap();
-	let y_den: u32 = (p + pow2!(n) * q).try_into().unwrap();
+	let y_num: u32 = p - pow2!(n) * q;
+	let y_den: u32 = p + pow2!(n) * q;
 
 	// Loop through each Taylor series coefficient until it reaches 10^-6
 	let mut res = n * 1_000_000u32;

@@ -72,7 +72,7 @@ pub fn group_derive(ast: &DeriveInput) -> proc_macro::TokenStream {
 		let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 		let fork_name = Ident::new(&format!("{}Fork", name), Span::call_site());
 
-		let fork_fields = generate_fork_fields(&crate_name, &field_names, &field_types);
+		let fork_fields = generate_fork_fields(crate_name, &field_names, &field_types);
 		let to_fork = generate_base_to_fork(&fork_name, &field_names);
 		let combine_with = generate_combine_with(&field_names);
 		let to_base = generate_fork_to_base(name, &field_names);
@@ -85,7 +85,7 @@ pub fn group_derive(ast: &DeriveInput) -> proc_macro::TokenStream {
 					&format!("Could not find `serde` crate: {}", e),
 				).to_compile_error();
 
-				return quote!( #err ).into();
+				return quote!( #err );
 			}
 		};
 

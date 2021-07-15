@@ -96,7 +96,7 @@ pub fn generate_solution_type(item: TokenStream) -> TokenStream {
 
 	let solution_struct = struct_def(
 		vis,
-		ident.clone(),
+		ident,
 		count,
 		voter_type.clone(),
 		target_type.clone(),

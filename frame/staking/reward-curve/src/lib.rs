@@ -62,14 +62,14 @@ use syn::parse::{Parse, ParseStream};
 /// use sp_runtime::curve::PiecewiseLinear;
 ///
 /// pallet_staking_reward_curve::build! {
-/// 	const I_NPOS: PiecewiseLinear<'static> = curve!(
-/// 		min_inflation: 0_025_000,
-/// 		max_inflation: 0_100_000,
-/// 		ideal_stake: 0_500_000,
-/// 		falloff: 0_050_000,
-/// 		max_piece_count: 40,
-/// 		test_precision: 0_005_000,
-/// 	);
+///     const I_NPOS: PiecewiseLinear<'static> = curve!(
+///         min_inflation: 0_025_000,
+///         max_inflation: 0_100_000,
+///         ideal_stake: 0_500_000,
+///         falloff: 0_050_000,
+///         max_piece_count: 40,
+///         test_precision: 0_005_000,
+///     );
 /// }
 /// ```
 #[proc_macro]
@@ -159,9 +159,9 @@ impl core::fmt::Display for Bounds {
 fn parse_field<Token: Parse + Default + ToTokens>(input: ParseStream, bounds: Bounds)
 	-> syn::Result<u32>
 {
-	<Token>::parse(&input)?;
-	<syn::Token![:]>::parse(&input)?;
-	let value_lit = syn::LitInt::parse(&input)?;
+	<Token>::parse(input)?;
+	<syn::Token![:]>::parse(input)?;
+	let value_lit = syn::LitInt::parse(input)?;
 	let value: u32 = value_lit.base10_parse()?;
 	if !bounds.check(value) {
 		return Err(syn::Error::new(value_lit.span(), format!(
@@ -176,15 +176,15 @@ impl Parse for INposInput {
 	fn parse(input: ParseStream) -> syn::Result<Self> {
 		let args_input;
 
-		<syn::Token![const]>::parse(&input)?;
-		let ident = <syn::Ident>::parse(&input)?;
-		<syn::Token![:]>::parse(&input)?;
-		let typ = <syn::Type>::parse(&input)?;
-		<syn::Token![=]>::parse(&input)?;
-		<keyword::curve>::parse(&input)?;
-		<syn::Token![!]>::parse(&input)?;
+		<syn::Token![const]>::parse(input)?;
+		let ident = <syn::Ident>::parse(input)?;
+		<syn::Token![:]>::parse(input)?;
+		let typ = <syn::Type>::parse(input)?;
+		<syn::Token![=]>::parse(input)?;
+		<keyword::curve>::parse(input)?;
+		<syn::Token![!]>::parse(input)?;
 		syn::parenthesized!(args_input in input);
-		<syn::Token![;]>::parse(&input)?;
+		<syn::Token![;]>::parse(input)?;
 
 		if !input.is_empty() {
 			return Err(input.error("expected end of input stream, no token expected"));
@@ -205,14 +205,14 @@ impl Parse for INposInput {
 		})?;
 		<syn::Token![,]>::parse(&args_input)?;
 		let ideal_stake = parse_field::<keyword::ideal_stake>(&args_input, Bounds {
-			min: 0_100_000,
+			min: 100_000,
 			min_strict: false,
-			max: 0_900_000,
+			max: 900_000,
 			max_strict: false,
 		})?;
 		<syn::Token![,]>::parse(&args_input)?;
 		let falloff = parse_field::<keyword::falloff>(&args_input, Bounds {
-			min: 0_010_000,
+			min: 10_000,
 			min_strict: false,
 			max: 1_000_000,
 			max_strict: false,
@@ -289,9 +289,10 @@ impl INPoS {
 fn compute_points(input: &INposInput) -> Vec<(u32, u32)> {
 	let inpos = INPoS::from_input(input);
 
-	let mut points = vec![];
-	points.push((0, inpos.i_0));
-	points.push((inpos.x_ideal, inpos.i_ideal_times_x_ideal));
+	let mut points = vec![
+		(0, inpos.i_0),
+		(inpos.x_ideal, inpos.i_ideal_times_x_ideal)
+	];
 
 	// For each point p: (next_p.0 - p.0) < segment_length && (next_p.1 - p.1) < segment_length.
 	// This ensures that the total number of segment doesn't overflow max_piece_count.
@@ -443,5 +444,5 @@ fn generate_test_module(input: &INposInput) -> TokenStream2 {
 				);
 			}
 		}
-	).into()
+	)
 }
