@@ -461,7 +461,7 @@ pub mod pallet {
 		/// Schedule a named task after a delay.
 		///
 		/// # <weight>
-		/// Same as [`schedule_named`].
+		/// Same as [`schedule_named`](Self::schedule_named).
 		/// # </weight>
 		#[pallet::weight(<T as Config>::WeightInfo::schedule_named(T::MaxScheduledPerBlock::get()))]
 		pub fn schedule_named_after(

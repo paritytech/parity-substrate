@@ -484,8 +484,9 @@ pub mod pallet {
 		/// Set candidate approvals. Approval slots stay valid as long as candidates in those slots
 		/// are registered.
 		///
-		/// Locks `value` from the balance of `origin` indefinitely. Only [`retract_voter`] or
-		/// [`reap_inactive_voter`] can unlock the balance.
+		/// Locks `value` from the balance of `origin` indefinitely. Only
+		/// [`retract_voter`](Self::retract_voter) or
+		/// [`reap_inactive_voter`](Self::reap_inactive_voter) can unlock the balance.
 		///
 		/// `hint` argument is interpreted differently based on:
 		/// - if `origin` is setting approvals for the first time: The index will be checked for
@@ -493,7 +494,7 @@ pub mod pallet {
 		///   - if the hint is correctly pointing to a hole, no fee is deducted from `origin`.
 		///   - Otherwise, the call will succeed but the index is ignored and simply a push to the
 		///     last chunk with free space happens. If the new push causes a new chunk to be
-		///     created, a fee indicated by [`VotingFee`] is deducted.
+		///     created, a fee indicated by [`Config::VotingFee`] is deducted.
 		/// - if `origin` is already a voter: the index __must__ be valid and point to the correct
 		///   position of the `origin` in the current voters list.
 		///
@@ -521,7 +522,11 @@ pub mod pallet {
 		/// must now be either unregistered or registered to a candidate that registered the slot
 		/// after the voter gave their last approval set.
 		///
-		/// Both indices must be provided as explained in [`voter_at`] function.
+		/// Both indices must be provided according to the following principle:
+		/// Voter index does not take holes into account. This means that any account submitting an
+		/// index at any point in time should submit:
+		/// `VOTER_SET_SIZE * set_index + local_index`, meaning that you are ignoring all holes in
+		/// the first `set_index` sets.
 		///
 		/// May be called by anyone. Returns the voter deposit to `signed`.
 		///
@@ -596,9 +601,13 @@ pub mod pallet {
 
 		/// Remove a voter. All votes are cancelled and the voter deposit is returned.
 		///
-		/// The index must be provided as explained in [`voter_at`] function.
+		/// The index must be provided according to the following principle:
+		/// Voter index does not take holes into account. This means that any account submitting an
+		/// index at any point in time should submit:
+		/// `VOTER_SET_SIZE * set_index + local_index`, meaning that you are ignoring all holes in
+		/// the first `set_index` sets.
 		///
-		/// Also removes the lock on the balance of the voter. See [`do_set_approvals()`].
+		/// Also removes the lock on the balance of the voter.
 		///
 		/// # <weight>
 		/// - O(1).
@@ -624,8 +633,9 @@ pub mod pallet {
 		///
 		/// Account must have enough transferrable funds in it to pay the bond.
 		///
-		/// NOTE: if `origin` has already assigned approvals via [`set_approvals`],
-		/// it will NOT have any usable funds to pass candidacy bond and must first retract.
+		/// NOTE: if `origin` has already assigned approvals via
+		/// [`set_approvals`](Self::set_approvals), it will NOT have any usable funds to pass
+		/// candidacy bond and must first retract.
 		/// Note that setting approvals will lock the entire balance of the voter until
 		/// retraction or being reported.
 		///

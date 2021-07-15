@@ -126,7 +126,7 @@
 //!
 //! A call to `T::ElectionProvider::elect` is made, and `Ok(_)` cannot be returned, then the pallet
 //! proceeds to the [`Phase::Emergency`]. During this phase, any solution can be submitted from
-//! [`T::ForceOrigin`], without any checking. Once submitted, the forced solution is kept in
+//! [`Config::ForceOrigin`], without any checking. Once submitted, the forced solution is kept in
 //! [`QueuedSolution`] until the next call to `T::ElectionProvider::elect`, where it is returned and
 //! [`Phase`] goes back to `Off`.
 //!

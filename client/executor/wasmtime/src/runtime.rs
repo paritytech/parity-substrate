@@ -296,8 +296,8 @@ pub struct DeterministicStackLimit {
 	/// after translation into machine code. It is also not quite trivial.
 	///
 	/// Therefore, this number should be choosen conservatively. It must be so large so that it can
-	/// fit the [`logical_max`] logical values on the stack, according to the current instrumentation
-	/// algorithm.
+	/// fit the [`logical_max`](Self::logical_max) logical values on the stack, according to the current
+	/// instrumentation algorithm.
 	///
 	/// This value cannot be 0.
 	pub native_stack_max: u32,
@@ -315,8 +315,9 @@ pub struct Semantics {
 	/// This is not a problem for a standard substrate runtime execution because it's up to the
 	/// runtime itself to make sure that it doesn't involve any non-determinism.
 	///
-	/// Since this feature depends on instrumentation, it can be set only if [`CodeSupplyMode::Verbatim`]
-	/// is used.
+	/// Since this feature depends on instrumentation, it can be set only if runtime is
+	/// instantiated using the runtime blob, e.g. using [`create_runtime`].
+	// I.e. if [`CodeSupplyMode::Verbatim`] is used.
 	pub fast_instance_reuse: bool,
 
 	/// Specifiying `Some` will enable deterministic stack height. That is, all executor invocations
@@ -326,8 +327,9 @@ pub struct Semantics {
 	/// This is achieved by a combination of running an instrumentation pass on input code and
 	/// configuring wasmtime accordingly.
 	///
-	/// Since this feature depends on instrumentation, it can be set only if [`CodeSupplyMode::Verbatim`]
-	/// is used.
+	/// Since this feature depends on instrumentation, it can be set only if runtime is
+	/// instantiated using the runtime blob, e.g. using [`create_runtime`].
+	// I.e. if [`CodeSupplyMode::Verbatim`] is used.
 	pub deterministic_stack_limit: Option<DeterministicStackLimit>,
 
 	/// Controls whether wasmtime should compile floating point in a way that doesn't allow for

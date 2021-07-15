@@ -39,7 +39,7 @@ sp_api::decl_runtime_apis! {
 	{
 		/// Perform a call from a specified account to a given contract.
 		///
-		/// See [`pallet_contracts::Pallet::call`].
+		/// See `pallet_contracts::Pallet::call`.
 		fn call(
 			origin: AccountId,
 			dest: AccountId,
@@ -50,7 +50,7 @@ sp_api::decl_runtime_apis! {
 
 		/// Instantiate a new contract.
 		///
-		/// See [`pallet_contracts::Pallet::instantiate`].
+		/// See `pallet_contracts::Pallet::instantiate`.
 		fn instantiate(
 			origin: AccountId,
 			endowment: Balance,

@@ -127,9 +127,9 @@ pub struct Params<B: BlockT, H: ExHashT> {
 	/// Request response configuration for the state request protocol.
 	///
 	/// Can be constructed either via
-	/// [`crate::state_requests::generate_protocol_config`] allowing outgoing but not
+	/// [`crate::block_request_handler::generate_protocol_config`] allowing outgoing but not
 	/// incoming requests, or constructed via
-	/// [`crate::state_requests::handler::StateRequestHandler::new`] allowing
+	/// [`crate::state_request_handler::StateRequestHandler::new`] allowing
 	/// both outgoing and incoming requests.
 	pub state_request_protocol_config: RequestResponseConfig,
 }

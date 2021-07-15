@@ -64,7 +64,7 @@ pub enum ConfigOrChainSpec {
     /// Chain spec object
     ChainSpec(Box<dyn ChainSpec>, TaskExecutor)
 }
-/// Creates all the client parts you need for [`Node`]
+/// Creates all the client parts you need for [`Node`](crate::node::Node)
 pub fn client_parts<T>(config_or_chain_spec: ConfigOrChainSpec) -> Result<ClientParts<T>, sc_service::Error>
     where
         T: ChainInfo + 'static,

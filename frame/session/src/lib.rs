@@ -241,7 +241,7 @@ pub trait SessionManager<ValidatorId> {
 	/// Same as `new_session`, but it this should only be called at genesis.
 	///
 	/// The session manager might decide to treat this in a different way. Default impl is simply
-	/// using [`new_session`].
+	/// using [`new_session`](Self::new_session).
 	fn new_session_genesis(new_index: SessionIndex) -> Option<Vec<ValidatorId>> {
 		Self::new_session(new_index)
 	}

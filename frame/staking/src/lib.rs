@@ -1204,7 +1204,7 @@ pub mod pallet {
 
 	/// The last planned session scheduled by the session pallet.
 	///
-	/// This is basically in sync with the call to [`SessionManager::new_session`].
+	/// This is basically in sync with the call to [`pallet_session::SessionManager::new_session`].
 	#[pallet::storage]
 	#[pallet::getter(fn current_planned_session)]
 	pub type CurrentPlannedSession<T> = StorageValue<_, SessionIndex, ValueQuery>;
@@ -1511,8 +1511,8 @@ pub mod pallet {
 		/// The dispatch origin for this call must be _Signed_ by the stash, not the controller.
 		///
 		/// Use this if there are additional funds in your stash account that you wish to bond.
-		/// Unlike [`bond`] or [`unbond`] this function does not impose any limitation on the amount
-		/// that can be added.
+		/// Unlike [`bond`](Self::bond) or [`unbond`](Self::unbond) this function does not impose any limitation
+		/// on the amount that can be added.
 		///
 		/// Emits `Bonded`.
 		///
@@ -1849,7 +1849,7 @@ pub mod pallet {
 		/// The dispatch origin must be Root.
 		///
 		/// # <weight>
-		/// Same as [`set_validator_count`].
+		/// Same as [`Self::set_validator_count`].
 		/// # </weight>
 		#[pallet::weight(T::WeightInfo::set_validator_count())]
 		pub fn increase_validator_count(
@@ -1866,7 +1866,7 @@ pub mod pallet {
 		/// The dispatch origin must be Root.
 		///
 		/// # <weight>
-		/// Same as [`set_validator_count`].
+		/// Same as [`Self::set_validator_count`].
 		/// # </weight>
 		#[pallet::weight(T::WeightInfo::set_validator_count())]
 		pub fn scale_validator_count(origin: OriginFor<T>, factor: Percent) -> DispatchResult {

@@ -402,8 +402,9 @@ pub mod pallet {
 		///   origin is removed as a runner-up.
 		/// - `origin` is a current member. In this case, the deposit is unreserved and origin is
 		///   removed as a member, consequently not being a candidate for the next round anymore.
-		///   Similar to [`remove_members`], if replacement runners exists, they are immediately
-		///   used. If the prime is renouncing, then no prime will exist until the next round.
+		///   Similar to [`remove_member`](Self::remove_member), if replacement runners exists,
+		///   they are immediately used. If the prime is renouncing, then no prime will exist until
+		///   the next round.
 		///
 		/// The dispatch origin of this call must be signed, and have one of the above roles.
 		///

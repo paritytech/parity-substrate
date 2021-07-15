@@ -18,15 +18,16 @@
 
 //! Helper for outgoing light client requests.
 //!
-//! Call [`LightClientRequestSender::send_request`] to send out light client requests. It will:
+//! Call [`LightClientRequestSender::request`](sender::LightClientRequestSender::request)
+//! to send out light client requests. It will:
 //!
 //! 1. Build the request.
 //!
 //! 2. Forward the request to [`crate::request_responses::RequestResponsesBehaviour`] via
-//! [`OutEvent::SendRequest`].
+//! [`OutEvent::SendRequest`](sender::OutEvent::SendRequest).
 //!
 //! 3. Wait for the response and forward the response via the [`futures::channel::oneshot::Sender`] provided earlier
-//! with [`LightClientRequestSender::send_request`].
+//! with [`LightClientRequestSender::request`](sender::LightClientRequestSender::request).
 
 use codec::{self, Encode, Decode};
 use crate::{
