@@ -1,0 +1,32 @@
+[package]
+name = "sc-network-fuzzer"
+version = "0.1.0"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2018"
+homepage = "https://substrate.dev"
+repository = "https://github.com/paritytech/substrate/"
+documentation = "https://docs.rs/sc-network-fuzzer"
+readme = "README.md"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+arbitrary = { version = "1", features = ["derive"] }
+async-std = "1.9"
+async-trait = "0.1"
+futures = "0.3"
+futures-timer = "3.0"
+honggfuzz = "0.5"
+libp2p = "0.37"
+rand = "0.8"
+sc-network = { version = "0.9.0", path = "../../network" }
+sp-blockchain = { version = "3.0.0", path = "../../../primitives/blockchain" }
+sp-consensus = { version = "0.9.0", path = "../../../primitives/consensus/common" }
+sp-core = { version = "3.0.0", path = "../../../primitives/core" }
+sp-runtime = { version = "3.0.0", path = "../../../primitives/runtime" }
+substrate-test-runtime-client = { version = "2.0.0", path = "../../../test-utils/runtime/client" }
+
+[[bin]]
+name = "service"
+path = "src/service.rs"

@@ -47,6 +47,7 @@ members = [
 	"client/network",
 	"client/network-gossip",
 	"client/network/test",
+	"client/network/fuzzer",
 	"client/offchain",
 	"client/peerset",
 	"client/allocator",
