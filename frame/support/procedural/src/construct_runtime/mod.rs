@@ -167,7 +167,10 @@ fn construct_runtime_parsed(definition: RuntimeDefinition) -> Result<TokenStream
 			type __hidden_use_of_unchecked_extrinsic = #unchecked_extrinsic;
 		};
 
-		#[derive(Clone, Copy, PartialEq, Eq, #scrate::sp_runtime::RuntimeDebug)]
+		#[derive(
+			Clone, Copy, PartialEq, Eq, #scrate::sp_runtime::RuntimeDebug,
+			#scrate::scale_info::TypeInfo
+		)]
 		pub struct #name;
 		impl #scrate::sp_runtime::traits::GetNodeBlockType for #name {
 			type NodeBlock = #node_block;

@@ -15,6 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 sp-application-crypto = { version = "4.0.0-dev", default-features = false, path = "../../application-crypto" }
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 sp-std = { version = "4.0.0-dev", default-features = false, path = "../../std" }
 sp-api = { version = "4.0.0-dev", default-features = false, path = "../../api" }
 sp-runtime = { version = "4.0.0-dev", default-features = false, path = "../../runtime" }
@@ -29,6 +30,7 @@ default = ["std"]
 std = [
 	"sp-application-crypto/std",
 	"codec/std",
+	"scale-info/std",
 	"sp-std/std",
 	"sp-api/std",
 	"sp-runtime/std",

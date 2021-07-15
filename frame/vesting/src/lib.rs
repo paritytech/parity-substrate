@@ -78,7 +78,7 @@ type MaxLocksOf<T> =
 const VESTING_ID: LockIdentifier = *b"vesting ";
 
 /// Struct to encode the vesting schedule of an individual account.
-#[derive(Encode, Decode, Copy, Clone, PartialEq, Eq, RuntimeDebug)]
+#[derive(Encode, Decode, Copy, Clone, PartialEq, Eq, RuntimeDebug, scale_info::TypeInfo)]
 pub struct VestingInfo<Balance, BlockNumber> {
 	/// Locked amount at genesis.
 	pub locked: Balance,
@@ -192,7 +192,6 @@ pub mod pallet {
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
-	#[pallet::metadata(T::AccountId = "AccountId", BalanceOf<T> = "Balance")]
 	pub enum Event<T: Config> {
 		/// The amount vested has been updated. This could indicate more funds are available. The
 		/// balance given is the amount which is left unvested (and thus locked).

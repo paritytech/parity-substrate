@@ -15,6 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 # third-party dependencies
 codec = { package = "parity-scale-codec", version = "2.2.0", default-features = false, features = ["derive", "max-encoded-len"] }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 static_assertions = "1.1.0"
 hex-literal = { version = "0.3.1", optional = true }
 log = { version = "0.4.14", default-features = false }
@@ -110,6 +111,7 @@ std = [
 	"pallet-bounties/std",
 	"sp-block-builder/std",
 	"codec/std",
+	"scale-info/std",
 	"pallet-collective/std",
 	"pallet-contracts/std",
 	"pallet-contracts-primitives/std",
@@ -249,4 +251,9 @@ try-runtime = [
 # on live chains as those are subject to change.
 contracts-unstable-interface = [
 	"pallet-contracts/unstable-interface"
+]
+# Enable docs to be included in metadata
+metadata-docs = [
+	"frame-support/metadata-docs",
+	"scale-info/docs"
 ]

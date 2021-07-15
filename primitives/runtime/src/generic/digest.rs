@@ -24,10 +24,11 @@ use sp_std::prelude::*;
 
 use crate::ConsensusEngineId;
 use crate::codec::{Decode, Encode, Input, Error};
+use crate::scale_info::TypeInfo;
 use sp_core::{ChangesTrieConfiguration, RuntimeDebug};
 
 /// Generic header digest.
-#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize, parity_util_mem::MallocSizeOf))]
 pub struct Digest<Hash> {
 	/// A list of logs in the digest.
@@ -73,7 +74,7 @@ impl<Hash> Digest<Hash> {
 
 /// Digest item that is able to encode/decode 'system' digest items and
 /// provide opaque access to other items.
-#[derive(PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(PartialEq, Eq, Clone, RuntimeDebug, TypeInfo)]
 #[cfg_attr(feature = "std", derive(parity_util_mem::MallocSizeOf))]
 pub enum DigestItem<Hash> {
 	/// System digest item that contains the root of changes trie at given
@@ -113,7 +114,7 @@ pub enum DigestItem<Hash> {
 }
 
 /// Available changes trie signals.
-#[derive(PartialEq, Eq, Clone, Encode, Decode)]
+#[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Debug, parity_util_mem::MallocSizeOf))]
 pub enum ChangesTrieSignal {
 	/// New changes trie configuration is enacted, starting from **next block**.

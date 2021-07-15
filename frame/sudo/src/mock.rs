@@ -74,7 +74,6 @@ pub mod logger {
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
-	#[pallet::metadata(T::AccountId = "AccountId")]
 	pub enum Event<T: Config> {
 		AppendI32(i32, Weight),
 		AppendI32AndAccount(T::AccountId, i32, Weight),

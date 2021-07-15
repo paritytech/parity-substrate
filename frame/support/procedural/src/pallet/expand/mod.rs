@@ -32,7 +32,8 @@ mod type_value;
 mod origin;
 mod validate_unsigned;
 
-use crate::pallet::{Def, parse::helper::get_doc_literals};
+use crate::pallet::Def;
+use frame_support_procedural_tools::get_doc_literals;
 use quote::ToTokens;
 
 /// Merge where clause together, `where` token span is taken from the first not none one.

@@ -57,7 +57,7 @@ pub const DEFAULT_MAX_TRANSACTION_SIZE: u32 = 8 * 1024 * 1024;
 pub const DEFAULT_MAX_BLOCK_TRANSACTIONS: u32 = 512;
 
 /// State data for a stored transaction.
-#[derive(Encode, Decode, Clone, sp_runtime::RuntimeDebug, PartialEq, Eq)]
+#[derive(Encode, Decode, Clone, sp_runtime::RuntimeDebug, PartialEq, Eq, scale_info::TypeInfo)]
 pub struct TransactionInfo {
 	/// Chunk trie root.
 	chunk_root: <BlakeTwo256 as Hash>::Output,

@@ -16,6 +16,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 integer-sqrt = "0.1.2"
 static_assertions = "1.1.0"
 num-traits = { version = "0.2.8", default-features = false }
@@ -33,6 +34,7 @@ primitive-types = "0.10.0"
 default = ["std"]
 std = [
 	"codec/std",
+	"scale-info/std",
 	"num-traits/std",
 	"sp-std/std",
 	"serde",

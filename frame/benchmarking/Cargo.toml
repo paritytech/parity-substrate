@@ -16,6 +16,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 linregress = { version = "0.4.3", optional = true }
 paste = "1.0"
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 sp-api = { version = "4.0.0-dev", path = "../../primitives/api", default-features = false }
 sp-runtime-interface = { version = "4.0.0-dev", path = "../../primitives/runtime-interface", default-features = false }
 sp-runtime = { version = "4.0.0-dev", path = "../../primitives/runtime", default-features = false }
@@ -34,6 +35,7 @@ serde = "1.0.126"
 default = ["std"]
 std = [
 	"codec/std",
+	"scale-info/std",
 	"sp-runtime-interface/std",
 	"sp-runtime/std",
 	"sp-api/std",

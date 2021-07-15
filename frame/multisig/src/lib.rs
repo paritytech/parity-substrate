@@ -52,6 +52,7 @@ pub mod weights;
 
 use sp_std::prelude::*;
 use codec::{Encode, Decode};
+use scale_info::TypeInfo;
 use sp_io::hashing::blake2_256;
 use frame_support::{ensure, RuntimeDebug};
 use frame_support::{traits::{Get, ReservableCurrency, Currency},
@@ -71,7 +72,7 @@ pub type OpaqueCall = Vec<u8>;
 /// A global extrinsic index, formed as the extrinsic index within a block, together with that
 /// block's height. This allows a transaction in which a multisig operation of a particular
 /// composite was created to be uniquely identified.
-#[derive(Copy, Clone, Eq, PartialEq, Encode, Decode, Default, RuntimeDebug)]
+#[derive(Copy, Clone, Eq, PartialEq, Encode, Decode, Default, RuntimeDebug, TypeInfo)]
 pub struct Timepoint<BlockNumber> {
 	/// The height of the chain at the point in time.
 	height: BlockNumber,
@@ -80,7 +81,7 @@ pub struct Timepoint<BlockNumber> {
 }
 
 /// An open multisig operation.
-#[derive(Clone, Eq, PartialEq, Encode, Decode, Default, RuntimeDebug)]
+#[derive(Clone, Eq, PartialEq, Encode, Decode, Default, RuntimeDebug, TypeInfo)]
 pub struct Multisig<BlockNumber, Balance, AccountId> {
 	/// The extrinsic when the multisig operation was opened.
 	when: Timepoint<BlockNumber>,
@@ -197,11 +198,6 @@ pub mod pallet{
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
-	#[pallet::metadata(
-		T::AccountId = "AccountId",
-		T::BlockNumber = "BlockNumber",
-		Timepoint<T::BlockNumber> = "Timepoint<BlockNumber>"
-	)]
 	pub enum Event<T: Config> {
 		/// A new multisig operation has begun. \[approving, multisig, call_hash\]
 		NewMultisig(T::AccountId, T::AccountId, CallHash),

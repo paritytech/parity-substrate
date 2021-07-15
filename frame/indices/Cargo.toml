@@ -14,6 +14,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 sp-keyring = { version = "4.0.0-dev", optional = true, path = "../../primitives/keyring" }
 sp-std = { version = "4.0.0-dev", default-features = false, path = "../../primitives/std" }
 sp-io = { version = "4.0.0-dev", default-features = false, path = "../../primitives/io" }
@@ -32,6 +33,7 @@ default = ["std"]
 std = [
 	"sp-keyring",
 	"codec/std",
+	"scale-info/std",
 	"sp-core/std",
 	"sp-std/std",
 	"sp-io/std",

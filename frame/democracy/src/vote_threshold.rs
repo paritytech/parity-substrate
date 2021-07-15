@@ -20,12 +20,13 @@
 #[cfg(feature = "std")]
 use serde::{Serialize, Deserialize};
 use codec::{Encode, Decode};
+use scale_info::TypeInfo;
 use sp_runtime::traits::{Zero, IntegerSquareRoot};
 use sp_std::ops::{Add, Mul, Div, Rem};
 use crate::Tally;
 
 /// A means of determining if a vote is past pass threshold.
-#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, sp_runtime::RuntimeDebug)]
+#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode, sp_runtime::RuntimeDebug, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum VoteThreshold {
 	/// A supermajority of approvals is needed to pass this vote.

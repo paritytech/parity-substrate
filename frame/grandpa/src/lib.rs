@@ -69,6 +69,8 @@ pub use equivocation::{
 
 pub use pallet::*;
 
+use scale_info::TypeInfo;
+
 #[frame_support::pallet]
 pub mod pallet {
 	use frame_support::pallet_prelude::*;
@@ -361,7 +363,7 @@ pub trait WeightInfo {
 }
 
 /// A stored pending change.
-#[derive(Encode, Decode)]
+#[derive(Encode, Decode, TypeInfo)]
 pub struct StoredPendingChange<N> {
 	/// The block number this was scheduled at.
 	pub scheduled_at: N,
@@ -377,7 +379,7 @@ pub struct StoredPendingChange<N> {
 /// Current state of the GRANDPA authority set. State transitions must happen in
 /// the same order of states defined below, e.g. `Paused` implies a prior
 /// `PendingPause`.
-#[derive(Decode, Encode)]
+#[derive(Decode, Encode, TypeInfo)]
 #[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum StoredState<N> {
 	/// The current authority set is live, and GRANDPA is enabled.

@@ -26,7 +26,10 @@ use proc_macro_crate::{crate_name, FoundCrate};
 use syn::parse::Error;
 use quote::quote;
 
+mod docs;
 pub mod syn_ext;
+
+pub use docs::get_doc_literals;
 
 // FIXME #1569, remove the following functions, which are copied from sp-api-macros
 use proc_macro2::{TokenStream, Span};

@@ -15,33 +15,35 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Code generation for the ratio assignment type' encode/decode impl.
+//! Code generation for the ratio assignment type' encode/decode/info impl.
 
 use crate::field_name_for;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 
-pub(crate) fn codec_impl(
+pub(crate) fn codec_and_info_impl(
 	ident: syn::Ident,
 	voter_type: syn::Type,
 	target_type: syn::Type,
 	weight_type: syn::Type,
 	count: usize,
 ) -> TokenStream2 {
-	let encode = encode_impl(ident.clone(), count);
-	let decode = decode_impl(ident, voter_type, target_type, weight_type, count);
+	let encode = encode_impl(&ident, count);
+	let decode = decode_impl(&ident, &voter_type, &target_type, &weight_type, count);
+	let scale_info = scale_info_impl(&ident, &voter_type, &target_type, &weight_type, count);
 
 	quote! {
 		#encode
 		#decode
+		#scale_info
 	}
 }
 
 fn decode_impl(
-	ident: syn::Ident,
-	voter_type: syn::Type,
-	target_type: syn::Type,
-	weight_type: syn::Type,
+	ident: &syn::Ident,
+	voter_type: &syn::Type,
+	target_type: &syn::Type,
+	weight_type: &syn::Type,
 	count: usize,
 ) -> TokenStream2 {
 	let decode_impl_single = {
@@ -132,7 +134,7 @@ fn decode_impl(
 
 // General attitude is that we will convert inner values to `Compact` and then use the normal
 // `Encode` implementation.
-fn encode_impl(ident: syn::Ident, count: usize) -> TokenStream2 {
+fn encode_impl(ident: &syn::Ident, count: usize) -> TokenStream2 {
 	let encode_impl_single = {
 		let name = field_name_for(1);
 		quote! {
@@ -200,4 +202,72 @@ fn encode_impl(ident: syn::Ident, count: usize) -> TokenStream2 {
 			}
 		}
 	)
+}
+
+fn scale_info_impl(
+	ident: &syn::Ident,
+	voter_type: &syn::Type,
+	target_type: &syn::Type,
+	weight_type: &syn::Type,
+	count: usize,
+) -> TokenStream2 {
+	let scale_info_impl_single = {
+		let name = format!("{}", field_name_for(1));
+		quote! {
+			.field(|f|
+				f.ty::<_npos::sp_std::prelude::Vec<
+				   (_npos::codec::Compact<#voter_type>, _npos::codec::Compact<#target_type>)
+				>>()
+				.name(#name)
+			)
+		}
+	};
+
+	let scale_info_impl_double = {
+		let name = format!("{}", field_name_for(2));
+		quote! {
+			.field(|f|
+				f.ty::<_npos::sp_std::prelude::Vec<(
+					_npos::codec::Compact<#voter_type>,
+					(_npos::codec::Compact<#target_type>, _npos::codec::Compact<#weight_type>),
+					_npos::codec::Compact<#target_type>
+				)>>()
+				.name(#name)
+			)
+		}
+	};
+
+	let scale_info_impl_rest = (3..=count).map(|c| {
+		let name = format!("{}", field_name_for(c));
+		quote! {
+			.field(|f|
+				f.ty::<_npos::sp_std::prelude::Vec<(
+					_npos::codec::Compact<#voter_type>,
+					[
+						(_npos::codec::Compact<#target_type>, _npos::codec::Compact<#weight_type>);
+						#c - 1
+					],
+					_npos::codec::Compact<#target_type>
+				)>>()
+				.name(#name)
+			)
+		}
+	}).collect::<TokenStream2>();
+
+	quote!(
+		impl _npos::scale_info::TypeInfo for #ident {
+			type Identity = Self;
+
+			fn type_info() -> _npos::scale_info::Type<_npos::scale_info::form::MetaForm> {
+				_npos::scale_info::Type::builder()
+					.path(_npos::scale_info::Path::new(stringify!(#ident), module_path!()))
+					.composite(
+						_npos::scale_info::build::Fields::named()
+						#scale_info_impl_single
+						#scale_info_impl_double
+						#scale_info_impl_rest
+					)
+			}
+		}
+   )
 }

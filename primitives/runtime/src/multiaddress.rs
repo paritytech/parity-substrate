@@ -21,7 +21,7 @@ use codec::{Encode, Decode};
 use sp_std::vec::Vec;
 
 /// A multi-format address wrapper for on-chain accounts.
-#[derive(Encode, Decode, PartialEq, Eq, Clone, crate::RuntimeDebug)]
+#[derive(Encode, Decode, PartialEq, Eq, Clone, crate::RuntimeDebug, scale_info::TypeInfo)]
 #[cfg_attr(feature = "std", derive(Hash))]
 pub enum MultiAddress<AccountId, AccountIndex> {
 	/// It's an account ID (pubkey).

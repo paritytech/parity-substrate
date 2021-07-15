@@ -15,8 +15,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::pallet::{Def, parse::helper::get_doc_literals};
 use crate::COUNTER;
+use crate::pallet::{
+	Def,
+	parse::event::PalletEventDepositAttr,
+};
+use frame_support_procedural_tools::get_doc_literals;
 use syn::{spanned::Spanned, Ident};
 
 /// * Add __Ignore variant on Event
@@ -70,21 +74,6 @@ pub fn expand_event(def: &mut Def) -> proc_macro2::TokenStream {
 	let frame_support = &def.frame_support;
 	let event_use_gen = &event.gen_kind.type_use_gen(event.attr_span);
 	let event_impl_gen= &event.gen_kind.type_impl_gen(event.attr_span);
-	let metadata = event.metadata.iter()
-		.map(|(ident, args, docs)| {
-			let name = format!("{}", ident);
-			quote::quote_spanned!(event.attr_span =>
-				#frame_support::event::EventMetadata {
-					name: #frame_support::event::DecodeDifferent::Encode(#name),
-					arguments: #frame_support::event::DecodeDifferent::Encode(&[
-						#( #args, )*
-					]),
-					documentation: #frame_support::event::DecodeDifferent::Encode(&[
-						#( #docs, )*
-					]),
-				},
-			)
-		});
 
 	let event_item = {
 		let item = &mut def.item.content.as_mut().expect("Checked by def parser").1[event.index];
@@ -128,14 +117,20 @@ pub fn expand_event(def: &mut Def) -> proc_macro2::TokenStream {
 			#frame_support::RuntimeDebugNoBound,
 			#frame_support::codec::Encode,
 			#frame_support::codec::Decode,
+			#frame_support::scale_info::TypeInfo,
 		)]
 	));
 
-	let deposit_event = if let Some((fn_vis, fn_span)) = &event.deposit_event {
+	// skip requirement for type params to implement `TypeInfo`
+	event_item.attrs.push(syn::parse_quote!( #[scale_info(skip_type_params(#event_use_gen))] ));
+
+	let deposit_event = if let Some(deposit_event) = &event.deposit_event {
 		let event_use_gen = &event.gen_kind.type_use_gen(event.attr_span);
 		let trait_use_gen = &def.trait_use_generics(event.attr_span);
 		let type_impl_gen = &def.type_impl_generics(event.attr_span);
 		let type_use_gen = &def.type_use_generics(event.attr_span);
+
+		let PalletEventDepositAttr { fn_vis, fn_span, .. } = deposit_event;
 
 		quote::quote_spanned!(*fn_span =>
 			impl<#type_impl_gen> Pallet<#type_use_gen> #completed_where_clause {
@@ -175,14 +170,6 @@ pub fn expand_event(def: &mut Def) -> proc_macro2::TokenStream {
 
 		impl<#event_impl_gen> From<#event_ident<#event_use_gen>> for () #event_where_clause {
 			fn from(_: #event_ident<#event_use_gen>) {}
-		}
-
-		impl<#event_impl_gen> #event_ident<#event_use_gen> #event_where_clause {
-			#[allow(dead_code)]
-			#[doc(hidden)]
-			pub fn metadata() -> &'static [#frame_support::event::EventMetadata] {
-				&[ #( #metadata )* ]
-			}
 		}
 	)
 }

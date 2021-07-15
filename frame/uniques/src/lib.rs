@@ -179,11 +179,6 @@ pub mod pallet {
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
-	#[pallet::metadata(
-		T::AccountId = "AccountId",
-		T::ClassId = "ClassId",
-		T::InstanceId = "InstanceId",
-	)]
 	pub enum Event<T: Config<I>, I: 'static = ()> {
 		/// An asset class was created. \[ class, creator, owner \]
 		Created(T::ClassId, T::AccountId, T::AccountId),

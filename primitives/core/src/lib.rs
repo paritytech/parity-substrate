@@ -43,6 +43,7 @@ use serde::{Serialize, Deserialize};
 pub use serde;
 #[doc(hidden)]
 pub use codec::{Encode, Decode};
+use scale_info::TypeInfo;
 
 pub use sp_debug_derive::RuntimeDebug;
 
@@ -183,7 +184,10 @@ impl sp_std::ops::Deref for OpaqueMetadata {
 }
 
 /// Simple blob to hold a `PeerId` without committing to its format.
-#[derive(Default, Clone, Eq, PartialEq, Ord, PartialOrd, Encode, Decode, RuntimeDebug, PassByInner)]
+#[derive(
+	Default, Clone, Eq, PartialEq, Ord, PartialOrd, Encode, Decode, RuntimeDebug, PassByInner,
+	TypeInfo
+)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct OpaquePeerId(pub Vec<u8>);
 
@@ -405,7 +409,7 @@ pub fn to_substrate_wasm_fn_return_value(value: &impl Encode) -> u64 {
 
 /// The void type - it cannot exist.
 // Oh rust, you crack me up...
-#[derive(Clone, Decode, Encode, Eq, PartialEq, RuntimeDebug)]
+#[derive(Clone, Decode, Encode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
 pub enum Void {}
 
 /// Macro for creating `Maybe*` marker traits.

@@ -24,6 +24,7 @@ use sp_std::vec::Vec;
 
 use crate::{hash::H256, hash::H512};
 use codec::{Encode, Decode, MaxEncodedLen};
+use scale_info::TypeInfo;
 
 #[cfg(feature = "full_crypto")]
 use core::convert::TryFrom;
@@ -56,7 +57,7 @@ type Seed = [u8; 32];
 #[cfg_attr(feature = "full_crypto", derive(Hash))]
 #[derive(
 	PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Encode, Decode, Default, PassByInner,
-	MaxEncodedLen,
+	MaxEncodedLen, TypeInfo,
 )]
 pub struct Public(pub [u8; 32]);
 
@@ -191,7 +192,7 @@ impl<'de> Deserialize<'de> for Public {
 }
 
 /// A signature (a 512-bit value).
-#[derive(Encode, Decode, PassByInner)]
+#[derive(Encode, Decode, PassByInner, TypeInfo)]
 pub struct Signature(pub [u8; 64]);
 
 impl sp_std::convert::TryFrom<&[u8]> for Signature {

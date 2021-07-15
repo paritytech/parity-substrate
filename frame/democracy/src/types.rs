@@ -18,12 +18,13 @@
 //! Miscellaneous additional datatypes.
 
 use codec::{Encode, Decode};
+use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 use sp_runtime::traits::{Zero, Bounded, CheckedAdd, CheckedSub, CheckedMul, CheckedDiv, Saturating};
 use crate::{Vote, VoteThreshold, AccountVote, Conviction};
 
 /// Info regarding an ongoing referendum.
-#[derive(Encode, Decode, Default, Clone, PartialEq, Eq, RuntimeDebug)]
+#[derive(Encode, Decode, Default, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo)]
 pub struct Tally<Balance> {
 	/// The number of aye votes, expressed in terms of post-conviction lock-vote.
 	pub (crate) ayes: Balance,
@@ -34,7 +35,7 @@ pub struct Tally<Balance> {
 }
 
 /// Amount of votes and capital placed in delegation for an account.
-#[derive(Encode, Decode, Default, Copy, Clone, PartialEq, Eq, RuntimeDebug)]
+#[derive(Encode, Decode, Default, Copy, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo)]
 pub struct Delegations<Balance> {
 	/// The number of votes (this is post-conviction).
 	pub (crate) votes: Balance,
@@ -161,7 +162,7 @@ impl<
 }
 
 /// Info regarding an ongoing referendum.
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo)]
 pub struct ReferendumStatus<BlockNumber, Hash, Balance> {
 	/// When voting on this referendum will end.
 	pub (crate) end: BlockNumber,
@@ -176,7 +177,7 @@ pub struct ReferendumStatus<BlockNumber, Hash, Balance> {
 }
 
 /// Info regarding a referendum, present or past.
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo)]
 pub enum ReferendumInfo<BlockNumber, Hash, Balance> {
 	/// Referendum is happening, the arg is the block number at which it will end.
 	Ongoing(ReferendumStatus<BlockNumber, Hash, Balance>),

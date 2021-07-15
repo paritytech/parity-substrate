@@ -134,7 +134,7 @@ pub struct NextEpochDescriptor {
 
 /// Information about the next epoch config, if changed. This is broadcast in the first
 /// block of the epoch, and applies using the same rules as `NextEpochDescriptor`.
-#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(Decode, Encode, PartialEq, Eq, Clone, RuntimeDebug, scale_info::TypeInfo)]
 pub enum NextConfigDescriptor {
 	/// Version 1.
 	#[codec(index = 1)]

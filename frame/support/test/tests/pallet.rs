@@ -17,11 +17,10 @@
 
 use frame_support::{
 	weights::{DispatchInfo, DispatchClass, Pays, GetDispatchInfo},
-	traits::{
-		GetCallName, OnInitialize, OnFinalize, OnRuntimeUpgrade, GetPalletVersion, OnGenesis,
-	},
+	traits::{GetCallName, OnInitialize, OnFinalize, OnRuntimeUpgrade, GetPalletVersion, OnGenesis},
 	dispatch::{UnfilteredDispatchable, Parameter},
 	storage::unhashed,
+	scale_info,
 };
 use sp_runtime::DispatchError;
 use sp_io::{TestExternalities, hashing::{twox_64, twox_128, blake2_128}};
@@ -47,10 +46,10 @@ impl From<SomeType6> for u64 { fn from(_t: SomeType6) -> Self { 0u64 } }
 pub struct SomeType7;
 impl From<SomeType7> for u64 { fn from(_t: SomeType7) -> Self { 0u64 } }
 
-pub trait SomeAssociation1 { type _1: Parameter + codec::MaxEncodedLen; }
+pub trait SomeAssociation1 { type _1: Parameter + codec::MaxEncodedLen + scale_info::TypeInfo; }
 impl SomeAssociation1 for u64 { type _1 = u64; }
 
-pub trait SomeAssociation2 { type _2: Parameter + codec::MaxEncodedLen; }
+pub trait SomeAssociation2 { type _2: Parameter + codec::MaxEncodedLen + scale_info::TypeInfo; }
 impl SomeAssociation2 for u64 { type _2 = u64; }
 
 #[frame_support::pallet]
@@ -59,6 +58,7 @@ pub mod pallet {
 		SomeType1, SomeType2, SomeType3, SomeType4, SomeType5, SomeType6, SomeType7,
 		SomeAssociation1, SomeAssociation2,
 	};
+	use frame_support::scale_info;
 	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
 
@@ -66,7 +66,9 @@ pub mod pallet {
 
 	#[pallet::config]
 	pub trait Config: frame_system::Config
-	where <Self as frame_system::Config>::AccountId: From<SomeType1> + SomeAssociation1,
+	where
+		<Self as frame_system::Config>::AccountId: From<SomeType1> + SomeAssociation1,
+		<Self::AccountId as SomeAssociation1>::_1: scale_info::TypeInfo,
 	{
 		/// Some comment
 		/// Some comment
@@ -81,7 +83,7 @@ pub mod pallet {
 		#[pallet::constant]
 		type MyGetParam3: Get<<Self::AccountId as SomeAssociation1>::_1>;
 
-		type Balance: Parameter + Default;
+		type Balance: Parameter + Default + scale_info::TypeInfo;
 
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 	}
@@ -179,7 +181,6 @@ pub mod pallet {
 	}
 
 	#[pallet::event]
-	#[pallet::metadata(BalanceOf<T> = "Balance", u32 = "Other")]
 	#[pallet::generate_deposit(fn deposit_event)]
 	pub enum Event<T: Config> where T::AccountId: SomeAssociation1 + From<SomeType1>{
 		/// doc comment put in metadata
@@ -293,7 +294,7 @@ pub mod pallet {
 	}
 
 	#[pallet::origin]
-	#[derive(EqNoBound, RuntimeDebugNoBound, CloneNoBound, PartialEqNoBound, Encode, Decode)]
+	#[derive(EqNoBound, RuntimeDebugNoBound, CloneNoBound, PartialEqNoBound, Encode, Decode, scale_info::TypeInfo)]
 	pub struct Origin<T>(PhantomData<T>);
 
 	#[pallet::validate_unsigned]
@@ -850,295 +851,473 @@ fn pallet_on_genesis() {
 
 #[test]
 fn metadata() {
-	use frame_metadata::*;
-	use codec::{Decode, Encode};
+	use frame_support::metadata::*;
 
-	let expected_pallet_metadata = ModuleMetadata {
-		index: 1,
-		name: DecodeDifferent::Decoded("Example".to_string()),
-		storage: Some(DecodeDifferent::Decoded(StorageMetadata {
-			prefix: DecodeDifferent::Decoded("Example".to_string()),
-			entries: DecodeDifferent::Decoded(vec![
-				StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("ValueWhereClause".to_string()),
-					modifier: StorageEntryModifier::Optional,
-					ty: StorageEntryType::Plain(
-						DecodeDifferent::Decoded(
-							"<T::AccountId as SomeAssociation2>::_2".to_string()
-						),
-					),
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
+	let pallets = vec![
+		PalletMetadata {
+			index: 0,
+			name: "System",
+			storage: None,
+			calls: Some(scale_info::meta_type::<frame_system::Call<Runtime>>().into()),
+			event: Some(scale_info::meta_type::<frame_system::Event<Runtime>>().into()),
+			constants: vec![
+				PalletConstantMetadata {
+					name: "BlockWeights",
+					ty: scale_info::meta_type::<frame_system::limits::BlockWeights>(),
+					value: vec![],
+					docs: vec![]
 				},
-				StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("Value".to_string()),
-					modifier: StorageEntryModifier::Optional,
-					ty: StorageEntryType::Plain(DecodeDifferent::Decoded("u32".to_string())),
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
+				PalletConstantMetadata {
+					name: "BlockLength",
+					ty: scale_info::meta_type::<frame_system::limits::BlockLength>(),
+					value: vec![],
+					docs: vec![],
 				},
-				StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("Value2".to_string()),
-					modifier: StorageEntryModifier::Optional,
-					ty: StorageEntryType::Plain(DecodeDifferent::Decoded("u64".to_string())),
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
+				PalletConstantMetadata {
+					name: "BlockHashCount",
+					ty: scale_info::meta_type::<u32>(),
+					value: vec![],
+					docs: vec![],
 				},
-				StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("Map".to_string()),
-					modifier: StorageEntryModifier::Default,
-					ty: StorageEntryType::Map {
-						key: DecodeDifferent::Decoded("u8".to_string()),
-						value: DecodeDifferent::Decoded("u16".to_string()),
-						hasher: StorageHasher::Blake2_128Concat,
-						unused: false,
+				PalletConstantMetadata {
+					name: "DbWeight",
+					ty: scale_info::meta_type::<frame_support::weights::RuntimeDbWeight>(),
+					value: vec![],
+					docs: vec![],
+				},
+				PalletConstantMetadata {
+					name: "Version",
+					ty: scale_info::meta_type::<sp_version::RuntimeVersion>(),
+					value: vec![],
+					docs: vec![],
+				},
+				PalletConstantMetadata {
+					name: "SS58Prefix",
+					ty: scale_info::meta_type::<u8>(),
+					value: vec![],
+					docs: vec![]
+				}
+			],
+			error: Some(scale_info::meta_type::<frame_system::Error<Runtime>>().into()),
+		},
+		PalletMetadata {
+			index: 1,
+			name: "Example",
+			storage: Some(PalletStorageMetadata {
+				prefix: "Example",
+				entries: vec![
+					StorageEntryMetadata {
+						name: "ValueWhereClause",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::Plain(scale_info::meta_type::<u64>()),
+						default: vec![0],
+						docs: vec![],
 					},
-					default: DecodeDifferent::Decoded(vec![4, 0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
-				},
-				StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("Map2".to_string()),
-					modifier: StorageEntryModifier::Optional,
-					ty: StorageEntryType::Map {
-						key: DecodeDifferent::Decoded("u16".to_string()),
-						value: DecodeDifferent::Decoded("u32".to_string()),
-						hasher: StorageHasher::Twox64Concat,
-						unused: false,
+					StorageEntryMetadata {
+						name: "Value",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::Plain(scale_info::meta_type::<u32>()),
+						default: vec![0],
+						docs: vec![],
 					},
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
-				},
-				StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("DoubleMap".to_string()),
-					modifier: StorageEntryModifier::Optional,
-					ty: StorageEntryType::DoubleMap {
-						value: DecodeDifferent::Decoded("u32".to_string()),
-						key1: DecodeDifferent::Decoded("u8".to_string()),
-						key2: DecodeDifferent::Decoded("u16".to_string()),
-						hasher: StorageHasher::Blake2_128Concat,
-						key2_hasher: StorageHasher::Twox64Concat,
+					StorageEntryMetadata {
+						name: "Value2",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::Plain(scale_info::meta_type::<u64>()),
+						default: vec![0],
+						docs: vec![],
 					},
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
-				},
-				StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("DoubleMap2".to_string()),
-					modifier: StorageEntryModifier::Optional,
-					ty: StorageEntryType::DoubleMap {
-						value: DecodeDifferent::Decoded("u64".to_string()),
-						key1: DecodeDifferent::Decoded("u16".to_string()),
-						key2: DecodeDifferent::Decoded("u32".to_string()),
-						hasher: StorageHasher::Twox64Concat,
-						key2_hasher: StorageHasher::Blake2_128Concat,
+					StorageEntryMetadata {
+						name: "Map",
+						modifier: StorageEntryModifier::Default,
+						ty: StorageEntryType::Map {
+							key: scale_info::meta_type::<u8>(),
+							value: scale_info::meta_type::<u16>(),
+							hasher: StorageHasher::Blake2_128Concat,
+						},
+						default: vec![4, 0],
+						docs: vec![],
 					},
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
-				},
-				StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("NMap".to_string()),
-					modifier: StorageEntryModifier::Optional,
-					ty: StorageEntryType::NMap {
-						keys: DecodeDifferent::Decoded(vec!["u8".to_string()]),
-						hashers: DecodeDifferent::Decoded(vec![
-							StorageHasher::Blake2_128Concat,
-						]),
-						value: DecodeDifferent::Decoded("u32".to_string()),
+					StorageEntryMetadata {
+						name: "Map2",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::Map {
+							key: scale_info::meta_type::<u16>(),
+							value: scale_info::meta_type::<u32>(),
+							hasher: StorageHasher::Twox64Concat,
+						},
+						default: vec![0],
+						docs: vec![],
 					},
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
-				},
-				StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("NMap2".to_string()),
-					modifier: StorageEntryModifier::Optional,
-					ty: StorageEntryType::NMap {
-						keys: DecodeDifferent::Decoded(vec![
-							"u16".to_string(),
-							"u32".to_string(),
-						]),
-						hashers: DecodeDifferent::Decoded(vec![
-							StorageHasher::Twox64Concat,
-							StorageHasher::Blake2_128Concat,
-						]),
-						value: DecodeDifferent::Decoded("u64".to_string()),
+					StorageEntryMetadata {
+						name: "DoubleMap",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::DoubleMap {
+							value: scale_info::meta_type::<u32>(),
+							key1: scale_info::meta_type::<u8>(),
+							key2: scale_info::meta_type::<u16>(),
+							hasher: StorageHasher::Blake2_128Concat,
+							key2_hasher: StorageHasher::Twox64Concat,
+						},
+						default: vec![0],
+						docs: vec![],
 					},
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
-				},
-				#[cfg(feature = "conditional-storage")] StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("ConditionalValue".to_string()),
-					modifier: StorageEntryModifier::Optional,
-					ty: StorageEntryType::Plain(DecodeDifferent::Decoded("u32".to_string())),
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
-				},
-				#[cfg(feature = "conditional-storage")] StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("ConditionalMap".to_string()),
-					modifier: StorageEntryModifier::Optional,
-					ty: StorageEntryType::Map {
-						key: DecodeDifferent::Decoded("u16".to_string()),
-						value: DecodeDifferent::Decoded("u32".to_string()),
-						hasher: StorageHasher::Twox64Concat,
-						unused: false,
+					StorageEntryMetadata {
+						name: "DoubleMap2",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::DoubleMap {
+							value: scale_info::meta_type::<u64>(),
+							key1: scale_info::meta_type::<u16>(),
+							key2: scale_info::meta_type::<u32>(),
+							hasher: StorageHasher::Twox64Concat,
+							key2_hasher: StorageHasher::Blake2_128Concat,
+						},
+						default: vec![0],
+						docs: vec![],
 					},
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
-				},
-				#[cfg(feature = "conditional-storage")] StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("ConditionalDoubleMap".to_string()),
-					modifier: StorageEntryModifier::Optional,
-					ty: StorageEntryType::DoubleMap {
-						value: DecodeDifferent::Decoded("u32".to_string()),
-						key1: DecodeDifferent::Decoded("u8".to_string()),
-						key2: DecodeDifferent::Decoded("u16".to_string()),
-						hasher: StorageHasher::Blake2_128Concat,
-						key2_hasher: StorageHasher::Twox64Concat,
+					StorageEntryMetadata {
+						name: "NMap",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::NMap {
+							keys: scale_info::meta_type::<u8>(),
+							hashers: vec![StorageHasher::Blake2_128Concat],
+							value: scale_info::meta_type::<u32>(),
+						},
+						default: vec![0],
+						docs: vec![],
 					},
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
-				},
-				#[cfg(feature = "conditional-storage")] StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("ConditionalNMap".to_string()),
-					modifier: StorageEntryModifier::Optional,
-					ty: StorageEntryType::NMap {
-						keys: DecodeDifferent::Decoded(vec!["u8".to_string(), "u16".to_string()]),
-						hashers: DecodeDifferent::Decoded(vec![
-							StorageHasher::Blake2_128Concat,
-							StorageHasher::Twox64Concat,
-						]),
-						value: DecodeDifferent::Decoded("u32".to_string()),
+					StorageEntryMetadata {
+						name: "NMap2",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::NMap {
+							keys: scale_info::meta_type::<(u16, u32)>(),
+							hashers: vec![StorageHasher::Twox64Concat, StorageHasher::Blake2_128Concat],
+							value: scale_info::meta_type::<u64>(),
+						},
+						default: vec![0],
+						docs: vec![],
 					},
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
-				},
-			]),
-		})),
-		calls: Some(DecodeDifferent::Decoded(vec![
-			FunctionMetadata {
-				name: DecodeDifferent::Decoded("foo".to_string()),
-				arguments: DecodeDifferent::Decoded(vec![
-					FunctionArgumentMetadata {
-						name: DecodeDifferent::Decoded("_foo".to_string()),
-						ty: DecodeDifferent::Decoded("Compact<u32>".to_string()),
+					#[cfg(feature = "conditional-storage")] StorageEntryMetadata {
+						name: "ConditionalValue",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::Plain(scale_info::meta_type::<u32>()),
+						default: vec![0],
+						docs: vec![],
 					},
-					FunctionArgumentMetadata {
-						name: DecodeDifferent::Decoded("_bar".to_string()),
-						ty: DecodeDifferent::Decoded("u32".to_string()),
-					}
-				]),
-				documentation: DecodeDifferent::Decoded(vec![
-					" Doc comment put in metadata".to_string(),
-				]),
-			},
-			FunctionMetadata {
-				name: DecodeDifferent::Decoded("foo_transactional".to_string()),
-				arguments: DecodeDifferent::Decoded(vec![
-					FunctionArgumentMetadata {
-						name: DecodeDifferent::Decoded("foo".to_string()),
-						ty: DecodeDifferent::Decoded("Compact<u32>".to_string()),
-					}
-				]),
-				documentation: DecodeDifferent::Decoded(vec![
-					" Doc comment put in metadata".to_string(),
-				]),
-			},
-			FunctionMetadata {
-				name: DecodeDifferent::Decoded("foo_no_post_info".to_string()),
-				arguments: DecodeDifferent::Decoded(vec![]),
-				documentation: DecodeDifferent::Decoded(vec![]),
-			},
-		])),
-		event: Some(DecodeDifferent::Decoded(vec![
-			EventMetadata {
-				name: DecodeDifferent::Decoded("Proposed".to_string()),
-				arguments: DecodeDifferent::Decoded(vec!["<T as frame_system::Config>::AccountId".to_string()]),
-				documentation: DecodeDifferent::Decoded(vec![
-					" doc comment put in metadata".to_string()
-				]),
-			},
-			EventMetadata {
-				name: DecodeDifferent::Decoded("Spending".to_string()),
-				arguments: DecodeDifferent::Decoded(vec!["Balance".to_string()]),
-				documentation: DecodeDifferent::Decoded(vec![
-					" doc".to_string()
-				]),
-			},
-			EventMetadata {
-				name: DecodeDifferent::Decoded("Something".to_string()),
-				arguments: DecodeDifferent::Decoded(vec!["Other".to_string()]),
-				documentation: DecodeDifferent::Decoded(vec![]),
-			},
-			EventMetadata {
-				name: DecodeDifferent::Decoded("SomethingElse".to_string()),
-				arguments: DecodeDifferent::Decoded(vec!["<T::AccountId as SomeAssociation1>::_1".to_string()]),
-				documentation: DecodeDifferent::Decoded(vec![]),
-			},
-		])),
-		constants: DecodeDifferent::Decoded(vec![
-			ModuleConstantMetadata {
-				name: DecodeDifferent::Decoded("MyGetParam".to_string()),
-				ty: DecodeDifferent::Decoded("u32".to_string()),
-				value: DecodeDifferent::Decoded(vec![10, 0, 0, 0]),
-				documentation: DecodeDifferent::Decoded(vec![
-					" Some comment".to_string(),
-					" Some comment".to_string(),
-				]),
-			},
-			ModuleConstantMetadata {
-				name: DecodeDifferent::Decoded("MyGetParam2".to_string()),
-				ty: DecodeDifferent::Decoded("u32".to_string()),
-				value: DecodeDifferent::Decoded(vec![11, 0, 0, 0]),
-				documentation: DecodeDifferent::Decoded(vec![
-					" Some comment".to_string(),
-					" Some comment".to_string(),
-				]),
-			},
-			ModuleConstantMetadata {
-				name: DecodeDifferent::Decoded("MyGetParam3".to_string()),
-				ty: DecodeDifferent::Decoded("<T::AccountId as SomeAssociation1>::_1".to_string()),
-				value: DecodeDifferent::Decoded(vec![12, 0, 0, 0, 0, 0, 0, 0]),
-				documentation: DecodeDifferent::Decoded(vec![]),
-			},
-			ModuleConstantMetadata {
-				name: DecodeDifferent::Decoded("some_extra".to_string()),
-				ty: DecodeDifferent::Decoded("T::AccountId".to_string()),
-				value: DecodeDifferent::Decoded(vec![100, 0, 0, 0, 0, 0, 0, 0]),
-				documentation: DecodeDifferent::Decoded(vec![
-					" Some doc".to_string(),
-					" Some doc".to_string(),
-				]),
-			},
-			ModuleConstantMetadata {
-				name: DecodeDifferent::Decoded("some_extra_extra".to_string()),
-				ty: DecodeDifferent::Decoded("T::AccountId".to_string()),
-				value: DecodeDifferent::Decoded(vec![0, 0, 0, 0, 0, 0, 0, 0]),
-				documentation: DecodeDifferent::Decoded(vec![
-					" Some doc".to_string(),
-				]),
-			},
-		]),
-		errors: DecodeDifferent::Decoded(vec![
-			ErrorMetadata {
-				name: DecodeDifferent::Decoded("InsufficientProposersBalance".to_string()),
-				documentation: DecodeDifferent::Decoded(vec![
-					" doc comment put into metadata".to_string(),
-				]),
-			},
-		]),
+					#[cfg(feature = "conditional-storage")] StorageEntryMetadata {
+						name: "ConditionalMap",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::Map {
+							key: scale_info::meta_type::<u16>(),
+							value: scale_info::meta_type::<u32>(),
+							hasher: StorageHasher::Twox64Concat,
+						},
+						default: vec![0],
+						docs: vec![],
+					},
+					#[cfg(feature = "conditional-storage")] StorageEntryMetadata {
+						name: "ConditionalDoubleMap",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::DoubleMap {
+							value: scale_info::meta_type::<u32>(),
+							key1: scale_info::meta_type::<u8>(),
+							key2: scale_info::meta_type::<u16>(),
+							hasher: StorageHasher::Blake2_128Concat,
+							key2_hasher: StorageHasher::Twox64Concat,
+						},
+						default: vec![0],
+						docs: vec![],
+					},
+					#[cfg(feature = "conditional-storage")] StorageEntryMetadata {
+						name: "ConditionalNMap",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::NMap {
+							keys: scale_info::meta_type::<(u8, u16)>(),
+							hashers: vec![StorageHasher::Blake2_128Concat, StorageHasher::Twox64Concat],
+							value: scale_info::meta_type::<u32>(),
+						},
+						default: vec![0],
+						docs: vec![],
+					},
+				],
+			}),
+			calls: Some(scale_info::meta_type::<pallet::Call<Runtime>>().into()),
+			event: Some(scale_info::meta_type::<pallet::Event<Runtime>>().into()),
+			constants: vec![
+				PalletConstantMetadata {
+					name: "MyGetParam",
+					ty: scale_info::meta_type::<u32>(),
+					value: vec![10, 0, 0, 0],
+					docs: vec![
+						" Some comment",
+						" Some comment",
+					],
+				},
+				PalletConstantMetadata {
+					name: "MyGetParam2",
+					ty: scale_info::meta_type::<u32>(),
+					value: vec![11, 0, 0, 0],
+					docs: vec![
+						" Some comment",
+						" Some comment",
+					],
+				},
+				PalletConstantMetadata {
+					name: "MyGetParam3",
+					ty: scale_info::meta_type::<u64>(),
+					value: vec![12, 0, 0, 0, 0, 0, 0, 0],
+					docs: vec![],
+				},
+				PalletConstantMetadata {
+					name: "some_extra",
+					ty: scale_info::meta_type::<u64>(),
+					value: vec![100, 0, 0, 0, 0, 0, 0, 0],
+					docs: vec![
+						" Some doc",
+						" Some doc",
+					],
+				},
+				PalletConstantMetadata {
+					name: "some_extra_extra",
+					ty: scale_info::meta_type::<u64>(),
+					value: vec![0, 0, 0, 0, 0, 0, 0, 0],
+					docs: vec![
+						" Some doc",
+					],
+				},
+			],
+			error: Some(PalletErrorMetadata { ty: scale_info::meta_type::<pallet::Error<Runtime>>() }),
+		},
+		PalletMetadata {
+			index: 1,
+			name: "Example",
+			storage: Some(PalletStorageMetadata {
+				prefix: "Example",
+				entries: vec![
+					StorageEntryMetadata {
+						name: "ValueWhereClause",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::Plain(scale_info::meta_type::<u64>()),
+						default: vec![0],
+						docs: vec![],
+					},
+					StorageEntryMetadata {
+						name: "Value",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::Plain(scale_info::meta_type::<u32>()),
+						default: vec![0],
+						docs: vec![],
+					},
+					StorageEntryMetadata {
+						name: "Value2",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::Plain(scale_info::meta_type::<u64>()),
+						default: vec![0],
+						docs: vec![],
+					},
+					StorageEntryMetadata {
+						name: "Map",
+						modifier: StorageEntryModifier::Default,
+						ty: StorageEntryType::Map {
+							key: scale_info::meta_type::<u8>(),
+							value: scale_info::meta_type::<u16>(),
+							hasher: StorageHasher::Blake2_128Concat,
+						},
+						default: vec![4, 0],
+						docs: vec![],
+					},
+					StorageEntryMetadata {
+						name: "Map2",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::Map {
+							key: scale_info::meta_type::<u16>(),
+							value: scale_info::meta_type::<u32>(),
+							hasher: StorageHasher::Twox64Concat,
+						},
+						default: vec![0],
+						docs: vec![],
+					},
+					StorageEntryMetadata {
+						name: "DoubleMap",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::DoubleMap {
+							value: scale_info::meta_type::<u32>(),
+							key1: scale_info::meta_type::<u8>(),
+							key2: scale_info::meta_type::<u16>(),
+							hasher: StorageHasher::Blake2_128Concat,
+							key2_hasher: StorageHasher::Twox64Concat,
+						},
+						default: vec![0],
+						docs: vec![],
+					},
+					StorageEntryMetadata {
+						name: "DoubleMap2",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::DoubleMap {
+							value: scale_info::meta_type::<u64>(),
+							key1: scale_info::meta_type::<u16>(),
+							key2: scale_info::meta_type::<u32>(),
+							hasher: StorageHasher::Twox64Concat,
+							key2_hasher: StorageHasher::Blake2_128Concat,
+						},
+						default: vec![0],
+						docs: vec![],
+					},
+					StorageEntryMetadata {
+						name: "NMap",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::NMap {
+							keys: scale_info::meta_type::<u8>(),
+							hashers: vec![StorageHasher::Blake2_128Concat],
+							value: scale_info::meta_type::<u32>(),
+						},
+						default: vec![0],
+						docs: vec![],
+					},
+					StorageEntryMetadata {
+						name: "NMap2",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::NMap {
+							keys: scale_info::meta_type::<(u16, u32)>(),
+							hashers: vec![StorageHasher::Twox64Concat, StorageHasher::Blake2_128Concat],
+							value: scale_info::meta_type::<u64>(),
+						},
+						default: vec![0],
+						docs: vec![],
+					},
+					#[cfg(feature = "conditional-storage")] StorageEntryMetadata {
+						name: "ConditionalValue",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::Plain(scale_info::meta_type::<u32>()),
+						default: vec![0],
+						docs: vec![],
+					},
+					#[cfg(feature = "conditional-storage")] StorageEntryMetadata {
+						name: "ConditionalMap",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::Map {
+							key: scale_info::meta_type::<u16>(),
+							value: scale_info::meta_type::<u32>(),
+							hasher: StorageHasher::Twox64Concat,
+						},
+						default: vec![0],
+						docs: vec![],
+					},
+					#[cfg(feature = "conditional-storage")] StorageEntryMetadata {
+						name: "ConditionalDoubleMap",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::DoubleMap {
+							value: scale_info::meta_type::<u32>(),
+							key1: scale_info::meta_type::<u8>(),
+							key2: scale_info::meta_type::<u16>(),
+							hasher: StorageHasher::Blake2_128Concat,
+							key2_hasher: StorageHasher::Twox64Concat,
+						},
+						default: vec![0],
+						docs: vec![],
+					},
+					#[cfg(feature = "conditional-storage")] StorageEntryMetadata {
+						name: "ConditionalNMap",
+						modifier: StorageEntryModifier::Optional,
+						ty: StorageEntryType::NMap {
+							keys: scale_info::meta_type::<(u8, u16)>(),
+							hashers: vec![StorageHasher::Blake2_128Concat, StorageHasher::Twox64Concat],
+							value: scale_info::meta_type::<u32>(),
+						},
+						default: vec![0],
+						docs: vec![],
+					},
+				],
+			}),
+			calls: Some(scale_info::meta_type::<pallet::Call<Runtime>>().into()),
+			event: Some(scale_info::meta_type::<pallet::Event<Runtime>>().into()),
+			constants: vec![
+				PalletConstantMetadata {
+					name: "MyGetParam",
+					ty: scale_info::meta_type::<u32>(),
+					value: vec![10, 0, 0, 0],
+					docs: vec![
+						" Some comment",
+						" Some comment",
+					],
+				},
+				PalletConstantMetadata {
+					name: "MyGetParam2",
+					ty: scale_info::meta_type::<u32>(),
+					value: vec![11, 0, 0, 0],
+					docs: vec![
+						" Some comment",
+						" Some comment",
+					],
+				},
+				PalletConstantMetadata {
+					name: "MyGetParam3",
+					ty: scale_info::meta_type::<u64>(),
+					value: vec![12, 0, 0, 0, 0, 0, 0, 0],
+					docs: vec![],
+				},
+				PalletConstantMetadata {
+					name: "some_extra",
+					ty: scale_info::meta_type::<u64>(),
+					value: vec![100, 0, 0, 0, 0, 0, 0, 0],
+					docs: vec![
+						" Some doc",
+						" Some doc",
+					],
+				},
+				PalletConstantMetadata {
+					name: "some_extra_extra",
+					ty: scale_info::meta_type::<u64>(),
+					value: vec![0, 0, 0, 0, 0, 0, 0, 0],
+					docs: vec![
+						" Some doc",
+					],
+				},
+			],
+			error: Some(PalletErrorMetadata { ty: scale_info::meta_type::<pallet::Error<Runtime>>() }),
+		},
+		PalletMetadata {
+			index: 2,
+			name: "Example2",
+			storage: Some(PalletStorageMetadata {
+				prefix: "Example2",
+				entries: vec![],
+			}),
+			calls: Some(scale_info::meta_type::<pallet2::Call<Runtime>>().into()),
+			event: Some(PalletEventMetadata { ty: scale_info::meta_type::<pallet2::Event>() }),
+			constants: vec![],
+			error: None,
+		}
+	];
+
+	let extrinsic = ExtrinsicMetadata {
+		ty: scale_info::meta_type::<UncheckedExtrinsic>(),
+		version: 4,
+		signed_extensions: vec![
+			SignedExtensionMetadata {
+				identifier: "UnitSignedExtension",
+				ty: scale_info::meta_type::<()>(),
+				additional_signed: scale_info::meta_type::<()>(),
+			}
+		]
 	};
 
-	let metadata = match Runtime::metadata().1 {
-		RuntimeMetadata::V13(metadata) => metadata,
-		_ => panic!("metadata has been bump, test needs to be updated"),
+	let expected_metadata: RuntimeMetadataPrefixed = RuntimeMetadataLastVersion::new(pallets, extrinsic).into();
+	let expected_metadata = match expected_metadata.1 {
+		RuntimeMetadata::V14(metadata) => {
+			metadata
+		},
+		_ => panic!("metadata has been bumped, test needs to be updated"),
 	};
 
-	let modules_metadata = match metadata.modules {
-		DecodeDifferent::Encode(modules_metadata) => modules_metadata,
-		_ => unreachable!(),
+	let actual_metadata = match Runtime::metadata().1 {
+		RuntimeMetadata::V14(metadata) => {
+			metadata
+		},
+		_ => panic!("metadata has been bumped, test needs to be updated"),
 	};
 
-	let pallet_metadata = ModuleMetadata::decode(&mut &modules_metadata[1].encode()[..]).unwrap();
-
-	pretty_assertions::assert_eq!(pallet_metadata, expected_pallet_metadata);
+	pretty_assertions::assert_eq!(actual_metadata, expected_metadata);
 }
 
 #[test]

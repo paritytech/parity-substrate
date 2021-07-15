@@ -26,6 +26,7 @@ use pallet_contracts_proc_macro::{ScheduleDebug, WeightDebug};
 use frame_support::{DefaultNoBound, weights::Weight};
 use sp_std::{marker::PhantomData, vec::Vec};
 use codec::{Encode, Decode};
+use scale_info::TypeInfo;
 use pwasm_utils::{parity_wasm::elements, rules};
 use sp_runtime::RuntimeDebug;
 
@@ -72,7 +73,8 @@ pub const INSTR_BENCHMARK_BATCH_SIZE: u32 = 1_000;
 /// changes are made to its values.
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(bound(serialize = "", deserialize = "")))]
-#[derive(Clone, Encode, Decode, PartialEq, Eq, ScheduleDebug, DefaultNoBound)]
+#[derive(Clone, Encode, Decode, PartialEq, Eq, ScheduleDebug, DefaultNoBound, TypeInfo)]
+#[scale_info(skip_type_params(T))]
 pub struct Schedule<T: Config> {
 	/// Describes the upper limits on various metrics.
 	pub limits: Limits,
@@ -92,7 +94,7 @@ pub struct Schedule<T: Config> {
 /// values will break existing contracts which are above the new limits when a
 /// re-instrumentation is triggered.
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-#[derive(Clone, Encode, Decode, PartialEq, Eq, RuntimeDebug)]
+#[derive(Clone, Encode, Decode, PartialEq, Eq, RuntimeDebug, TypeInfo)]
 pub struct Limits {
 	/// The maximum number of topics supported by an event.
 	pub event_topics: u32,
@@ -174,7 +176,8 @@ impl Limits {
 ///    that use them as supporting instructions. Supporting means mainly pushing arguments
 ///    and dropping return values in order to maintain a valid module.
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-#[derive(Clone, Encode, Decode, PartialEq, Eq, WeightDebug)]
+#[derive(Clone, Encode, Decode, PartialEq, Eq, WeightDebug, TypeInfo)]
+#[scale_info(skip_type_params(T))]
 pub struct InstructionWeights<T: Config> {
 	/// Version of the instruction weights.
 	///
@@ -247,7 +250,8 @@ pub struct InstructionWeights<T: Config> {
 
 /// Describes the weight for each imported function that a contract is allowed to call.
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-#[derive(Clone, Encode, Decode, PartialEq, Eq, WeightDebug)]
+#[derive(Clone, Encode, Decode, PartialEq, Eq, WeightDebug, TypeInfo)]
+#[scale_info(skip_type_params(T))]
 pub struct HostFnWeights<T: Config> {
 	/// Weight of calling `seal_caller`.
 	pub caller: Weight,

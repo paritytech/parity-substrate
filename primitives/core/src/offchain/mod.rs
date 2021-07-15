@@ -18,6 +18,7 @@
 //! Offchain workers types
 
 use codec::{Encode, Decode};
+use scale_info::TypeInfo;
 use sp_std::{prelude::{Vec, Box}, convert::TryFrom};
 use crate::{OpaquePeerId, RuntimeDebug};
 use sp_runtime_interface::pass_by::{PassByCodec, PassByInner, PassByEnum};
@@ -181,7 +182,7 @@ impl TryFrom<u32> for HttpRequestStatus {
 
 /// A blob to hold information about the local node's network state
 /// without committing to its format.
-#[derive(Clone, Eq, PartialEq, Encode, Decode, RuntimeDebug, PassByCodec)]
+#[derive(Clone, Eq, PartialEq, Encode, Decode, RuntimeDebug, PassByCodec, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Default))]
 pub struct OpaqueNetworkState {
 	/// PeerId of the local node in SCALE encoded.
@@ -191,7 +192,7 @@ pub struct OpaqueNetworkState {
 }
 
 /// Simple blob to hold a `Multiaddr` without committing to its format.
-#[derive(Clone, Eq, PartialEq, Encode, Decode, RuntimeDebug, PassByInner)]
+#[derive(Clone, Eq, PartialEq, Encode, Decode, RuntimeDebug, PassByInner, TypeInfo)]
 pub struct OpaqueMultiaddr(pub Vec<u8>);
 
 impl OpaqueMultiaddr {

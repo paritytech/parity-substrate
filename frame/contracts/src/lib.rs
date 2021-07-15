@@ -468,7 +468,6 @@ pub mod pallet {
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
-	#[pallet::metadata(T::AccountId = "AccountId", T::Hash = "Hash", BalanceOf<T> = "Balance")]
 	pub enum Event<T: Config> {
 		/// Contract deployed by address at the specified address. \[deployer, contract\]
 		Instantiated(T::AccountId, T::AccountId),

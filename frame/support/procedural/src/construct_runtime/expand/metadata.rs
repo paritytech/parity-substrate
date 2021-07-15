@@ -26,7 +26,7 @@ pub fn expand_runtime_metadata(
 	scrate: &TokenStream,
 	extrinsic: &TypePath,
 ) -> TokenStream {
-	let modules = pallet_declarations
+	let pallets = pallet_declarations
 		.iter()
 		.filter_map(|pallet_declaration| {
 			pallet_declaration.find_part("Pallet").map(|_| {
@@ -42,21 +42,21 @@ pub fn expand_runtime_metadata(
 		.map(|(decl, filtered_names)| {
 			let name = &decl.name;
 			let index = &decl.index;
-			let storage = expand_pallet_metadata_storage(&filtered_names, runtime, scrate, decl);
-			let calls = expand_pallet_metadata_calls(&filtered_names, runtime, scrate, decl);
+			let storage = expand_pallet_metadata_storage(&filtered_names, runtime, decl);
+			let calls = expand_pallet_metadata_calls(&filtered_names, runtime, decl);
 			let event = expand_pallet_metadata_events(&filtered_names, runtime, scrate, decl);
-			let constants = expand_pallet_metadata_constants(runtime, scrate, decl);
-			let errors = expand_pallet_metadata_errors(runtime, scrate, decl);
+			let constants = expand_pallet_metadata_constants(runtime, decl);
+			let errors = expand_pallet_metadata_errors(runtime, decl);
 
 			quote!{
-				#scrate::metadata::ModuleMetadata {
-					name: #scrate::metadata::DecodeDifferent::Encode(stringify!(#name)),
+				#scrate::metadata::PalletMetadata {
+					name: stringify!(#name),
 					index: #index,
 					storage: #storage,
 					calls: #calls,
 					event: #event,
 					constants: #constants,
-					errors: #errors,
+					error: #errors,
 				}
 			}
 		})
@@ -65,20 +65,25 @@ pub fn expand_runtime_metadata(
 	quote!{
 		impl #runtime {
 			pub fn metadata() -> #scrate::metadata::RuntimeMetadataPrefixed {
-				#scrate::metadata::RuntimeMetadataLastVersion {
-					modules: #scrate::metadata::DecodeDifferent::Encode(&[ #(#modules),* ]),
-					extrinsic: #scrate::metadata::ExtrinsicMetadata {
+				#scrate::metadata::RuntimeMetadataLastVersion::new(
+					#scrate::sp_std::vec![ #(#pallets),* ],
+					#scrate::metadata::ExtrinsicMetadata {
+						ty: #scrate::scale_info::meta_type::<#extrinsic>(),
 						version: <#extrinsic as #scrate::sp_runtime::traits::ExtrinsicMetadata>::VERSION,
 						signed_extensions: <
 								<
 									#extrinsic as #scrate::sp_runtime::traits::ExtrinsicMetadata
 								>::SignedExtensions as #scrate::sp_runtime::traits::SignedExtension
-							>::identifier()
+							>::metadata()
 								.into_iter()
-								.map(#scrate::metadata::DecodeDifferent::Encode)
+								.map(|meta| #scrate::metadata::SignedExtensionMetadata {
+									identifier: meta.identifier,
+									ty: meta.ty,
+									additional_signed: meta.additional_signed,
+								})
 								.collect(),
 					},
-				}.into()
+				).into()
 			}
 		}
 	}
@@ -87,7 +92,6 @@ pub fn expand_runtime_metadata(
 fn expand_pallet_metadata_storage(
 	filtered_names: &[&'static str],
 	runtime: &Ident,
-	scrate: &TokenStream,
 	decl: &Pallet,
 ) -> TokenStream {
 	if filtered_names.contains(&"Storage") {
@@ -95,11 +99,7 @@ fn expand_pallet_metadata_storage(
 		let path = &decl.path;
 
 		quote!{
-			Some(#scrate::metadata::DecodeDifferent::Encode(
-				#scrate::metadata::FnEncode(
-					#path::Pallet::<#runtime #(, #path::#instance)*>::storage_metadata
-				)
-			))
+			Some(#path::Pallet::<#runtime #(, #path::#instance)*>::storage_metadata())
 		}
 	} else {
 		quote!(None)
@@ -109,7 +109,6 @@ fn expand_pallet_metadata_storage(
 fn expand_pallet_metadata_calls(
 	filtered_names: &[&'static str],
 	runtime: &Ident,
-	scrate: &TokenStream,
 	decl: &Pallet,
 ) -> TokenStream {
 	if filtered_names.contains(&"Call") {
@@ -117,11 +116,7 @@ fn expand_pallet_metadata_calls(
 		let path = &decl.path;
 
 		quote!{
-			Some(#scrate::metadata::DecodeDifferent::Encode(
-				#scrate::metadata::FnEncode(
-					#path::Pallet::<#runtime #(, #path::#instance)*>::call_functions
-				)
-			))
+			Some(#path::Pallet::<#runtime #(, #path::#instance)*>::call_functions())
 		}
 	} else {
 		quote!(None)
@@ -146,9 +141,11 @@ fn expand_pallet_metadata_events(
 		};
 
 		quote!{
-			Some(#scrate::metadata::DecodeDifferent::Encode(
-				#scrate::metadata::FnEncode(#pallet_event::metadata)
-			))
+			Some(
+				#scrate::metadata::PalletEventMetadata {
+					ty: #scrate::scale_info::meta_type::<#pallet_event>()
+				}
+			)
 		}
 	} else {
 		quote!(None)
@@ -157,34 +154,24 @@ fn expand_pallet_metadata_events(
 
 fn expand_pallet_metadata_constants(
 	runtime: &Ident,
-	scrate: &TokenStream,
 	decl: &Pallet,
 ) -> TokenStream {
 	let path = &decl.path;
 	let instance = decl.instance.as_ref().into_iter();
 
 	quote!{
-		#scrate::metadata::DecodeDifferent::Encode(
-			#scrate::metadata::FnEncode(
-				#path::Pallet::<#runtime #(, #path::#instance)*>::module_constants_metadata
-			)
-		)
+		#path::Pallet::<#runtime #(, #path::#instance)*>::pallet_constants_metadata()
 	}
 }
 
 fn expand_pallet_metadata_errors(
 	runtime: &Ident,
-	scrate: &TokenStream,
 	decl: &Pallet,
 ) -> TokenStream {
 	let path = &decl.path;
 	let instance = decl.instance.as_ref().into_iter();
 
 	quote!{
-		#scrate::metadata::DecodeDifferent::Encode(
-			#scrate::metadata::FnEncode(
-				<#path::Pallet::<#runtime #(, #path::#instance)*> as #scrate::metadata::ModuleErrorMetadata>::metadata
-			)
-		)
+		#path::Pallet::<#runtime #(, #path::#instance)*>::error_metadata()
 	}
 }

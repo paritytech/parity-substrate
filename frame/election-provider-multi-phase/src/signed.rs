@@ -43,7 +43,7 @@ use sp_std::{
 /// A raw, unchecked signed submission.
 ///
 /// This is just a wrapper around [`RawSolution`] and some additional info.
-#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, Default)]
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, Default, scale_info::TypeInfo)]
 pub struct SignedSubmission<AccountId, Balance: HasCompact, CompactSolution> {
 	/// Who submitted this solution.
 	pub who: AccountId,

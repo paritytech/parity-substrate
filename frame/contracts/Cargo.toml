@@ -15,6 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 bitflags = "1.0"
 codec = { package = "parity-scale-codec", version = "2.2.0", default-features = false, features = ["derive", "max-encoded-len"] }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 log = { version = "0.4", default-features = false }
 pwasm-utils = { version = "0.18", default-features = false }
 serde = { version = "1", optional = true, features = ["derive"] }
@@ -55,6 +56,7 @@ default = ["std"]
 std = [
 	"serde",
 	"codec/std",
+	"scale-info/std",
 	"sp-core/std",
 	"sp-runtime/std",
 	"sp-io/std",

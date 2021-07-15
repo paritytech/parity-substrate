@@ -15,10 +15,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::pallet::{Def, parse::helper::get_doc_literals};
+use crate::pallet::Def;
+use frame_support_procedural_tools::get_doc_literals;
 
 /// * impl various trait on Error
-/// * impl ModuleErrorMetadata for Error
 pub fn expand_error(def: &mut Def) -> proc_macro2::TokenStream {
 	let error = if let Some(error) = &def.error {
 		error
@@ -52,17 +52,6 @@ pub fn expand_error(def: &mut Def) -> proc_macro2::TokenStream {
 			quote::quote_spanned!(error.attr_span => Self::#variant => #variant_str,)
 		});
 
-	let metadata = error.variants.iter()
-		.map(|(variant, doc)| {
-			let variant_str = format!("{}", variant);
-			quote::quote_spanned!(error.attr_span =>
-				#frame_support::error::ErrorMetadata {
-					name: #frame_support::error::DecodeDifferent::Encode(#variant_str),
-					documentation: #frame_support::error::DecodeDifferent::Encode(&[ #( #doc, )* ]),
-				},
-			)
-		});
-
 	let error_item = {
 		let item = &mut def.item.content.as_mut().expect("Checked by def parser").1[error.index];
 		if let syn::Item::Enum(item) = item {
@@ -73,6 +62,13 @@ pub fn expand_error(def: &mut Def) -> proc_macro2::TokenStream {
 	};
 
 	error_item.variants.insert(0, phantom_variant);
+	// derive TypeInfo for error metadata
+	error_item.attrs.push(
+		syn::parse_quote!( #[derive(#frame_support::scale_info::TypeInfo)] )
+	);
+	error_item.attrs.push(
+		syn::parse_quote!( #[scale_info(skip_type_params(#type_use_gen))] )
+	);
 
 	if get_doc_literals(&error_item.attrs).is_empty() {
 		error_item.attrs.push(syn::parse_quote!(
@@ -134,15 +130,6 @@ pub fn expand_error(def: &mut Def) -> proc_macro2::TokenStream {
 					error: err.as_u8(),
 					message: Some(err.as_str()),
 				}
-			}
-		}
-
-		impl<#type_impl_gen> #frame_support::error::ModuleErrorMetadata
-			for #error_ident<#type_use_gen>
-			#config_where_clause
-		{
-			fn metadata() -> &'static [#frame_support::error::ErrorMetadata] {
-				&[ #( #metadata )* ]
 			}
 		}
 	)

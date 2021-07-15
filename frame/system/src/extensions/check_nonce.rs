@@ -18,6 +18,7 @@
 use codec::{Encode, Decode};
 use crate::Config;
 use frame_support::weights::DispatchInfo;
+use scale_info::TypeInfo;
 use sp_runtime::{
 	traits::{SignedExtension, DispatchInfoOf, Dispatchable, One},
 	transaction_validity::{
@@ -31,7 +32,8 @@ use sp_std::vec;
 ///
 /// Note that this does not set any priority by default. Make sure that AT LEAST one of the signed
 /// extension sets some kind of priority upon validating transactions.
-#[derive(Encode, Decode, Clone, Eq, PartialEq)]
+#[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+#[scale_info(skip_type_params(T))]
 pub struct CheckNonce<T: Config>(#[codec(compact)] T::Index);
 
 impl<T: Config> CheckNonce<T> {

@@ -26,6 +26,7 @@ extern crate alloc;
 use serde::Serialize;
 
 use codec::{Encode, Decode, Input, Codec};
+use scale_info::TypeInfo;
 use sp_runtime::{ConsensusEngineId, RuntimeDebug, traits::NumberFor};
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
@@ -171,7 +172,7 @@ impl<N: Codec> ConsensusLog<N> {
 /// GRANDPA happens when a voter votes on the same round (either at prevote or
 /// precommit stage) for different blocks. Proving is achieved by collecting the
 /// signed messages of conflicting votes.
-#[derive(Clone, Debug, Decode, Encode, PartialEq)]
+#[derive(Clone, Debug, Decode, Encode, PartialEq, TypeInfo)]
 pub struct EquivocationProof<H, N> {
 	set_id: SetId,
 	equivocation: Equivocation<H, N>,
@@ -208,7 +209,7 @@ impl<H, N> EquivocationProof<H, N> {
 
 /// Wrapper object for GRANDPA equivocation proofs, useful for unifying prevote
 /// and precommit equivocations under a common type.
-#[derive(Clone, Debug, Decode, Encode, PartialEq)]
+#[derive(Clone, Debug, Decode, Encode, PartialEq, TypeInfo)]
 pub enum Equivocation<H, N> {
 	/// Proof of equivocation at prevote stage.
 	Prevote(grandpa::Equivocation<AuthorityId, grandpa::Prevote<H, N>, AuthoritySignature>),

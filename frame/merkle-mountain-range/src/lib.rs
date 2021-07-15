@@ -118,7 +118,7 @@ pub mod pallet {
 		/// Required to be provided again, to satisfy trait bounds for storage items.
 		type Hash: traits::Member + traits::MaybeSerializeDeserialize + sp_std::fmt::Debug
 			+ sp_std::hash::Hash + AsRef<[u8]> + AsMut<[u8]> + Copy + Default + codec::Codec
-			+ codec::EncodeLike;
+			+ codec::EncodeLike + scale_info::TypeInfo;
 
 		/// Data stored in the leaf nodes.
 		///

@@ -50,7 +50,8 @@ pub use tests::MockExt;
 /// `instruction_weights_version` and `code` when a contract with an outdated instrumention is
 /// called. Therefore one must be careful when holding any in-memory representation of this
 /// type while calling into a contract as those fields can get out of date.
-#[derive(Clone, Encode, Decode)]
+#[derive(Clone, Encode, Decode, scale_info::TypeInfo)]
+#[scale_info(skip_type_params(T))]
 pub struct PrefabWasmModule<T: Config> {
 	/// Version of the instruction weights with which the code was instrumented.
 	#[codec(compact)]

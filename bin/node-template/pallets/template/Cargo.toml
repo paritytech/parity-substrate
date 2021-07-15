@@ -15,6 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 frame-support = { default-features = false, version = "4.0.0-dev", path = "../../../../frame/support" }
 frame-system = { default-features = false,  version = "4.0.0-dev",  path = "../../../../frame/system" }
 frame-benchmarking = { default-features = false,  version = "4.0.0-dev",  path = "../../../../frame/benchmarking", optional = true }
@@ -29,6 +30,7 @@ sp-runtime = { default-features = false, version = "4.0.0-dev", path = "../../..
 default = ['std']
 std = [
 	'codec/std',
+	'scale-info/std',
 	'frame-support/std',
 	'frame-system/std',
 	'frame-benchmarking/std',

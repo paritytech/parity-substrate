@@ -31,6 +31,8 @@ pub use sp_core::crypto::{KeyTypeId, CryptoTypeId, key_types};
 #[doc(hidden)]
 pub use codec;
 #[doc(hidden)]
+pub use scale_info;
+#[doc(hidden)]
 #[cfg(feature = "std")]
 pub use serde;
 #[doc(hidden)]
@@ -199,6 +201,7 @@ macro_rules! app_crypto_public_full_crypto {
 				$crate::codec::Decode,
 				$crate::RuntimeDebug,
 				$crate::codec::MaxEncodedLen,
+				$crate::scale_info::TypeInfo,
 			)]
 			#[codec(crate = $crate::codec)]
 			pub struct Public($public);
@@ -234,6 +237,7 @@ macro_rules! app_crypto_public_not_full_crypto {
 				$crate::codec::Encode,
 				$crate::codec::Decode,
 				$crate::RuntimeDebug,
+				$crate::scale_info::TypeInfo,
 			)]
 			pub struct Public($public);
 		}
@@ -401,6 +405,7 @@ macro_rules! app_crypto_signature_full_crypto {
 				$crate::codec::Encode,
 				$crate::codec::Decode,
 				$crate::RuntimeDebug,
+				$crate::scale_info::TypeInfo,
 			)]
 			#[derive(Hash)]
 			pub struct Signature($sig);
@@ -434,6 +439,7 @@ macro_rules! app_crypto_signature_not_full_crypto {
 			#[derive(Clone, Default, Eq, PartialEq,
 				$crate::codec::Encode,
 				$crate::codec::Decode,
+				$crate::scale_info::TypeInfo,
 				$crate::RuntimeDebug,
 			)]
 			pub struct Signature($sig);

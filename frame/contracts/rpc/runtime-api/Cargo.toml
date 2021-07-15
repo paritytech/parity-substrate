@@ -14,6 +14,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2", default-features = false, features = ["derive"] }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 
 # Substrate Dependencies
 pallet-contracts-primitives = { version = "4.0.0-dev", default-features = false, path = "../../common" }
@@ -26,6 +27,7 @@ default = ["std"]
 std = [
 	"sp-api/std",
 	"codec/std",
+	"scale-info/std",
 	"sp-std/std",
 	"sp-runtime/std",
 	"pallet-contracts-primitives/std",

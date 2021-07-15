@@ -19,14 +19,14 @@
 
 use codec::{FullCodec, Decode, EncodeLike, Encode, MaxEncodedLen};
 use crate::{
+	metadata::{StorageEntryModifier, StorageEntryType},
 	storage::{
 		StorageAppend, StorageTryAppend, StorageDecodeLength,
-		types::{OptionQuery, QueryKindTrait, OnEmptyGetter},
+		types::{OptionQuery, StorageEntryMetadata, QueryKindTrait},
 		generator::{StorageValue as StorageValueT},
 	},
 	traits::{GetDefault, StorageInstance, StorageInfo},
 };
-use frame_metadata::{DefaultByteGetter, StorageEntryModifier};
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_std::prelude::*;
 
@@ -186,24 +186,23 @@ where
 	}
 }
 
-/// Part of storage metadata for storage value.
-pub trait StorageValueMetadata {
-	const MODIFIER: StorageEntryModifier;
-	const NAME: &'static str;
-	const DEFAULT: DefaultByteGetter;
-}
-
-impl<Prefix, Value, QueryKind, OnEmpty> StorageValueMetadata
+impl<Prefix, Value, QueryKind, OnEmpty> StorageEntryMetadata
 	for StorageValue<Prefix, Value, QueryKind, OnEmpty> where
 	Prefix: StorageInstance,
-	Value: FullCodec,
+	Value: FullCodec + scale_info::StaticTypeInfo,
 	QueryKind: QueryKindTrait<Value, OnEmpty>,
 	OnEmpty: crate::traits::Get<QueryKind::Query> + 'static,
 {
 	const MODIFIER: StorageEntryModifier = QueryKind::METADATA;
 	const NAME: &'static str = Prefix::STORAGE_PREFIX;
-	const DEFAULT: DefaultByteGetter =
-		DefaultByteGetter(&OnEmptyGetter::<QueryKind::Query, OnEmpty>(core::marker::PhantomData));
+
+	fn ty() -> StorageEntryType {
+		StorageEntryType::Plain(scale_info::meta_type::<Value>())
+	}
+
+	fn default() -> Vec<u8> {
+		OnEmpty::get().encode()
+	}
 }
 
 impl<Prefix, Value, QueryKind, OnEmpty>
@@ -258,8 +257,10 @@ where
 mod test {
 	use super::*;
 	use sp_io::{TestExternalities, hashing::twox_128};
-	use crate::storage::types::ValueQuery;
-	use frame_metadata::StorageEntryModifier;
+	use crate::{
+		metadata::StorageEntryModifier,
+		storage::types::ValueQuery,
+	};
 
 	struct Prefix;
 	impl StorageInstance for Prefix {
@@ -331,8 +332,8 @@ mod test {
 			assert_eq!(A::MODIFIER, StorageEntryModifier::Optional);
 			assert_eq!(AValueQueryWithAnOnEmpty::MODIFIER, StorageEntryModifier::Default);
 			assert_eq!(A::NAME, "foo");
-			assert_eq!(A::DEFAULT.0.default_byte(), Option::<u32>::None.encode());
-			assert_eq!(AValueQueryWithAnOnEmpty::DEFAULT.0.default_byte(), 97u32.encode());
+			assert_eq!(A::default(), Option::<u32>::None.encode());
+			assert_eq!(AValueQueryWithAnOnEmpty::default(), 97u32.encode());
 
 			WithLen::kill();
 			assert_eq!(WithLen::decode_len(), None);

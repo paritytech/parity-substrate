@@ -16,6 +16,7 @@
 // limitations under the License.
 
 use super::helper;
+use frame_support_procedural_tools::get_doc_literals;
 use syn::spanned::Spanned;
 use quote::ToTokens;
 use std::collections::HashMap;
@@ -635,7 +636,7 @@ impl StorageDef {
 		instances.push(helper::check_type_def_gen(&item.generics, item.ident.span())?);
 
 		let where_clause = item.generics.where_clause.clone();
-		let docs = helper::get_doc_literals(&item.attrs);
+		let docs = get_doc_literals(&item.attrs);
 
 		let typ = if let syn::Type::Path(typ) = &*item.ty {
 			typ

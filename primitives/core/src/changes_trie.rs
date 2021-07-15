@@ -24,7 +24,7 @@ use num_traits::Zero;
 
 /// Substrate changes trie configuration.
 #[cfg_attr(any(feature = "std", test), derive(Serialize, Deserialize, parity_util_mem::MallocSizeOf))]
-#[derive(Debug, Clone, PartialEq, Eq, Default, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Encode, Decode, scale_info::TypeInfo)]
 pub struct ChangesTrieConfiguration {
 	/// Interval (in blocks) at which level1-digests are created. Digests are not
 	/// created when this is less or equal to 1.

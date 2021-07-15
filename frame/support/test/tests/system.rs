@@ -24,9 +24,9 @@ pub trait Config: 'static + Eq + Clone {
 		+ From<RawOrigin<Self::AccountId>>;
 
 	type BaseCallFilter: frame_support::traits::Filter<Self::Call>;
-	type BlockNumber: Decode + Encode + EncodeLike + Clone + Default;
+	type BlockNumber: Decode + Encode + EncodeLike + Clone + Default + scale_info::TypeInfo;
 	type Hash;
-	type AccountId: Encode + EncodeLike + Decode;
+	type AccountId: Encode + EncodeLike + Decode + scale_info::TypeInfo;
 	type Call;
 	type Event: From<Event<Self>>;
 	type PalletInfo: frame_support::traits::PalletInfo;
@@ -63,7 +63,7 @@ frame_support::decl_error! {
 }
 
 /// Origin for the system module.
-#[derive(PartialEq, Eq, Clone, sp_runtime::RuntimeDebug, Encode, Decode)]
+#[derive(PartialEq, Eq, Clone, sp_runtime::RuntimeDebug, Encode, Decode, scale_info::TypeInfo)]
 pub enum RawOrigin<AccountId> {
 	Root,
 	Signed(AccountId),

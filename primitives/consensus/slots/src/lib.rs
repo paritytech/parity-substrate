@@ -20,9 +20,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use codec::{Decode, Encode};
+use scale_info::TypeInfo;
 
 /// Unit type wrapper that represents a slot.
-#[derive(Debug, Encode, Decode, Eq, Clone, Copy, Default, Ord)]
+#[derive(Debug, Encode, Decode, Eq, Clone, Copy, Default, Ord, TypeInfo)]
 pub struct Slot(u64);
 
 impl core::ops::Deref for Slot {
@@ -96,7 +97,7 @@ impl From<Slot> for u64 {
 /// produces more than one block on the same slot. The proof of equivocation
 /// are the given distinct headers that were signed by the validator and which
 /// include the slot number.
-#[derive(Clone, Debug, Decode, Encode, PartialEq)]
+#[derive(Clone, Debug, Decode, Encode, PartialEq, TypeInfo)]
 pub struct EquivocationProof<Header, Id> {
 	/// Returns the authority id of the equivocator.
 	pub offender: Id,

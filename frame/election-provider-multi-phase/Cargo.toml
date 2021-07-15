@@ -15,6 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 static_assertions = "1.1.0"
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 log = { version = "0.4.14", default-features = false }
 
 frame-support = { version = "4.0.0-dev", default-features = false, path = "../support" }
@@ -50,6 +51,7 @@ frame-benchmarking = { version = "4.0.0-dev", path = "../benchmarking" }
 default = ["std"]
 std = [
 	"codec/std",
+	"scale-info/std",
 	"log/std",
 
 	"frame-support/std",

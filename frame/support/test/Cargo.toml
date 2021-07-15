@@ -14,16 +14,18 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 serde = { version = "1.0.126", default-features = false, features = ["derive"] }
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
+sp-arithmetic = { version = "4.0.0-dev", default-features = false, path = "../../../primitives/arithmetic" }
 sp-io = { version = "4.0.0-dev", path = "../../../primitives/io", default-features = false }
 sp-state-machine = { version = "0.10.0-dev", optional = true, path = "../../../primitives/state-machine" }
-frame-support = { version = "4.0.0-dev", default-features = false, path = "../" }
+frame-support = { version = "4.0.0-dev", default-features = false, features = ["metadata-docs"], path = "../" }
 sp-runtime = { version = "4.0.0-dev", default-features = false, path = "../../../primitives/runtime" }
 sp-core = { version = "4.0.0-dev", default-features = false, path = "../../../primitives/core" }
 sp-std = { version = "4.0.0-dev", default-features = false, path = "../../../primitives/std" }
+sp-version = { version = "4.0.0-dev", default-features = false, path = "../../../primitives/version" }
 trybuild = "1.0.42"
 pretty_assertions = "0.6.1"
 rustversion = "1.0.0"
-frame-metadata = { version = "14.0.0-dev", default-features = false, path = "../../metadata" }
 frame-system = { version = "4.0.0-dev", default-features = false, path = "../../system" }
 
 [features]
@@ -31,6 +33,7 @@ default = ["std"]
 std = [
 	"serde/std",
 	"codec/std",
+	"scale-info/std",
 	"sp-io/std",
 	"frame-support/std",
 	"frame-system/std",

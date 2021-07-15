@@ -228,6 +228,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use codec::{Decode, Encode};
+use scale_info::TypeInfo;
 use frame_support::{
 	dispatch::DispatchResultWithPostInfo,
 	ensure,
@@ -327,7 +328,7 @@ impl BenchmarkingConfig for () {
 }
 
 /// Current phase of the pallet.
-#[derive(PartialEq, Eq, Clone, Copy, Encode, Decode, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Encode, Decode, Debug, TypeInfo)]
 pub enum Phase<Bn> {
 	/// Nothing, the election is not happening.
 	Off,
@@ -391,6 +392,7 @@ impl<Bn: PartialEq + Eq> Phase<Bn> {
 /// A configuration for the pallet to indicate what should happen in the case of a fallback i.e.
 /// reaching a call to `elect` with no good solution.
 #[cfg_attr(test, derive(Clone))]
+#[derive(TypeInfo)]
 pub enum FallbackStrategy {
 	/// Run a on-chain sequential phragmen.
 	///
@@ -402,7 +404,7 @@ pub enum FallbackStrategy {
 }
 
 /// The type of `Computation` that provided this election data.
-#[derive(PartialEq, Eq, Clone, Copy, Encode, Decode, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Encode, Decode, Debug, TypeInfo)]
 pub enum ElectionCompute {
 	/// Election was computed on-chain.
 	OnChain,
@@ -426,7 +428,7 @@ impl Default for ElectionCompute {
 ///
 /// Such a solution should never become effective in anyway before being checked by the
 /// `Pallet::feasibility_check`
-#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, PartialOrd, Ord, TypeInfo)]
 pub struct RawSolution<C> {
 	/// Compact election edges.
 	pub compact: C,
@@ -444,7 +446,7 @@ impl<C: Default> Default for RawSolution<C> {
 }
 
 /// A checked solution, ready to be enacted.
-#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, Default)]
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, Default, TypeInfo)]
 pub struct ReadySolution<A> {
 	/// The final supports of the solution.
 	///
@@ -463,7 +465,7 @@ pub struct ReadySolution<A> {
 /// [`ElectionDataProvider`] and are kept around until the round is finished.
 ///
 /// These are stored together because they are often accessed together.
-#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, Default)]
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, Default, TypeInfo)]
 pub struct RoundSnapshot<A> {
 	/// All of the voters.
 	pub voters: Vec<(A, VoteWeight, Vec<A>)>,
@@ -476,7 +478,7 @@ pub struct RoundSnapshot<A> {
 /// This is stored automatically on-chain, and it contains the **size of the entire snapshot**.
 /// This is also used in dispatchables as weight witness data and should **only contain the size of
 /// the presented solution**, not the entire snapshot.
-#[derive(PartialEq, Eq, Clone, Copy, Encode, Decode, Debug, Default)]
+#[derive(PartialEq, Eq, Clone, Copy, Encode, Decode, Debug, Default, TypeInfo)]
 pub struct SolutionOrSnapshotSize {
 	/// The length of voters.
 	#[codec(compact)]
@@ -653,7 +655,8 @@ pub mod pallet {
 			+ Clone
 			+ sp_std::fmt::Debug
 			+ Ord
-			+ CompactSolution;
+			+ CompactSolution
+			+ TypeInfo;
 
 		/// Accuracy used for fallback on-chain election.
 		type OnChainAccuracy: PerThing128;
@@ -1002,10 +1005,6 @@ pub mod pallet {
 	}
 
 	#[pallet::event]
-	#[pallet::metadata(
-		<T as frame_system::Config>::AccountId = "AccountId",
-		BalanceOf<T> = "Balance"
-	)]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
 		/// A solution was stored with the given compute.

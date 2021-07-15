@@ -14,6 +14,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 sp-std = { version = "4.0.0-dev", default-features = false, path = "../../primitives/std" }
 # Needed for various traits. In our case, `OnFinalize`.
 sp-runtime = { version = "4.0.0-dev", default-features = false, path = "../../primitives/runtime" }
@@ -33,6 +34,7 @@ pallet-balances = { version = "4.0.0-dev", path = "../balances" }
 default = ["std"]
 std = [
 	"codec/std",
+	"scale-info/std",
 	"sp-std/std",
 	"sp-runtime/std",
 	"frame-support/std",

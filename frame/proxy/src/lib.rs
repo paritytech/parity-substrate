@@ -35,6 +35,7 @@ pub mod weights;
 
 use sp_std::{prelude::*, convert::TryInto};
 use codec::{Encode, Decode, MaxEncodedLen};
+use scale_info::TypeInfo;
 use sp_io::hashing::blake2_256;
 use sp_runtime::{
 	DispatchResult,
@@ -61,7 +62,10 @@ type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Con
 
 /// The parameters under which a particular account has a proxy relationship with some other
 /// account.
-#[derive(Encode, Decode, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, RuntimeDebug, MaxEncodedLen)]
+#[derive(
+	Encode, Decode, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, RuntimeDebug, MaxEncodedLen,
+	TypeInfo
+)]
 pub struct ProxyDefinition<AccountId, ProxyType, BlockNumber> {
 	/// The account which may act on behalf of another.
 	pub delegate: AccountId,
@@ -73,7 +77,7 @@ pub struct ProxyDefinition<AccountId, ProxyType, BlockNumber> {
 }
 
 /// Details surrounding a specific instance of an announcement to make a call.
-#[derive(Encode, Decode, Clone, Copy, Eq, PartialEq, RuntimeDebug, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, Eq, PartialEq, RuntimeDebug, MaxEncodedLen, TypeInfo)]
 pub struct Announcement<AccountId, Hash, BlockNumber> {
 	/// The account which made the announcement.
 	real: AccountId,
@@ -519,7 +523,6 @@ pub mod pallet {
 	}
 
 	#[pallet::event]
-	#[pallet::metadata(T::AccountId = "AccountId", T::ProxyType = "ProxyType", CallHashOf<T> = "Hash")]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config>
 	{

@@ -69,6 +69,7 @@ pub fn expand_outer_event(
 			Clone, PartialEq, Eq,
 			#scrate::codec::Encode,
 			#scrate::codec::Decode,
+			#scrate::scale_info::TypeInfo,
 			#scrate::RuntimeDebug,
 		)]
 		#[allow(non_camel_case_types)]

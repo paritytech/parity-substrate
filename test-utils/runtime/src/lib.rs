@@ -25,6 +25,7 @@ pub mod system;
 
 use sp_std::{prelude::*, marker::PhantomData};
 use codec::{Encode, Decode, Input, Error};
+use scale_info::TypeInfo;
 
 use sp_core::{offchain::KeyTypeId, ChangesTrieConfiguration, OpaqueMetadata, RuntimeDebug};
 use sp_application_crypto::{ed25519, sr25519, ecdsa, RuntimeAppPublic};
@@ -419,7 +420,7 @@ cfg_if! {
 	}
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, TypeInfo)]
 pub struct Runtime;
 
 impl GetNodeBlockType for Runtime {
@@ -487,7 +488,7 @@ impl frame_support::traits::OriginTrait for Origin {
 	}
 }
 
-#[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug)]
+#[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
 pub struct Event;
 
 impl From<frame_system::Event<Runtime>> for Event {

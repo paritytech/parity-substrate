@@ -265,6 +265,7 @@ use frame_support::{
 };
 use frame_system::{ensure_signed};
 use codec::{Encode, Decode};
+use scale_info::TypeInfo;
 use sp_runtime::{
 	traits::{
 		SignedExtension, Bounded, SaturatedConversion, DispatchInfoOf, Saturating
@@ -685,12 +686,13 @@ impl<T: Config> Pallet<T> {
 // types defined in the runtime. Lookup `pub type SignedExtra = (...)` in `node/runtime` and
 // `node-template` for an example of this.
 
-// A simple signed extension that checks for the `set_dummy` call. In that case, it increases the
-// priority and prints some log.
-//
-// Additionally, it drops any transaction with an encoded length higher than 200 bytes. No
-// particular reason why, just to demonstrate the power of signed extensions.
-#[derive(Encode, Decode, Clone, Eq, PartialEq)]
+/// A simple signed extension that checks for the `set_dummy` call. In that case, it increases the
+/// priority and prints some log.
+///
+/// Additionally, it drops any transaction with an encoded length higher than 200 bytes. No
+/// particular reason why, just to demonstrate the power of signed extensions.
+#[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+#[scale_info(skip_type_params(T))]
 pub struct WatchDummy<T: Config + Send + Sync>(PhantomData<T>);
 
 impl<T: Config + Send + Sync> sp_std::fmt::Debug for WatchDummy<T> {

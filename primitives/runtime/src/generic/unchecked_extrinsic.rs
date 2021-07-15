@@ -20,6 +20,7 @@
 use sp_std::{fmt, prelude::*};
 use sp_io::hashing::blake2_256;
 use codec::{Decode, Encode, EncodeLike, Input, Error};
+use scale_info::{build::Fields, TypeInfo, Type, Path};
 use crate::{
 	traits::{
 		self, Member, MaybeDisplay, SignedExtension, Checkable, Extrinsic, ExtrinsicMetadata,
@@ -46,6 +47,25 @@ where
 	pub signature: Option<(Address, Signature, Extra)>,
 	/// The function that should be called.
 	pub function: Call,
+}
+
+/// Manual [`TypeInfo`] implementation because of custom encoding. The data is a valid encoded
+/// `Vec<u8>`, but requires some logic to extract the signature and payload.
+///
+/// See [`UncheckedExtrinsic::encode`] and [`UncheckedExtrinsic::decode`].
+impl<Address, Call, Signature, Extra> TypeInfo
+	for UncheckedExtrinsic<Address, Call, Signature, Extra>
+where
+	Extra: SignedExtension + TypeInfo
+{
+	type Identity = UncheckedExtrinsic<(), (), (), Extra>;
+
+	fn type_info() -> Type {
+		Type::builder()
+			.path(Path::new("UncheckedExtrinsic", module_path!()))
+			.docs(&["UncheckedExtrinsic raw bytes, requires custom decoding routine"])
+			.composite(Fields::unnamed().field(|f| f.ty::<Vec<u8>>()))
+	}
 }
 
 #[cfg(feature = "std")]
@@ -350,7 +370,7 @@ mod tests {
 	const TEST_ACCOUNT: TestAccountId = 0;
 
 	// NOTE: this is demonstration. One can simply use `()` for testing.
-	#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Ord, PartialOrd)]
+	#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Ord, PartialOrd, scale_info::TypeInfo)]
 	struct TestExtra;
 	impl SignedExtension for TestExtra {
 		const IDENTIFIER: &'static str = "TestExtra";

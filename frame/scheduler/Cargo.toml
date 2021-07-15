@@ -11,6 +11,7 @@ readme = "README.md"
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 frame-support = { version = "4.0.0-dev", default-features = false, path = "../support" }
 frame-system = { version = "4.0.0-dev", default-features = false, path = "../system" }
 sp-runtime = { version = "4.0.0-dev", default-features = false, path = "../../primitives/runtime" }
@@ -28,6 +29,7 @@ substrate-test-utils = { version = "4.0.0-dev", path = "../../test-utils" }
 default = ["std"]
 std = [
 	"codec/std",
+	"scale-info/std",
 	"sp-runtime/std",
 	"frame-benchmarking/std",
 	"frame-support/std",

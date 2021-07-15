@@ -29,6 +29,7 @@ use sp_io::{TestExternalities, hashing::{twox_64, twox_128, blake2_128}};
 #[frame_support::pallet]
 pub mod pallet {
 	use sp_std::any::TypeId;
+	use frame_support::scale_info;
 	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
 
@@ -38,7 +39,7 @@ pub mod pallet {
 	pub trait Config<I: 'static = ()>: frame_system::Config {
 		#[pallet::constant]
 		type MyGetParam: Get<u32>;
-		type Balance: Parameter + Default;
+		type Balance: Parameter + Default + scale_info::StaticTypeInfo;
 		type Event: From<Event<Self, I>> + IsType<<Self as frame_system::Config>::Event>;
 	}
 
@@ -107,7 +108,6 @@ pub mod pallet {
 	}
 
 	#[pallet::event]
-	#[pallet::metadata(BalanceOf<T, I> = "Balance", u32 = "Other")]
 	#[pallet::generate_deposit(fn deposit_event)]
 	pub enum Event<T: Config<I>, I: 'static = ()> {
 		/// doc comment put in metadata
@@ -161,7 +161,11 @@ pub mod pallet {
 	}
 
 	#[pallet::origin]
-	#[derive(EqNoBound, RuntimeDebugNoBound, CloneNoBound, PartialEqNoBound, Encode, Decode)]
+	#[derive(
+		EqNoBound, RuntimeDebugNoBound, CloneNoBound, PartialEqNoBound, Encode, Decode,
+		scale_info::TypeInfo
+	)]
+	#[scale_info(skip_type_params(T, I))]
 	pub struct Origin<T, I = ()>(PhantomData<(T, I)>);
 
 	#[pallet::validate_unsigned]
@@ -585,196 +589,217 @@ fn pallet_on_genesis() {
 
 #[test]
 fn metadata() {
-	use frame_metadata::*;
-	use codec::{Decode, Encode};
+	use frame_support::metadata::*;
 
-	let expected_pallet_metadata = ModuleMetadata {
+	let system_pallet_metadata = PalletMetadata {
+		index: 0,
+		name: "System",
+		storage: None,
+		calls: Some(scale_info::meta_type::<frame_system::Call<Runtime>>().into()),
+		event: Some(PalletEventMetadata { ty: scale_info::meta_type::<frame_system::Event<Runtime>>() }),
+		constants: vec![
+			PalletConstantMetadata {
+				name: "BlockWeights",
+				ty: scale_info::meta_type::<frame_system::limits::BlockWeights>(),
+				value: vec![],
+				docs: vec![]
+			},
+			PalletConstantMetadata {
+				name: "BlockLength",
+				ty: scale_info::meta_type::<frame_system::limits::BlockLength>(),
+				value: vec![],
+				docs: vec![],
+			},
+			PalletConstantMetadata {
+				name: "BlockHashCount",
+				ty: scale_info::meta_type::<u32>(),
+				value: vec![],
+				docs: vec![],
+			},
+			PalletConstantMetadata {
+				name: "DbWeight",
+				ty: scale_info::meta_type::<frame_support::weights::RuntimeDbWeight>(),
+				value: vec![],
+				docs: vec![],
+			},
+			PalletConstantMetadata {
+				name: "Version",
+				ty: scale_info::meta_type::<sp_version::RuntimeVersion>(),
+				value: vec![],
+				docs: vec![],
+			},
+			PalletConstantMetadata {
+				name: "SS58Prefix",
+				ty: scale_info::meta_type::<u8>(),
+				value: vec![],
+				docs: vec![]
+			}
+		],
+		error: Some(PalletErrorMetadata { ty: scale_info::meta_type::<frame_system::Error<Runtime>>() }),
+	};
+
+	let example_pallet_metadata = PalletMetadata {
 		index: 1,
-		name: DecodeDifferent::Decoded("Example".to_string()),
-		storage: Some(DecodeDifferent::Decoded(StorageMetadata {
-			prefix: DecodeDifferent::Decoded("Example".to_string()),
-			entries: DecodeDifferent::Decoded(vec![
+		name: "Example",
+		storage: Some(PalletStorageMetadata {
+			prefix: "Example",
+			entries: vec![
 				StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("Value".to_string()),
+					name: "Value",
 					modifier: StorageEntryModifier::Optional,
-					ty: StorageEntryType::Plain(DecodeDifferent::Decoded("u32".to_string())),
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
+					ty: StorageEntryType::Plain(scale_info::meta_type::<u32>()),
+					default: vec![0],
+					docs: vec![],
 				},
 				StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("Map".to_string()),
+					name: "Map",
 					modifier: StorageEntryModifier::Optional,
 					ty: StorageEntryType::Map {
-						key: DecodeDifferent::Decoded("u8".to_string()),
-						value: DecodeDifferent::Decoded("u16".to_string()),
+						key: scale_info::meta_type::<u8>(),
+						value: scale_info::meta_type::<u16>(),
 						hasher: StorageHasher::Blake2_128Concat,
-						unused: false,
 					},
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
+					default: vec![0],
+					docs: vec![],
 				},
 				StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("Map2".to_string()),
+					name: "Map2",
 					modifier: StorageEntryModifier::Optional,
 					ty: StorageEntryType::Map {
-						key: DecodeDifferent::Decoded("u16".to_string()),
-						value: DecodeDifferent::Decoded("u32".to_string()),
+						key: scale_info::meta_type::<u16>(),
+						value: scale_info::meta_type::<u32>(),
 						hasher: StorageHasher::Twox64Concat,
-						unused: false,
 					},
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
+					default: vec![0],
+					docs: vec![],
 				},
 				StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("DoubleMap".to_string()),
+					name: "DoubleMap",
 					modifier: StorageEntryModifier::Optional,
 					ty: StorageEntryType::DoubleMap {
-						value: DecodeDifferent::Decoded("u32".to_string()),
-						key1: DecodeDifferent::Decoded("u8".to_string()),
-						key2: DecodeDifferent::Decoded("u16".to_string()),
+						value: scale_info::meta_type::<u32>(),
+						key1: scale_info::meta_type::<u8>(),
+						key2: scale_info::meta_type::<u16>(),
 						hasher: StorageHasher::Blake2_128Concat,
 						key2_hasher: StorageHasher::Twox64Concat,
 					},
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
+					default: vec![0],
+					docs: vec![],
 				},
 				StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("DoubleMap2".to_string()),
+					name: "DoubleMap2",
 					modifier: StorageEntryModifier::Optional,
 					ty: StorageEntryType::DoubleMap {
-						value: DecodeDifferent::Decoded("u64".to_string()),
-						key1: DecodeDifferent::Decoded("u16".to_string()),
-						key2: DecodeDifferent::Decoded("u32".to_string()),
+						value: scale_info::meta_type::<u64>(),
+						key1: scale_info::meta_type::<u16>(),
+						key2: scale_info::meta_type::<u32>(),
 						hasher: StorageHasher::Twox64Concat,
 						key2_hasher: StorageHasher::Blake2_128Concat,
 					},
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
+					default: vec![0],
+					docs: vec![],
 				},
 				StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("NMap".to_string()),
+					name: "NMap",
 					modifier: StorageEntryModifier::Optional,
 					ty: StorageEntryType::NMap {
-						keys: DecodeDifferent::Decoded(vec!["u8".to_string()]),
-						hashers: DecodeDifferent::Decoded(vec![
-							StorageHasher::Blake2_128Concat,
-						]),
-						value: DecodeDifferent::Decoded("u32".to_string()),
+						keys: scale_info::meta_type::<u8>(),
+						hashers: vec![StorageHasher::Blake2_128Concat],
+						value: scale_info::meta_type::<u32>(),
 					},
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
+					default: vec![0],
+					docs: vec![],
 				},
 				StorageEntryMetadata {
-					name: DecodeDifferent::Decoded("NMap2".to_string()),
+					name: "NMap2",
 					modifier: StorageEntryModifier::Optional,
 					ty: StorageEntryType::NMap {
-						keys: DecodeDifferent::Decoded(vec![
-							"u16".to_string(),
-							"u32".to_string(),
-						]),
-						hashers: DecodeDifferent::Decoded(vec![
-							StorageHasher::Twox64Concat,
-							StorageHasher::Blake2_128Concat,
-						]),
-						value: DecodeDifferent::Decoded("u64".to_string()),
+						keys: scale_info::meta_type::<(u16, u32)>(),
+						hashers: vec![StorageHasher::Twox64Concat, StorageHasher::Blake2_128Concat],
+						value: scale_info::meta_type::<u64>(),
 					},
-					default: DecodeDifferent::Decoded(vec![0]),
-					documentation: DecodeDifferent::Decoded(vec![]),
+					default: vec![0],
+					docs: vec![],
 				},
-			]),
-		})),
-		calls: Some(DecodeDifferent::Decoded(vec![
-			FunctionMetadata {
-				name: DecodeDifferent::Decoded("foo".to_string()),
-				arguments: DecodeDifferent::Decoded(vec![
-					FunctionArgumentMetadata {
-						name: DecodeDifferent::Decoded("_foo".to_string()),
-						ty: DecodeDifferent::Decoded("Compact<u32>".to_string()),
-					}
-				]),
-				documentation: DecodeDifferent::Decoded(vec![
-					" Doc comment put in metadata".to_string(),
-				]),
+			],
+		}),
+		calls: Some(scale_info::meta_type::<pallet::Call<Runtime>>().into()),
+		event: Some(PalletEventMetadata { ty: scale_info::meta_type::<pallet::Event<Runtime>>() }),
+		constants: vec![
+			PalletConstantMetadata {
+				name: "MyGetParam",
+				ty: scale_info::meta_type::<u32>(),
+				value: vec![10, 0, 0, 0],
+				docs: vec![],
 			},
-			FunctionMetadata {
-				name: DecodeDifferent::Decoded("foo_transactional".to_string()),
-				arguments: DecodeDifferent::Decoded(vec![
-					FunctionArgumentMetadata {
-						name: DecodeDifferent::Decoded("_foo".to_string()),
-						ty: DecodeDifferent::Decoded("Compact<u32>".to_string()),
-					}
-				]),
-				documentation: DecodeDifferent::Decoded(vec![
-					" Doc comment put in metadata".to_string(),
-				]),
-			},
-		])),
-		event: Some(DecodeDifferent::Decoded(vec![
-			EventMetadata {
-				name: DecodeDifferent::Decoded("Proposed".to_string()),
-				arguments: DecodeDifferent::Decoded(vec!["<T as frame_system::Config>::AccountId".to_string()]),
-				documentation: DecodeDifferent::Decoded(vec![
-					" doc comment put in metadata".to_string()
-				]),
-			},
-			EventMetadata {
-				name: DecodeDifferent::Decoded("Spending".to_string()),
-				arguments: DecodeDifferent::Decoded(vec!["Balance".to_string()]),
-				documentation: DecodeDifferent::Decoded(vec![
-					" doc".to_string()
-				]),
-			},
-			EventMetadata {
-				name: DecodeDifferent::Decoded("Something".to_string()),
-				arguments: DecodeDifferent::Decoded(vec!["Other".to_string()]),
-				documentation: DecodeDifferent::Decoded(vec![]),
-			},
-		])),
-		constants: DecodeDifferent::Decoded(vec![
-			ModuleConstantMetadata {
-				name: DecodeDifferent::Decoded("MyGetParam".to_string()),
-				ty: DecodeDifferent::Decoded("u32".to_string()),
-				value: DecodeDifferent::Decoded(vec![10, 0, 0, 0]),
-				documentation: DecodeDifferent::Decoded(vec![]),
-			},
-		]),
-		errors: DecodeDifferent::Decoded(vec![
-			ErrorMetadata {
-				name: DecodeDifferent::Decoded("InsufficientProposersBalance".to_string()),
-				documentation: DecodeDifferent::Decoded(vec![
-					" doc comment put into metadata".to_string(),
-				]),
-			},
-		]),
+		],
+		error: Some(PalletErrorMetadata { ty: scale_info::meta_type::<pallet::Error<Runtime>>() }),
 	};
 
-	let mut expected_pallet_instance1_metadata = expected_pallet_metadata.clone();
-	expected_pallet_instance1_metadata.name = DecodeDifferent::Decoded("Instance1Example".to_string());
-	expected_pallet_instance1_metadata.index = 2;
-	match expected_pallet_instance1_metadata.storage {
-		Some(DecodeDifferent::Decoded(ref mut storage_meta)) => {
-			storage_meta.prefix = DecodeDifferent::Decoded("Instance1Example".to_string());
+	let mut example_pallet_instance1_metadata = example_pallet_metadata.clone();
+	example_pallet_instance1_metadata.name = "Instance1Example";
+	example_pallet_instance1_metadata.index = 2;
+	match example_pallet_instance1_metadata.calls {
+		Some(ref mut calls_meta) => {
+			calls_meta.ty = scale_info::meta_type::<pallet::Call<Runtime, pallet::Instance1>>();
+		},
+		_ => unreachable!(),
+	}
+	match example_pallet_instance1_metadata.event {
+		Some(ref mut event_meta) => {
+			event_meta.ty = scale_info::meta_type::<pallet::Event<Runtime, pallet::Instance1>>();
+		},
+		_ => unreachable!(),
+	}
+	match example_pallet_instance1_metadata.error {
+		Some(ref mut error_meta) => {
+			error_meta.ty = scale_info::meta_type::<pallet::Error<Runtime, pallet::Instance1>>();
+		},
+		_ => unreachable!(),
+	}
+	match example_pallet_instance1_metadata.storage {
+		Some(ref mut storage_meta) => {
+			storage_meta.prefix = "Instance1Example";
 		},
 		_ => unreachable!(),
 	}
 
+	let pallets = vec![
+		system_pallet_metadata,
+		example_pallet_metadata,
+		example_pallet_instance1_metadata,
+	];
 
-	let metadata = match Runtime::metadata().1 {
-		RuntimeMetadata::V13(metadata) => metadata,
-		_ => panic!("metadata has been bump, test needs to be updated"),
+	let extrinsic = ExtrinsicMetadata {
+		ty: scale_info::meta_type::<UncheckedExtrinsic>(),
+		version: 4,
+		signed_extensions: vec![
+			SignedExtensionMetadata {
+				identifier: "UnitSignedExtension",
+				ty: scale_info::meta_type::<()>(),
+				additional_signed: scale_info::meta_type::<()>(),
+			}
+		]
 	};
 
-	let modules_metadata = match metadata.modules {
-		DecodeDifferent::Encode(modules_metadata) => modules_metadata,
-		_ => unreachable!(),
+	let expected_metadata: RuntimeMetadataPrefixed =
+		RuntimeMetadataLastVersion::new(pallets, extrinsic).into();
+	let expected_metadata = match expected_metadata.1 {
+		RuntimeMetadata::V14(metadata) => {
+			metadata
+		},
+		_ => panic!("metadata has been bumped, test needs to be updated"),
 	};
 
-	let pallet_metadata = ModuleMetadata::decode(&mut &modules_metadata[1].encode()[..]).unwrap();
-	let pallet_instance1_metadata =
-		ModuleMetadata::decode(&mut &modules_metadata[2].encode()[..]).unwrap();
+	let actual_metadata = match Runtime::metadata().1 {
+		RuntimeMetadata::V14(metadata) => {
+			metadata
+		},
+		_ => panic!("metadata has been bumped, test needs to be updated"),
+	};
 
-	pretty_assertions::assert_eq!(pallet_metadata, expected_pallet_metadata);
-	pretty_assertions::assert_eq!(pallet_instance1_metadata, expected_pallet_instance1_metadata);
+	pretty_assertions::assert_eq!(actual_metadata.pallets[1], expected_metadata.pallets[1]);
+	pretty_assertions::assert_eq!(actual_metadata.pallets[2], expected_metadata.pallets[2]);
 }
 
 #[test]

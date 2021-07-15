@@ -29,6 +29,7 @@ use crate::{
 };
 use sp_runtime::generic::{Digest, DigestItem};
 pub use sp_runtime::TransactionOutcome;
+pub use self::types::StorageEntryMetadata;
 pub use types::Key;
 
 pub mod unhashed;

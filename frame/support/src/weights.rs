@@ -130,6 +130,7 @@
 #[cfg(feature = "std")]
 use serde::{Serialize, Deserialize};
 use codec::{Encode, Decode};
+use scale_info::TypeInfo;
 use sp_runtime::{RuntimeDebug, traits::SignedExtension};
 use sp_runtime::generic::{CheckedExtrinsic, UncheckedExtrinsic};
 use crate::dispatch::{DispatchErrorWithPostInfo, DispatchResultWithPostInfo, DispatchError};
@@ -196,7 +197,7 @@ pub trait PaysFee<T> {
 }
 
 /// Explicit enum to denote if a transaction pays fee or not.
-#[derive(Clone, Copy, Eq, PartialEq, RuntimeDebug, Encode, Decode)]
+#[derive(Clone, Copy, Eq, PartialEq, RuntimeDebug, Encode, Decode, TypeInfo)]
 pub enum Pays {
 	/// Transactor will pay related fees.
 	Yes,
@@ -216,7 +217,7 @@ impl Default for Pays {
 /// [DispatchClass::all] and [DispatchClass::non_mandatory] helper functions.
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
-#[derive(PartialEq, Eq, Clone, Copy, Encode, Decode, RuntimeDebug)]
+#[derive(PartialEq, Eq, Clone, Copy, Encode, Decode, RuntimeDebug, TypeInfo)]
 pub enum DispatchClass {
 	/// A normal dispatch.
 	Normal,
@@ -301,7 +302,7 @@ pub mod priority {
 }
 
 /// A bundle of static information collected from the `#[weight = $x]` attributes.
-#[derive(Clone, Copy, Eq, PartialEq, Default, RuntimeDebug, Encode, Decode)]
+#[derive(Clone, Copy, Eq, PartialEq, Default, RuntimeDebug, Encode, Decode, TypeInfo)]
 pub struct DispatchInfo {
 	/// Weight of this transaction.
 	pub weight: Weight,
@@ -623,7 +624,7 @@ impl<Call: Encode, Extra: Encode> GetDispatchInfo for sp_runtime::testing::TestX
 }
 
 /// The weight of database operations that the runtime can invoke.
-#[derive(Clone, Copy, Eq, PartialEq, Default, RuntimeDebug, Encode, Decode)]
+#[derive(Clone, Copy, Eq, PartialEq, Default, RuntimeDebug, Encode, Decode, TypeInfo)]
 pub struct RuntimeDbWeight {
 	pub read: Weight,
 	pub write: Weight,
@@ -655,7 +656,7 @@ impl RuntimeDbWeight {
 ///
 /// The `negative` value encodes whether the term is added or substracted from the
 /// overall polynomial result.
-#[derive(Clone, Encode, Decode)]
+#[derive(Clone, Encode, Decode, TypeInfo)]
 pub struct WeightToFeeCoefficient<Balance> {
 	/// The integral part of the coefficient.
 	pub coeff_integer: Balance,
@@ -730,7 +731,7 @@ impl<T> WeightToFeePolynomial for IdentityFee<T> where
 }
 
 /// A struct holding value for each `DispatchClass`.
-#[derive(Clone, Eq, PartialEq, Default, RuntimeDebug, Encode, Decode)]
+#[derive(Clone, Eq, PartialEq, Default, RuntimeDebug, Encode, Decode, TypeInfo)]
 pub struct PerDispatchClass<T> {
 	/// Value for `Normal` extrinsics.
 	normal: T,

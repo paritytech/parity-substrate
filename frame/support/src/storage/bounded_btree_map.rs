@@ -34,7 +34,8 @@ use codec::{Encode, Decode, MaxEncodedLen};
 ///
 /// Unlike a standard `BTreeMap`, there is an enforced upper limit to the number of items in the
 /// map. All internal operations ensure this bound is respected.
-#[derive(Encode)]
+#[derive(Encode, scale_info::TypeInfo)]
+#[scale_info(skip_type_params(S))]
 pub struct BoundedBTreeMap<K, V, S>(BTreeMap<K, V>, PhantomData<S>);
 
 impl<K, V, S> Decode for BoundedBTreeMap<K, V, S>

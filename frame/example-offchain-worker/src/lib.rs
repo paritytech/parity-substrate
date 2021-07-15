@@ -323,7 +323,7 @@ pub mod pallet {
 
 /// Payload used by this example crate to hold price
 /// data required to submit a transaction.
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, scale_info::TypeInfo)]
 pub struct PricePayload<Public, BlockNumber> {
 	block_number: BlockNumber,
 	price: u32,

@@ -162,7 +162,10 @@ pub fn expand_outer_origin(
 			}
 		}
 
-		#[derive(Clone, PartialEq, Eq, #scrate::RuntimeDebug, #scrate::codec::Encode, #scrate::codec::Decode)]
+		#[derive(
+			Clone, PartialEq, Eq, #scrate::RuntimeDebug, #scrate::codec::Encode,
+			#scrate::codec::Decode, #scrate::scale_info::TypeInfo,
+		)]
 		#[allow(non_camel_case_types)]
 		pub enum OriginCaller {
 			#[codec(index = #system_index)]

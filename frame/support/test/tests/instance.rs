@@ -18,11 +18,12 @@
 #![recursion_limit="128"]
 
 use codec::{Codec, EncodeLike, Encode, Decode};
+use scale_info::TypeInfo;
 use sp_runtime::{generic, BuildStorage, traits::{BlakeTwo256, Verify}};
 use frame_support::{
 	Parameter, traits::Get, parameter_types,
 	metadata::{
-		DecodeDifferent, StorageMetadata, StorageEntryModifier, StorageEntryType, DefaultByteGetter,
+		PalletStorageMetadata, StorageEntryModifier, StorageEntryType,
 		StorageEntryMetadata, StorageHasher,
 	},
 	StorageValue, StorageMap, StorageDoubleMap,
@@ -45,7 +46,7 @@ mod module1 {
 		type Event: From<Event<Self, I>> + Into<<Self as system::Config>::Event>;
 		type Origin: From<Origin<Self, I>>;
 		type SomeParameter: Get<u32>;
-		type GenericType: Default + Clone + Codec + EncodeLike;
+		type GenericType: Default + Clone + Codec + EncodeLike + TypeInfo;
 	}
 
 	frame_support::decl_module! {
@@ -100,7 +101,7 @@ mod module1 {
 		}
 	}
 
-	#[derive(PartialEq, Eq, Clone, sp_runtime::RuntimeDebug, Encode, Decode)]
+	#[derive(PartialEq, Eq, Clone, sp_runtime::RuntimeDebug, Encode, Decode, TypeInfo)]
 	pub enum Origin<T: Config<I>, I> where T::BlockNumber: From<u32> {
 		Members(u32),
 		_Phantom(std::marker::PhantomData<(T, I)>),
@@ -166,7 +167,7 @@ mod module2 {
 		}
 	}
 
-	#[derive(PartialEq, Eq, Clone, sp_runtime::RuntimeDebug, Encode, Decode)]
+	#[derive(PartialEq, Eq, Clone, sp_runtime::RuntimeDebug, Encode, Decode, TypeInfo)]
 	pub enum Origin<T: Config<I>, I=DefaultInstance> {
 		Members(u32),
 		_Phantom(std::marker::PhantomData<(T, I)>),
@@ -393,66 +394,49 @@ fn storage_with_instance_basic_operation() {
 	});
 }
 
-const EXPECTED_METADATA: StorageMetadata = StorageMetadata {
-	prefix: DecodeDifferent::Encode("Instance2Module2"),
-	entries: DecodeDifferent::Encode(
-		&[
-			StorageEntryMetadata {
-				name: DecodeDifferent::Encode("Value"),
+fn expected_metadata() -> PalletStorageMetadata {
+	PalletStorageMetadata {
+		prefix: "Instance2Module2",
+		entries: vec![
+			StorageEntryMetadata
+			{
+				name: "Value",
 				modifier: StorageEntryModifier::Default,
-				ty: StorageEntryType::Plain(DecodeDifferent::Encode("T::Amount")),
-				default: DecodeDifferent::Encode(
-					DefaultByteGetter(
-						&module2::__GetByteStructValue(
-							std::marker::PhantomData::<(Runtime, module2::Instance2)>
-						)
-					)
-				),
-				documentation: DecodeDifferent::Encode(&[]),
+				ty: StorageEntryType::Plain(scale_info::meta_type::<u32>()),
+				default: vec![0, 0, 0, 0],
+				docs: vec![],
 			},
 			StorageEntryMetadata {
-				name: DecodeDifferent::Encode("Map"),
+				name: "Map",
 				modifier: StorageEntryModifier::Default,
 				ty: StorageEntryType::Map {
 					hasher: StorageHasher::Identity,
-					key: DecodeDifferent::Encode("u64"),
-					value: DecodeDifferent::Encode("u64"),
-					unused: false,
+					key: scale_info::meta_type::<u64>(),
+					value: scale_info::meta_type::<u64>(),
 				},
-				default: DecodeDifferent::Encode(
-					DefaultByteGetter(
-						&module2::__GetByteStructMap(
-							std::marker::PhantomData::<(Runtime, module2::Instance2)>
-						)
-					)
-				),
-				documentation: DecodeDifferent::Encode(&[]),
+				default: [0u8; 8].to_vec(),
+				docs: vec![],
 			},
 			StorageEntryMetadata {
-				name: DecodeDifferent::Encode("DoubleMap"),
+				name: "DoubleMap",
 				modifier: StorageEntryModifier::Default,
 				ty: StorageEntryType::DoubleMap {
 					hasher: StorageHasher::Identity,
 					key2_hasher: StorageHasher::Identity,
-					key1: DecodeDifferent::Encode("u64"),
-					key2: DecodeDifferent::Encode("u64"),
-					value: DecodeDifferent::Encode("u64"),
+					key1: scale_info::meta_type::<u64>(),
+					key2: scale_info::meta_type::<u64>(),
+					value: scale_info::meta_type::<u64>(),
 				},
-				default: DecodeDifferent::Encode(
-					DefaultByteGetter(
-						&module2::__GetByteStructDoubleMap(
-							std::marker::PhantomData::<(Runtime, module2::Instance2)>
-						)
-					)
-				),
-				documentation: DecodeDifferent::Encode(&[]),
-			}
+				default: [0u8; 8].to_vec(),
+				docs: vec![],
+			},
 		]
-	)
-};
+	}
+}
+
 
 #[test]
 fn test_instance_storage_metadata() {
 	let metadata = Module2_2::storage_metadata();
-	pretty_assertions::assert_eq!(EXPECTED_METADATA, metadata);
+	pretty_assertions::assert_eq!(expected_metadata(), metadata);
 }

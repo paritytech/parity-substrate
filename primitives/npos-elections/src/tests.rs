@@ -1296,7 +1296,7 @@ mod solution_type {
 	}
 
 	#[test]
-	fn basic_from_and_into_compact_works_assignments() {
+	fn basic_from_and_into_portable_works_assignments() {
 		let voters = vec![
 			2 as AccountId,
 			4,

@@ -18,8 +18,9 @@
 //! Storage types to build abstraction on storage, they implements storage traits such as
 //! StorageMap and others.
 
+use crate::metadata::{StorageEntryType, StorageEntryModifier};
 use codec::FullCodec;
-use frame_metadata::{DefaultByte, StorageEntryModifier};
+use sp_std::prelude::*;
 
 mod double_map;
 mod key;
@@ -27,14 +28,14 @@ mod map;
 mod nmap;
 mod value;
 
-pub use double_map::{StorageDoubleMap, StorageDoubleMapMetadata};
+pub use double_map::StorageDoubleMap;
 pub use key::{
 	EncodeLikeTuple, HasKeyPrefix, HasReversibleKeyPrefix, Key, KeyGenerator,
 	ReversibleKeyGenerator, TupleToEncodedIter, KeyGeneratorMaxEncodedLen,
 };
-pub use map::{StorageMap, StorageMapMetadata};
-pub use nmap::{StorageNMap, StorageNMapMetadata};
-pub use value::{StorageValue, StorageValueMetadata};
+pub use map::StorageMap;
+pub use nmap::StorageNMap;
+pub use value::StorageValue;
 
 /// Trait implementing how the storage optional value is converted into the queried type.
 ///
@@ -102,14 +103,13 @@ where
 	}
 }
 
-/// A helper struct which implements DefaultByte using `Get<Value>` and encode it.
-struct OnEmptyGetter<Value, OnEmpty>(core::marker::PhantomData<(Value, OnEmpty)>);
-impl<Value: FullCodec, OnEmpty: crate::traits::Get<Value>> DefaultByte
-	for OnEmptyGetter<Value, OnEmpty>
-{
-	fn default_byte(&self) -> sp_std::vec::Vec<u8> {
-		OnEmpty::get().encode()
-	}
+/// Provide metadata for a storage entry.
+///
+/// Implemented by each of the storage entry kinds: value, map, doublemap and nmap.
+pub trait StorageEntryMetadata {
+	const MODIFIER: StorageEntryModifier;
+	const NAME: &'static str;
+
+	fn ty() -> StorageEntryType;
+	fn default() -> Vec<u8>;
 }
-unsafe impl<Value, OnEmpty: crate::traits::Get<Value>> Send for OnEmptyGetter<Value, OnEmpty> {}
-unsafe impl<Value, OnEmpty: crate::traits::Get<Value>> Sync for OnEmptyGetter<Value, OnEmpty> {}

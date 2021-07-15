@@ -17,6 +17,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 serde = { version = "1.0.126", optional = true, features = ["derive"] }
 codec = { package = "parity-scale-codec", version = "2.2.0", default-features = false, features = ["derive", "max-encoded-len"] }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 sp-core = { version = "4.0.0-dev", default-features = false, path = "../core" }
 sp-application-crypto = { version = "4.0.0-dev", default-features = false, path = "../application-crypto" }
 sp-arithmetic = { version = "4.0.0-dev", default-features = false, path = "../arithmetic" }
@@ -46,6 +47,7 @@ std = [
 	"sp-application-crypto/std",
 	"sp-arithmetic/std",
 	"codec/std",
+	"scale-info/std",
 	"log/std",
 	"sp-core/std",
 	"rand",

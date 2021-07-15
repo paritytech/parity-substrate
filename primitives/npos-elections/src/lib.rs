@@ -120,6 +120,8 @@ pub use pjr::*;
 #[doc(hidden)]
 pub use codec;
 #[doc(hidden)]
+pub use scale_info;
+#[doc(hidden)]
 pub use sp_arithmetic;
 #[doc(hidden)]
 pub use sp_std;
@@ -467,7 +469,7 @@ pub struct ElectionResult<AccountId, P: PerThing> {
 ///
 /// This, at the current version, resembles the `Exposure` defined in the Staking pallet, yet they
 /// do not necessarily have to be the same.
-#[derive(Default, RuntimeDebug, Encode, Decode, Clone, Eq, PartialEq)]
+#[derive(Default, RuntimeDebug, Encode, Decode, Clone, Eq, PartialEq, scale_info::TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct Support<AccountId> {
 	/// Total support.

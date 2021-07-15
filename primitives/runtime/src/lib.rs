@@ -26,6 +26,8 @@
 
 #[doc(hidden)]
 pub use codec;
+#[doc(hidden)]
+pub use scale_info;
 #[cfg(feature = "std")]
 #[doc(hidden)]
 pub use serde;
@@ -46,6 +48,7 @@ use sp_std::convert::TryFrom;
 use sp_core::{crypto::{self, Public}, ed25519, sr25519, ecdsa, hash::{H256, H512}};
 
 use codec::{Encode, Decode};
+use scale_info::TypeInfo;
 
 pub mod curve;
 pub mod generic;
@@ -222,7 +225,7 @@ pub type ConsensusEngineId = [u8; 4];
 
 /// Signature verify that can work with any known signature types..
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-#[derive(Eq, PartialEq, Clone, Encode, Decode, RuntimeDebug)]
+#[derive(Eq, PartialEq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
 pub enum MultiSignature {
 	/// An Ed25519 signature.
 	Ed25519(ed25519::Signature),
@@ -278,7 +281,7 @@ impl Default for MultiSignature {
 }
 
 /// Public key for any known crypto algorithm.
-#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Encode, Decode, RuntimeDebug)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum MultiSigner {
 	/// An Ed25519 identity.
@@ -439,7 +442,7 @@ pub type DispatchResult = sp_std::result::Result<(), DispatchError>;
 pub type DispatchResultWithInfo<T> = sp_std::result::Result<T, DispatchErrorWithPostInfo<T>>;
 
 /// Reason why a dispatch call failed.
-#[derive(Eq, Clone, Copy, Encode, Decode, Debug)]
+#[derive(Eq, Clone, Copy, Encode, Decode, Debug, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum DispatchError {
 	/// Some error occurred.
@@ -526,7 +529,7 @@ impl From<crate::traits::StoredMapError> for DispatchError {
 }
 
 /// Description of what went wrong when trying to complete an operation on a token.
-#[derive(Eq, PartialEq, Clone, Copy, Encode, Decode, Debug)]
+#[derive(Eq, PartialEq, Clone, Copy, Encode, Decode, Debug, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum TokenError {
 	/// Funds are unavailable.
@@ -566,7 +569,7 @@ impl From<TokenError> for DispatchError {
 }
 
 /// Arithmetic errors.
-#[derive(Eq, PartialEq, Clone, Copy, Encode, Decode, Debug)]
+#[derive(Eq, PartialEq, Clone, Copy, Encode, Decode, Debug, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum ArithmeticError {
 	/// Underflow.

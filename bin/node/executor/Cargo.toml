@@ -13,6 +13,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0" }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 node-primitives = { version = "2.0.0", path = "../primitives" }
 node-runtime = { version = "3.0.0-dev", path = "../runtime" }
 sc-executor = { version = "0.10.0-dev", path = "../../../client/executor" }

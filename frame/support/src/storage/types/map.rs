@@ -20,13 +20,13 @@
 
 use codec::{FullCodec, Decode, EncodeLike, Encode, MaxEncodedLen};
 use crate::{
+	metadata::{StorageEntryModifier, StorageEntryType},
 	storage::{
 		StorageAppend, StorageTryAppend, StorageDecodeLength, StoragePrefixedMap,
-		types::{OptionQuery, QueryKindTrait, OnEmptyGetter},
+		types::{OptionQuery, StorageEntryMetadata, QueryKindTrait},
 	},
 	traits::{GetDefault, StorageInstance, Get, StorageInfo},
 };
-use frame_metadata::{DefaultByteGetter, StorageEntryModifier};
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_std::prelude::*;
 
@@ -321,31 +321,30 @@ where
 	}
 }
 
-/// Part of storage metadata for a storage map.
-///
-/// NOTE: Generic hasher is supported.
-pub trait StorageMapMetadata {
-	const MODIFIER: StorageEntryModifier;
-	const NAME: &'static str;
-	const DEFAULT: DefaultByteGetter;
-	const HASHER: frame_metadata::StorageHasher;
-}
-
-impl<Prefix, Hasher, Key, Value, QueryKind, OnEmpty, MaxValues> StorageMapMetadata
+impl<Prefix, Hasher, Key, Value, QueryKind, OnEmpty, MaxValues> StorageEntryMetadata
 	for StorageMap<Prefix, Hasher, Key, Value, QueryKind, OnEmpty, MaxValues> where
 	Prefix: StorageInstance,
 	Hasher: crate::hash::StorageHasher,
-	Key: FullCodec,
-	Value: FullCodec,
+	Key: FullCodec + scale_info::StaticTypeInfo,
+	Value: FullCodec + scale_info::StaticTypeInfo,
 	QueryKind: QueryKindTrait<Value, OnEmpty>,
 	OnEmpty: Get<QueryKind::Query> + 'static,
 	MaxValues: Get<Option<u32>>,
 {
 	const MODIFIER: StorageEntryModifier = QueryKind::METADATA;
-	const HASHER: frame_metadata::StorageHasher = Hasher::METADATA;
 	const NAME: &'static str = Prefix::STORAGE_PREFIX;
-	const DEFAULT: DefaultByteGetter =
-		DefaultByteGetter(&OnEmptyGetter::<QueryKind::Query, OnEmpty>(core::marker::PhantomData));
+
+	fn ty() -> StorageEntryType {
+		StorageEntryType::Map {
+			hasher: Hasher::METADATA,
+			key: scale_info::meta_type::<Key>(),
+			value: scale_info::meta_type::<Value>(),
+		}
+	}
+
+	fn default() -> Vec<u8> {
+		OnEmpty::get().encode()
+	}
 }
 
 impl<Prefix, Hasher, Key, Value, QueryKind, OnEmpty, MaxValues>
@@ -406,10 +405,13 @@ where
 #[cfg(test)]
 mod test {
 	use super::*;
+	use assert_matches::assert_matches;
 	use sp_io::{TestExternalities, hashing::twox_128};
 	use crate::hash::*;
-	use crate::storage::types::ValueQuery;
-	use frame_metadata::StorageEntryModifier;
+	use crate::{
+		metadata::{StorageEntryModifier, StorageHasher, StorageEntryType},
+		storage::types::ValueQuery
+	};
 
 	struct Prefix;
 	impl StorageInstance for Prefix {
@@ -559,14 +561,17 @@ mod test {
 
 			assert_eq!(A::MODIFIER, StorageEntryModifier::Optional);
 			assert_eq!(AValueQueryWithAnOnEmpty::MODIFIER, StorageEntryModifier::Default);
-			assert_eq!(A::HASHER, frame_metadata::StorageHasher::Blake2_128Concat);
-			assert_eq!(
-				AValueQueryWithAnOnEmpty::HASHER,
-				frame_metadata::StorageHasher::Blake2_128Concat
-			);
+			assert_matches!(A::ty(), StorageEntryType::Map {
+				hasher: StorageHasher::Blake2_128Concat,
+				..
+			});
+			assert_matches!(AValueQueryWithAnOnEmpty::ty(), StorageEntryType::Map {
+				hasher: StorageHasher::Blake2_128Concat,
+				..
+			});
 			assert_eq!(A::NAME, "foo");
-			assert_eq!(AValueQueryWithAnOnEmpty::DEFAULT.0.default_byte(), 97u32.encode());
-			assert_eq!(A::DEFAULT.0.default_byte(), Option::<u32>::None.encode());
+			assert_eq!(AValueQueryWithAnOnEmpty::default(), 97u32.encode());
+			assert_eq!(A::default(), Option::<u32>::None.encode());
 
 			WithLen::remove_all(None);
 			assert_eq!(WithLen::decode_len(3), None);

@@ -19,8 +19,6 @@
 
 #[doc(hidden)]
 pub use sp_runtime::traits::{LookupError, BadOrigin};
-#[doc(hidden)]
-pub use frame_metadata::{ModuleErrorMetadata, ErrorMetadata, DecodeDifferent};
 
 /// Declare an error type for a runtime module.
 ///
@@ -87,6 +85,8 @@ macro_rules! decl_error {
 		}
 	) => {
 		$(#[$attr])*
+		#[derive($crate::scale_info::TypeInfo)]
+		#[scale_info(skip_type_params($generic, $($inst_generic)?))]
 		pub enum $error<$generic: $trait $(, $inst_generic: $instance)?>
 		$( where $( $where_ty: $where_bound ),* )?
 		{
@@ -157,24 +157,6 @@ macro_rules! decl_error {
 					error: err.as_u8(),
 					message: Some(err.as_str()),
 				}
-			}
-		}
-
-		impl<$generic: $trait $(, $inst_generic: $instance)?> $crate::error::ModuleErrorMetadata
-			for $error<$generic $(, $inst_generic)?>
-		$( where $( $where_ty: $where_bound ),* )?
-		{
-			fn metadata() -> &'static [$crate::error::ErrorMetadata] {
-				&[
-					$(
-						$crate::error::ErrorMetadata {
-							name: $crate::error::DecodeDifferent::Encode(stringify!($name)),
-							documentation: $crate::error::DecodeDifferent::Encode(&[
-								$( $doc_attr ),*
-							]),
-						}
-					),*
-				]
 			}
 		}
 	};

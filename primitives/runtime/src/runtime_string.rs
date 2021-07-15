@@ -32,6 +32,14 @@ pub enum RuntimeString {
 	Owned(Vec<u8>),
 }
 
+impl scale_info::TypeInfo for RuntimeString {
+	type Identity = str;
+
+	fn type_info() -> scale_info::Type {
+		Self::Identity::type_info()
+	}
+}
+
 /// Convenience macro to use the format! interface to get a `RuntimeString::Owned`
 #[macro_export]
 macro_rules! format_runtime_string {

@@ -15,12 +15,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::pallet::{Def, expand::merge_where_clauses, parse::helper::get_doc_literals};
+use crate::pallet::{Def, expand::merge_where_clauses};
+use frame_support_procedural_tools::get_doc_literals;
 
 /// * Add derive trait on Pallet
 /// * Implement GetPalletVersion on Pallet
 /// * Implement OnGenesis on Pallet
-/// * Implement ModuleErrorMetadata on Pallet
+/// * Implement `fn error_metadata` on Pallet
 /// * declare Module type alias for construct_runtime
 /// * replace the first field type of `struct Pallet` with `PhantomData` if it is `_`
 /// * implementation of `PalletInfoAccess` information
@@ -75,28 +76,22 @@ pub fn expand_pallet_struct(def: &mut Def) -> proc_macro2::TokenStream {
 		)]
 	));
 
-	let module_error_metadata = if let Some(error_def) = &def.error {
+	let pallet_error_metadata = if let Some(error_def) = &def.error {
 		let error_ident = &error_def.error;
 		quote::quote_spanned!(def.pallet_struct.attr_span =>
-			impl<#type_impl_gen> #frame_support::error::ModuleErrorMetadata
-				for #pallet_ident<#type_use_gen>
-				#config_where_clause
-			{
-				fn metadata() -> &'static [#frame_support::error::ErrorMetadata] {
-					<
-						#error_ident<#type_use_gen> as #frame_support::error::ModuleErrorMetadata
-					>::metadata()
+			impl<#type_impl_gen> #pallet_ident<#type_use_gen> #config_where_clause {
+				pub fn error_metadata() -> Option<#frame_support::metadata::PalletErrorMetadata> {
+					Some(#frame_support::metadata::PalletErrorMetadata {
+						ty: #frame_support::scale_info::meta_type::<#error_ident<#type_use_gen>>()
+					})
 				}
 			}
 		)
 	} else {
 		quote::quote_spanned!(def.pallet_struct.attr_span =>
-			impl<#type_impl_gen> #frame_support::error::ModuleErrorMetadata
-				for #pallet_ident<#type_use_gen>
-				#config_where_clause
-			{
-				fn metadata() -> &'static [#frame_support::error::ErrorMetadata] {
-					&[]
+			impl<#type_impl_gen> #pallet_ident<#type_use_gen> #config_where_clause {
+				pub fn error_metadata() -> Option<#frame_support::metadata::PalletErrorMetadata> {
+					None
 				}
 			}
 		)
@@ -156,7 +151,7 @@ pub fn expand_pallet_struct(def: &mut Def) -> proc_macro2::TokenStream {
 	);
 
 	quote::quote_spanned!(def.pallet_struct.attr_span =>
-		#module_error_metadata
+		#pallet_error_metadata
 
 		/// Type alias to `Pallet`, to be used by `construct_runtime`.
 		///

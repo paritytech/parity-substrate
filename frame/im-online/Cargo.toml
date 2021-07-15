@@ -16,6 +16,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 sp-application-crypto = { version = "4.0.0-dev", default-features = false, path = "../../primitives/application-crypto" }
 pallet-authorship = { version = "4.0.0-dev", default-features = false, path = "../authorship" }
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 sp-core = { version = "4.0.0-dev", default-features = false, path = "../../primitives/core" }
 sp-std = { version = "4.0.0-dev", default-features = false, path = "../../primitives/std" }
 sp-io = { version = "4.0.0-dev", default-features = false, path = "../../primitives/io" }
@@ -36,6 +37,7 @@ std = [
 	"sp-application-crypto/std",
 	"pallet-authorship/std",
 	"codec/std",
+	"scale-info/std",
 	"sp-core/std",
 	"sp-std/std",
 	"sp-io/std",

@@ -56,6 +56,7 @@ pub mod weights;
 
 use sp_std::{prelude::*, marker::PhantomData, borrow::Borrow};
 use codec::{Encode, Decode, Codec};
+use scale_info::TypeInfo;
 use sp_runtime::{RuntimeDebug, traits::{Zero, One, BadOrigin, Saturating}};
 use frame_support::{
 	dispatch::{Dispatchable, DispatchError, DispatchResult, Parameter},
@@ -82,7 +83,7 @@ struct ScheduledV1<Call, BlockNumber> {
 
 /// Information regarding an item to be executed in the future.
 #[cfg_attr(any(feature = "std", test), derive(PartialEq, Eq))]
-#[derive(Clone, RuntimeDebug, Encode, Decode)]
+#[derive(Clone, RuntimeDebug, Encode, Decode, TypeInfo)]
 pub struct ScheduledV2<Call, BlockNumber, PalletsOrigin, AccountId> {
 	/// The unique identity for this task, if there is one.
 	maybe_id: Option<Vec<u8>>,
@@ -104,7 +105,7 @@ pub type Scheduled<Call, BlockNumber, PalletsOrigin, AccountId> =
 // A value placed in storage that represents the current version of the Scheduler storage.
 // This value is used by the `on_runtime_upgrade` logic to determine whether we run
 // storage migration logic.
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo)]
 enum Releases {
 	V1,
 	V2,
@@ -138,7 +139,8 @@ pub mod pallet {
 			+ IsType<<Self as system::Config>::Origin>;
 
 		/// The caller origin, overarching type of all pallets origins.
-		type PalletsOrigin: From<system::RawOrigin<Self::AccountId>> + Codec + Clone + Eq;
+		type PalletsOrigin: From<system::RawOrigin<Self::AccountId>> + Codec + Clone + Eq
+			+ TypeInfo;
 
 		/// The aggregated call type.
 		type Call: Parameter
@@ -185,7 +187,6 @@ pub mod pallet {
 	/// Events type.
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
-	#[pallet::metadata(T::BlockNumber = "BlockNumber", TaskAddress<T::BlockNumber> = "TaskAddress<BlockNumber>")]
 	pub enum Event<T: Config> {
 		/// Scheduled some task. \[when, index\]
 		Scheduled(T::BlockNumber, u32),

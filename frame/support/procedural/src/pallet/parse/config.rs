@@ -16,6 +16,7 @@
 // limitations under the License.
 
 use super::helper;
+use frame_support_procedural_tools::get_doc_literals;
 use core::convert::TryFrom;
 use syn::spanned::Spanned;
 use quote::ToTokens;
@@ -68,7 +69,7 @@ impl TryFrom<&syn::TraitItemType> for ConstMetadataDef {
 	fn try_from(trait_ty: &syn::TraitItemType) -> Result<Self, Self::Error> {
 		let err = |span, msg|
 			syn::Error::new(span, format!("Invalid usage of `#[pallet::constant]`: {}", msg));
-		let doc = helper::get_doc_literals(&trait_ty.attrs);
+		let doc = get_doc_literals(&trait_ty.attrs);
 		let ident = trait_ty.ident.clone();
 		let bound = trait_ty.bounds
 			.iter()

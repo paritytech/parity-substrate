@@ -27,6 +27,7 @@ use std::str::FromStr;
 use serde::{Serialize, Deserialize, de::DeserializeOwned};
 use sp_core::{self, Hasher, TypeId, RuntimeDebug};
 use crate::codec::{Codec, Encode, Decode, MaxEncodedLen};
+use crate::scale_info::{MetaType, TypeInfo, StaticTypeInfo};
 use crate::transaction_validity::{
 	ValidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 	UnknownTransaction,
@@ -202,7 +203,7 @@ pub trait Lookup {
 /// context.
 pub trait StaticLookup {
 	/// Type to lookup from.
-	type Source: Codec + Clone + PartialEq + Debug;
+	type Source: Codec + Clone + PartialEq + Debug + TypeInfo;
 	/// Type to lookup into.
 	type Target;
 	/// Attempt a lookup.
@@ -214,7 +215,7 @@ pub trait StaticLookup {
 /// A lookup implementation returning the input value.
 #[derive(Default)]
 pub struct IdentityLookup<T>(PhantomData<T>);
-impl<T: Codec + Clone + PartialEq + Debug> StaticLookup for IdentityLookup<T> {
+impl<T: Codec + Clone + PartialEq + Debug + TypeInfo> StaticLookup for IdentityLookup<T> {
 	type Source = T;
 	type Target = T;
 	fn lookup(x: T) -> Result<T, LookupError> { Ok(x) }
@@ -233,7 +234,7 @@ impl<AccountId, AccountIndex> StaticLookup for AccountIdLookup<AccountId, Accoun
 where
 	AccountId: Codec + Clone + PartialEq + Debug,
 	AccountIndex: Codec + Clone + PartialEq + Debug,
-	crate::MultiAddress<AccountId, AccountIndex>: Codec,
+	crate::MultiAddress<AccountId, AccountIndex>: Codec + StaticTypeInfo,
 {
 	type Source = crate::MultiAddress<AccountId, AccountIndex>;
 	type Target = AccountId;
@@ -386,7 +387,8 @@ impl<T:
 pub trait Hash: 'static + MaybeSerializeDeserialize + Debug + Clone + Eq + PartialEq + Hasher<Out = <Self as Hash>::Output> {
 	/// The hash type produced.
 	type Output: Member + MaybeSerializeDeserialize + Debug + sp_std::hash::Hash
-		+ AsRef<[u8]> + AsMut<[u8]> + Copy + Default + Encode + Decode + MaxEncodedLen;
+		+ AsRef<[u8]> + AsMut<[u8]> + Copy + Default + Encode + Decode + MaxEncodedLen
+		+ TypeInfo;
 
 	/// Produce the hash of some byte-slice.
 	fn hash(s: &[u8]) -> Self::Output {
@@ -406,7 +408,7 @@ pub trait Hash: 'static + MaybeSerializeDeserialize + Debug + Clone + Eq + Parti
 }
 
 /// Blake2-256 Hash implementation.
-#[derive(PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(PartialEq, Eq, Clone, RuntimeDebug, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct BlakeTwo256;
 
@@ -433,7 +435,7 @@ impl Hash for BlakeTwo256 {
 }
 
 /// Keccak-256 Hash implementation.
-#[derive(PartialEq, Eq, Clone, RuntimeDebug)]
+#[derive(PartialEq, Eq, Clone, RuntimeDebug, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct Keccak256;
 
@@ -551,7 +553,7 @@ pub trait Header:
 	/// Header hash type
 	type Hash: Member + MaybeSerializeDeserialize + Debug + sp_std::hash::Hash + Ord
 		+ Copy + MaybeDisplay + Default + SimpleBitOps + Codec + AsRef<[u8]>
-		+ AsMut<[u8]> + MaybeMallocSizeOf;
+		+ AsMut<[u8]> + MaybeMallocSizeOf + TypeInfo;
 	/// Hashing algorithm
 	type Hashing: Hash<Output = Self::Hash>;
 
@@ -607,7 +609,7 @@ pub trait Block: Clone + Send + Sync + Codec + Eq + MaybeSerialize + Debug + May
 	/// Block hash type.
 	type Hash: Member + MaybeSerializeDeserialize + Debug + sp_std::hash::Hash + Ord
 		+ Copy + MaybeDisplay + Default + SimpleBitOps + Codec + AsRef<[u8]> + AsMut<[u8]>
-		+ MaybeMallocSizeOf;
+		+ MaybeMallocSizeOf + TypeInfo;
 
 	/// Returns a reference to the header.
 	fn header(&self) -> &Self::Header;
@@ -740,7 +742,7 @@ impl Dispatchable for () {
 
 /// Means by which a transaction may be extended. This type embodies both the data and the logic
 /// that should be additionally associated with the transaction. It should be plain old data.
-pub trait SignedExtension: Codec + Debug + Sync + Send + Clone + Eq + PartialEq {
+pub trait SignedExtension: Codec + Debug + Sync + Send + Clone + Eq + PartialEq + StaticTypeInfo {
 	/// Unique identifier of this signed extension.
 	///
 	/// This will be exposed in the metadata to identify the signed extension used
@@ -755,7 +757,7 @@ pub trait SignedExtension: Codec + Debug + Sync + Send + Clone + Eq + PartialEq 
 
 	/// Any additional data that will go into the signed payload. This may be created dynamically
 	/// from the transaction using the `additional_signed` function.
-	type AdditionalSigned: Encode;
+	type AdditionalSigned: Encode + TypeInfo;
 
 	/// The type that encodes information that can be passed from pre_dispatch to post-dispatch.
 	type Pre: Default;
@@ -860,16 +862,31 @@ pub trait SignedExtension: Codec + Debug + Sync + Send + Clone + Eq + PartialEq 
 		Ok(())
 	}
 
-	/// Returns the list of unique identifier for this signed extension.
+	/// Returns the metadata for this signed extension.
 	///
 	/// As a [`SignedExtension`] can be a tuple of [`SignedExtension`]s we need to return a `Vec`
-	/// that holds all the unique identifiers. Each individual `SignedExtension` must return
-	/// *exactly* one identifier.
+	/// that holds the metadata of each one. Each individual `SignedExtension` must return
+	/// *exactly* one [`SignedExtensionMetadata`].
 	///
-	/// This method provides a default implementation that returns `vec![SELF::IDENTIFIER]`.
-	fn identifier() -> Vec<&'static str> {
-		sp_std::vec![Self::IDENTIFIER]
+	/// This method provides a default implementation that returns a vec containing a single
+	/// [`SignedExtensionMetadata`].
+	fn metadata() -> Vec<SignedExtensionMetadata> {
+		sp_std::vec![SignedExtensionMetadata {
+			identifier: Self::IDENTIFIER,
+			ty: scale_info::meta_type::<Self>(),
+			additional_signed: scale_info::meta_type::<Self::AdditionalSigned>()
+		}]
 	}
+}
+
+/// Information about a [`SignedExtension`] for the runtime metadata.
+pub struct SignedExtensionMetadata {
+	/// The unique identifier of the [`SignedExtension`].
+	pub identifier: &'static str,
+	/// The type of the [`SignedExtension`].
+	pub ty: MetaType,
+	/// The type of the [`SignedExtension`] additional signed data for the payload.
+	pub additional_signed: MetaType,
 }
 
 #[impl_for_tuples(1, 12)]
@@ -932,9 +949,9 @@ impl<AccountId, Call: Dispatchable> SignedExtension for Tuple {
 		Ok(())
 	}
 
-	fn identifier() -> Vec<&'static str> {
+	fn metadata() -> Vec<SignedExtensionMetadata> {
 		let mut ids = Vec::new();
-		for_tuples!( #( ids.extend(Tuple::identifier()); )* );
+		for_tuples!( #( ids.extend(Tuple::metadata()); )* );
 		ids
 	}
 }
@@ -1200,6 +1217,7 @@ macro_rules! impl_opaque_keys_inner {
 			Default, Clone, PartialEq, Eq,
 			$crate::codec::Encode,
 			$crate::codec::Decode,
+			$crate::scale_info::TypeInfo,
 			$crate::RuntimeDebug,
 		)]
 		pub struct $name {

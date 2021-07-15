@@ -20,10 +20,6 @@
 
 pub use crate::sp_std::{result, fmt, prelude::{Vec, Clone, Eq, PartialEq}, marker};
 pub use crate::codec::{Codec, EncodeLike, Decode, Encode, Input, Output, HasCompact, EncodeAsRef};
-pub use frame_metadata::{
-	FunctionMetadata, DecodeDifferent, DecodeDifferentArray, FunctionArgumentMetadata,
-	ModuleConstantMetadata, DefaultByte, DefaultByteGetter, ModuleErrorMetadata, ErrorMetadata
-};
 pub use crate::weights::{
 	GetDispatchInfo, DispatchInfo, WeighData, ClassifyDispatch, TransactionPriority, Weight,
 	PaysFee, PostDispatchInfo, WithPostDispatchInfo,
@@ -61,8 +57,8 @@ pub type CallableCallFor<A, R> = <A as Callable<R>>::Call;
 /// A type that can be used as a parameter in a dispatchable function.
 ///
 /// When using `decl_module` all arguments for call functions must implement this trait.
-pub trait Parameter: Codec + EncodeLike + Clone + Eq + fmt::Debug {}
-impl<T> Parameter for T where T: Codec + EncodeLike + Clone + Eq + fmt::Debug {}
+pub trait Parameter: Codec + EncodeLike + Clone + Eq + fmt::Debug + scale_info::TypeInfo {}
+impl<T> Parameter for T where T: Codec + EncodeLike + Clone + Eq + fmt::Debug + scale_info::TypeInfo {}
 
 /// Declares a `Module` struct and a `Call` enum, which implements the dispatch logic.
 ///
@@ -1129,7 +1125,7 @@ macro_rules! decl_module {
 			{ $( $on_finalize )* }
 			{ $( $offchain )* }
 			{ $( $constants )* }
-			{ &'static str }
+			{ __NO_ERROR_DEFINED }
 			{ $( $integrity_test)* }
 			[ $($t)* ]
 			$($rest)*
@@ -1152,7 +1148,7 @@ macro_rules! decl_module {
 		{ $( $on_finalize:tt )* }
 		{ $( $offchain:tt )* }
 		{ $( $constants:tt )* }
-		{ $error_type:ty }
+		{ $( $error_type:tt )* }
 		{ $( $integrity_test:tt )* }
 		[ $( $dispatchables:tt )* ]
 		$(#[doc = $doc_attr:tt])*
@@ -1177,7 +1173,7 @@ macro_rules! decl_module {
 			{ $( $on_finalize )* }
 			{ $( $offchain )* }
 			{ $( $constants )* }
-			{ $error_type }
+			{ $( $error_type )* }
 			{ $( $integrity_test)* }
 			[
 				$( $dispatchables )*
@@ -1668,7 +1664,6 @@ macro_rules! decl_module {
 	(@impl_function
 		$module:ident<$trait_instance:ident: $trait_name:ident$(<I>, $instance:ident: $instantiable:path)?>;
 		$origin_ty:ty;
-		$error_type:ty;
 		$ignore:ident;
 		$(#[$fn_attr:meta])*
 		$vis:vis fn $name:ident (
@@ -1690,7 +1685,6 @@ macro_rules! decl_module {
 	(@impl_function
 		$module:ident<$trait_instance:ident: $trait_name:ident$(<I>, $instance:ident: $instantiable:path)?>;
 		$origin_ty:ty;
-		$error_type:ty;
 		$ignore:ident;
 		$(#[$fn_attr:meta])*
 		$vis:vis fn $name:ident (
@@ -1806,7 +1800,8 @@ macro_rules! decl_module {
 		/// Dispatchable calls.
 		///
 		/// Each variant of this enum maps to a dispatchable function from the associated module.
-		#[derive($crate::codec::Encode, $crate::codec::Decode)]
+		#[derive($crate::codec::Encode, $crate::codec::Decode, $crate::scale_info::TypeInfo)]
+		#[scale_info(skip_type_params($trait_instance, $($instance)?))]
 		pub enum $call_type<$trait_instance: $trait_name$(<I>, $instance: $instantiable $( = $module_default_instance)?)?>
 			where $( $other_where_bounds )*
 		{
@@ -1844,7 +1839,7 @@ macro_rules! decl_module {
 		{ $( $on_finalize:tt )* }
 		{ $( $offchain:tt )* }
 		{ $( $constants:tt )* }
-		{ $error_type:ty }
+		{ $( $error_type:tt )* }
 		{ $( $integrity_test:tt )* }
 	) => {
 		$crate::__check_reserved_fn_name! { $( $fn_name )* }
@@ -1928,7 +1923,6 @@ macro_rules! decl_module {
 					@impl_function
 					$mod_type<$trait_instance: $trait_name $(<I>, $fn_instance: $fn_instantiable)?>;
 					$origin_type;
-					$error_type;
 					$from;
 					$(#[doc = $doc_attr])*
 					///
@@ -2145,18 +2139,15 @@ macro_rules! decl_module {
 				)*
 			}
 		}
+		$crate::__impl_error_metadata! {
+			$mod_type<$trait_instance: $trait_name $(<I>, $instance: $instantiable)?>
+			{ $( $other_where_bounds )* }
+			$( $error_type )*
+		}
 		$crate::__impl_module_constants_metadata ! {
 			$mod_type<$trait_instance: $trait_name $(<I>, $instance: $instantiable)?>
 			{ $( $other_where_bounds )* }
 			$( $constants )*
-		}
-
-		impl<$trait_instance: $trait_name $(<I>, $instance: $instantiable)?> $crate::dispatch::ModuleErrorMetadata
-			for $mod_type<$trait_instance $(, $instance)?> where $( $other_where_bounds )*
-		{
-			fn metadata() -> &'static [$crate::dispatch::ErrorMetadata] {
-				<$error_type as $crate::dispatch::ModuleErrorMetadata>::metadata()
-			}
 		}
 
 		$crate::__generate_dummy_part_checker!();
@@ -2170,6 +2161,7 @@ macro_rules! __dispatch_impl_metadata {
 	(
 		$mod_type:ident<$trait_instance:ident: $trait_name:ident$(<I>, $instance:ident: $instantiable:path)?>
 		{ $( $other_where_bounds:tt )* }
+		$call_type:ident
 		$($rest:tt)*
 	) => {
 		impl<$trait_instance: $trait_name $(<I>, $instance: $instantiable)?> $mod_type<$trait_instance $(, $instance)?>
@@ -2177,11 +2169,49 @@ macro_rules! __dispatch_impl_metadata {
 		{
 			#[doc(hidden)]
 			#[allow(dead_code)]
-			pub fn call_functions() -> &'static [$crate::dispatch::FunctionMetadata] {
-				$crate::__call_to_functions!($($rest)*)
+			pub fn call_functions() -> $crate::metadata::PalletCallMetadata {
+				$crate::scale_info::meta_type::<$call_type<$trait_instance $(, $instance)?>>().into()
 			}
 		}
 	}
+}
+
+/// Implement metadata for dispatch.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_error_metadata {
+	(
+		$mod_type:ident<$trait_instance:ident: $trait_name:ident$(<I>, $instance:ident: $instantiable:path)?>
+		{ $( $other_where_bounds:tt )* }
+		__NO_ERROR_DEFINED
+	) => {
+		impl<$trait_instance: $trait_name $(<I>, $instance: $instantiable)?> $mod_type<$trait_instance $(, $instance)?>
+			where $( $other_where_bounds )*
+		{
+			#[doc(hidden)]
+			#[allow(dead_code)]
+			pub fn error_metadata() -> Option<$crate::metadata::PalletErrorMetadata> {
+				None
+			}
+		}
+	};
+	(
+		$mod_type:ident<$trait_instance:ident: $trait_name:ident$(<I>, $instance:ident: $instantiable:path)?>
+		{ $( $other_where_bounds:tt )* }
+		$( $error_type:tt )*
+	) => {
+		impl<$trait_instance: $trait_name $(<I>, $instance: $instantiable)?> $mod_type<$trait_instance $(, $instance)?>
+			where $( $other_where_bounds )*
+		{
+			#[doc(hidden)]
+			#[allow(dead_code)]
+			pub fn error_metadata() -> Option<$crate::metadata::PalletErrorMetadata> {
+				Some($crate::metadata::PalletErrorMetadata {
+					ty: $crate::scale_info::meta_type::<$( $error_type )*>()
+				})
+			}
+		}
+	};
 }
 
 /// Implement metadata for module constants.
@@ -2251,7 +2281,7 @@ macro_rules! __impl_module_constants_metadata {
 		{
 			#[doc(hidden)]
 			#[allow(dead_code)]
-			pub fn module_constants_metadata() -> &'static [$crate::dispatch::ModuleConstantMetadata] {
+			pub fn pallet_constants_metadata() -> ::sp_std::vec::Vec<$crate::metadata::PalletConstantMetadata> {
 				// Create the `ByteGetter`s
 				$(
 					#[allow(non_upper_case_types)]
@@ -2265,146 +2295,31 @@ macro_rules! __impl_module_constants_metadata {
 					>);
 					impl<$const_trait_instance: 'static + $const_trait_name $(
 						<I>, $const_instance: $const_instantiable)?
-					> $crate::dispatch::DefaultByte
-						for $default_byte_name <$const_trait_instance $(, $const_instance)?>
+					> $default_byte_name <$const_trait_instance $(, $const_instance)?>
 					{
 						fn default_byte(&self) -> $crate::dispatch::Vec<u8> {
 							let value: $type = $value;
 							$crate::dispatch::Encode::encode(&value)
 						}
 					}
-
-					unsafe impl<$const_trait_instance: 'static + $const_trait_name $(
-						<I>, $const_instance: $const_instantiable)?
-					> Send for $default_byte_name <$const_trait_instance $(, $const_instance)?> {}
-
-					unsafe impl<$const_trait_instance: 'static + $const_trait_name $(
-						<I>, $const_instance: $const_instantiable)?
-					> Sync for $default_byte_name <$const_trait_instance $(, $const_instance)?> {}
 				)*
-				&[
+				$crate::sp_std::vec![
 					$(
-						$crate::dispatch::ModuleConstantMetadata {
-							name: $crate::dispatch::DecodeDifferent::Encode(stringify!($name)),
-							ty: $crate::dispatch::DecodeDifferent::Encode(stringify!($type)),
-							value: $crate::dispatch::DecodeDifferent::Encode(
-								$crate::dispatch::DefaultByteGetter(
-									&$default_byte_name::<
-										$const_trait_instance $(, $const_instance)?
-									>(
-										$crate::dispatch::marker::PhantomData
-									)
-								)
-							),
-							documentation: $crate::dispatch::DecodeDifferent::Encode(
-								&[ $( $doc_attr ),* ]
-							),
+						$crate::metadata::PalletConstantMetadata {
+							name: stringify!($name),
+							ty: $crate::scale_info::meta_type::<$type>(),
+							value: $default_byte_name::<$const_trait_instance $(, $const_instance)?>(
+								Default::default()
+							).default_byte(),
+							#[cfg(feature = "metadata-docs")]
+							docs: $crate::sp_std::vec![ $( $doc_attr ),* ],
+							#[cfg(not(feature = "metadata-docs"))]
+							docs: $crate::sp_std::vec![],
 						}
 					),*
 				]
 			}
 		}
-	}
-}
-
-/// Convert the list of calls into their JSON representation, joined by ",".
-#[macro_export]
-#[doc(hidden)]
-macro_rules! __call_to_functions {
-	(
-		$call_type:ident $origin_type:ty
-		{
-			$(
-				$(#[doc = $doc_attr:tt])*
-				fn $fn_name:ident($from:ident
-					$(
-						, $(#[$codec_attr:ident])* $param_name:ident : $param:ty
-					)*
-				);
-			)*
-		}
-	) => {
-		$crate::__functions_to_metadata!(0; $origin_type;; $(
-			fn $fn_name( $($(#[$codec_attr])* $param_name: $param ),* );
-			$( $doc_attr ),*;
-		)*)
-	};
-}
-
-
-/// Convert a list of functions into a list of `FunctionMetadata` items.
-#[macro_export]
-#[doc(hidden)]
-macro_rules! __functions_to_metadata{
-	(
-		$fn_id:expr;
-		$origin_type:ty;
-		$( $function_metadata:expr ),*;
-		fn $fn_name:ident(
-			$(
-				$(#[$codec_attr:ident])* $param_name:ident : $param:ty
-			),*
-		);
-		$( $fn_doc:expr ),*;
-		$( $rest:tt )*
-	) => {
-		$crate::__functions_to_metadata!(
-			$fn_id + 1; $origin_type;
-			$( $function_metadata, )* $crate::__function_to_metadata!(
-				fn $fn_name($( $(#[$codec_attr])* $param_name : $param ),*); $( $fn_doc ),*; $fn_id;
-			);
-			$($rest)*
-		)
-	};
-	(
-		$fn_id:expr;
-		$origin_type:ty;
-		$( $function_metadata:expr ),*;
-	) => {
-		&[ $( $function_metadata ),* ]
-	}
-}
-
-/// Convert a function into its metadata representation.
-#[macro_export]
-#[doc(hidden)]
-macro_rules! __function_to_metadata {
-	(
-		fn $fn_name:ident(
-			$( $(#[$codec_attr:ident])* $param_name:ident : $param:ty),*
-		);
-		$( $fn_doc:expr ),*;
-		$fn_id:expr;
-	) => {
-		$crate::dispatch::FunctionMetadata {
-			name: $crate::dispatch::DecodeDifferent::Encode(stringify!($fn_name)),
-			arguments: $crate::dispatch::DecodeDifferent::Encode(&[
-				$(
-					$crate::dispatch::FunctionArgumentMetadata {
-						name: $crate::dispatch::DecodeDifferent::Encode(stringify!($param_name)),
-						ty: $crate::dispatch::DecodeDifferent::Encode(
-							$crate::__function_to_metadata!(@stringify_expand_attr
-								$(#[$codec_attr])* $param_name: $param
-							)
-						),
-					}
-				),*
-			]),
-			documentation: $crate::dispatch::DecodeDifferent::Encode(&[ $( $fn_doc ),* ]),
-		}
-	};
-
-	(@stringify_expand_attr #[compact] $param_name:ident : $param:ty) => {
-		concat!("Compact<", stringify!($param), ">")
-	};
-
-	(@stringify_expand_attr $param_name:ident : $param:ty) => { stringify!($param) };
-
-	(@stringify_expand_attr $(#[codec_attr:ident])* $param_name:ident : $param:ty) => {
-		compile_error!(concat!(
-			"Invalid attribute for parameter `", stringify!($param_name),
-			"`, the following attributes are supported: `#[compact]`"
-		));
 	}
 }
 
@@ -2470,6 +2385,7 @@ mod tests {
 		GetCallName, OnInitialize, OnFinalize, OnIdle, OnRuntimeUpgrade,
 		IntegrityTest, Get, PalletInfo,
 	};
+	use crate::metadata::*;
 
 	pub trait Config: system::Config + Sized where Self::AccountId: From<u32> { }
 
@@ -2486,7 +2402,7 @@ mod tests {
 			type DbWeight: Get<RuntimeDbWeight>;
 		}
 
-		#[derive(Clone, PartialEq, Eq, Debug, Encode, Decode)]
+		#[derive(Clone, PartialEq, Eq, Debug, Encode, Decode, scale_info::TypeInfo)]
 		pub enum RawOrigin<AccountId> {
 			Root,
 			Signed(AccountId),
@@ -2542,74 +2458,77 @@ mod tests {
 		}
 	}
 
-	const EXPECTED_METADATA: &'static [FunctionMetadata] = &[
-		FunctionMetadata {
-			name: DecodeDifferent::Encode("aux_0"),
-			arguments: DecodeDifferent::Encode(&[]),
-			documentation: DecodeDifferent::Encode(&[
-				" Hi, this is a comment."
-			])
-		},
-		FunctionMetadata {
-			name: DecodeDifferent::Encode("aux_1"),
-			arguments: DecodeDifferent::Encode(&[
-				FunctionArgumentMetadata {
-					name: DecodeDifferent::Encode("_data"),
-					ty: DecodeDifferent::Encode("Compact<u32>")
-				}
-			]),
-			documentation: DecodeDifferent::Encode(&[]),
-		},
-		FunctionMetadata {
-			name: DecodeDifferent::Encode("aux_2"),
-			arguments: DecodeDifferent::Encode(&[
-				FunctionArgumentMetadata {
-					name: DecodeDifferent::Encode("_data"),
-					ty: DecodeDifferent::Encode("i32"),
-				},
-				FunctionArgumentMetadata {
-					name: DecodeDifferent::Encode("_data2"),
-					ty: DecodeDifferent::Encode("String"),
-				}
-			]),
-			documentation: DecodeDifferent::Encode(&[]),
-		},
-		FunctionMetadata {
-			name: DecodeDifferent::Encode("aux_3"),
-			arguments: DecodeDifferent::Encode(&[]),
-			documentation: DecodeDifferent::Encode(&[]),
-		},
-		FunctionMetadata {
-			name: DecodeDifferent::Encode("aux_4"),
-			arguments: DecodeDifferent::Encode(&[
-				FunctionArgumentMetadata {
-					name: DecodeDifferent::Encode("_data"),
-					ty: DecodeDifferent::Encode("i32"),
-				}
-			]),
-			documentation: DecodeDifferent::Encode(&[]),
-		},
-		FunctionMetadata {
-			name: DecodeDifferent::Encode("aux_5"),
-			arguments: DecodeDifferent::Encode(&[
-				FunctionArgumentMetadata {
-					name: DecodeDifferent::Encode("_data"),
-					ty: DecodeDifferent::Encode("i32"),
-				},
-				FunctionArgumentMetadata {
-					name: DecodeDifferent::Encode("_data2"),
-					ty: DecodeDifferent::Encode("Compact<u32>")
-				}
-			]),
-			documentation: DecodeDifferent::Encode(&[]),
-		},
-		FunctionMetadata {
-			name: DecodeDifferent::Encode("operational"),
-			arguments: DecodeDifferent::Encode(&[]),
-			documentation: DecodeDifferent::Encode(&[]),
-		},
-	];
+	fn expected_calls() -> Vec<FunctionMetadata> {
+		vec![
+			FunctionMetadata {
+				name: "aux_0",
+				args: vec![],
+				docs: vec![
+					" Hi, this is a comment."
+				]
+			},
+			FunctionMetadata {
+				name: "aux_1",
+				args: vec![
+					FunctionArgumentMetadata {
+						name: "_data",
+						ty: scale_info::meta_type::<codec::Compact<u32>>(),
+					}
+				],
+				docs: vec![],
+			},
+			FunctionMetadata {
+				name: "aux_2",
+				args: vec![
+					FunctionArgumentMetadata {
+						name: "_data",
+						ty: scale_info::meta_type::<i32>(),
+					},
+					FunctionArgumentMetadata {
+						name: "_data2",
+						ty: scale_info::meta_type::<String>(),
+					}
+				],
+				docs: vec![],
+			},
+			FunctionMetadata {
+				name: "aux_3",
+				args: vec![],
+				docs: vec![],
+			},
+			FunctionMetadata {
+				name: "aux_4",
+				args: vec![
+					FunctionArgumentMetadata {
+						name: "_data",
+						ty: scale_info::meta_type::<i32>(),
+					}
+				],
+				docs: vec![],
+			},
+			FunctionMetadata {
+				name: "aux_5",
+				args: vec![
+					FunctionArgumentMetadata {
+						name: "_data",
+						ty: scale_info::meta_type::<i32>(),
+					},
+					FunctionArgumentMetadata {
+						name: "_data2",
+						ty: scale_info::meta_type::<codec::Compact<u32>>()
+					}
+				],
+				docs: vec![],
+			},
+			FunctionMetadata {
+				name: "operational",
+				args: vec![],
+				docs: vec![],
+			},
+		]
+	}
 
+	#[derive(scale_info::TypeInfo)]
 	pub struct TraitImpl {}
 	impl Config for TraitImpl { }
 
@@ -2693,7 +2612,11 @@ mod tests {
 	#[test]
 	fn module_json_metadata() {
 		let metadata = Module::<TraitImpl>::call_functions();
-		assert_eq!(EXPECTED_METADATA, metadata);
+		let expected_metadata = PalletCallMetadata {
+			calls: expected_calls(),
+			ty: scale_info::meta_type::<Call<TraitImpl>>(),
+		};
+		assert_eq!(expected_metadata, metadata);
 	}
 
 	#[test]

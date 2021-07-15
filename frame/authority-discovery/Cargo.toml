@@ -16,6 +16,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 sp-authority-discovery = { version = "4.0.0-dev", default-features = false, path = "../../primitives/authority-discovery" }
 sp-application-crypto = { version = "4.0.0-dev", default-features = false, path = "../../primitives/application-crypto" }
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 sp-std = { version = "4.0.0-dev", default-features = false, path = "../../primitives/std" }
 pallet-session = { version = "4.0.0-dev", features = ["historical" ], path = "../session", default-features = false }
 sp-runtime = { version = "4.0.0-dev", default-features = false, path = "../../primitives/runtime" }
@@ -33,6 +34,7 @@ std = [
 	"sp-application-crypto/std",
 	"sp-authority-discovery/std",
 	"codec/std",
+	"scale-info/std",
 	"sp-std/std",
 	"pallet-session/std",
 	"sp-runtime/std",

@@ -19,17 +19,17 @@
 //! StoragePrefixedDoubleMap traits and their methods directly.
 
 use crate::{
+	metadata::{StorageEntryModifier, StorageEntryType},
 	storage::{
 		types::{
-			EncodeLikeTuple, HasKeyPrefix, HasReversibleKeyPrefix, OnEmptyGetter,
-			OptionQuery, QueryKindTrait, TupleToEncodedIter,
+			EncodeLikeTuple, HasKeyPrefix, HasReversibleKeyPrefix,
+			OptionQuery, QueryKindTrait, StorageEntryMetadata, TupleToEncodedIter,
 		},
 		KeyGenerator, PrefixIterator, StorageAppend, StorageDecodeLength, StoragePrefixedMap,
 	},
 	traits::{Get, GetDefault, StorageInstance, StorageInfo},
 };
 use codec::{Decode, Encode, EncodeLike, FullCodec, MaxEncodedLen};
-use frame_metadata::{DefaultByteGetter, StorageEntryModifier};
 use sp_runtime::SaturatedConversion;
 use sp_std::prelude::*;
 
@@ -376,32 +376,30 @@ where
 	}
 }
 
-/// Part of storage metadata for a storage n map.
-///
-/// NOTE: Generic hashers is supported.
-pub trait StorageNMapMetadata {
-	const MODIFIER: StorageEntryModifier;
-	const NAME: &'static str;
-	const DEFAULT: DefaultByteGetter;
-	const HASHERS: &'static [frame_metadata::StorageHasher];
-}
-
-impl<Prefix, Key, Value, QueryKind, OnEmpty, MaxValues> StorageNMapMetadata
+impl<Prefix, Key, Value, QueryKind, OnEmpty, MaxValues> StorageEntryMetadata
 	for StorageNMap<Prefix, Key, Value, QueryKind, OnEmpty, MaxValues>
 where
 	Prefix: StorageInstance,
 	Key: super::key::KeyGenerator,
-	Value: FullCodec,
+	Value: FullCodec + scale_info::StaticTypeInfo,
 	QueryKind: QueryKindTrait<Value, OnEmpty>,
 	OnEmpty: Get<QueryKind::Query> + 'static,
 	MaxValues: Get<Option<u32>>,
 {
 	const MODIFIER: StorageEntryModifier = QueryKind::METADATA;
 	const NAME: &'static str = Prefix::STORAGE_PREFIX;
-	const DEFAULT: DefaultByteGetter = DefaultByteGetter(
-		&OnEmptyGetter::<QueryKind::Query, OnEmpty>(core::marker::PhantomData),
-	);
-	const HASHERS: &'static [frame_metadata::StorageHasher] = Key::HASHER_METADATA;
+
+	fn ty() -> StorageEntryType {
+		StorageEntryType::NMap {
+			keys: scale_info::meta_type::<Key::Key>(),
+			hashers: Key::HASHER_METADATA.iter().cloned().collect(),
+			value: scale_info::meta_type::<Value>(),
+		}
+	}
+
+	fn default() -> Vec<u8> {
+		OnEmpty::get().encode()
+	}
 }
 
 impl<Prefix, Key, Value, QueryKind, OnEmpty, MaxValues>
@@ -461,7 +459,7 @@ mod test {
 	use super::*;
 	use crate::hash::*;
 	use crate::storage::types::{Key, ValueQuery};
-	use frame_metadata::StorageEntryModifier;
+	use crate::metadata::StorageEntryModifier;
 	use sp_io::{hashing::twox_128, TestExternalities};
 
 	struct Prefix;
@@ -633,10 +631,10 @@ mod test {
 			);
 			assert_eq!(A::NAME, "Foo");
 			assert_eq!(
-				AValueQueryWithAnOnEmpty::DEFAULT.0.default_byte(),
+				AValueQueryWithAnOnEmpty::default(),
 				98u32.encode()
 			);
-			assert_eq!(A::DEFAULT.0.default_byte(), Option::<u32>::None.encode());
+			assert_eq!(A::default(), Option::<u32>::None.encode());
 
 			WithLen::remove_all(None);
 			assert_eq!(WithLen::decode_len((3,)), None);
@@ -819,10 +817,10 @@ mod test {
 			);
 			assert_eq!(A::NAME, "Foo");
 			assert_eq!(
-				AValueQueryWithAnOnEmpty::DEFAULT.0.default_byte(),
+				AValueQueryWithAnOnEmpty::default(),
 				98u32.encode()
 			);
-			assert_eq!(A::DEFAULT.0.default_byte(), Option::<u32>::None.encode());
+			assert_eq!(A::default(), Option::<u32>::None.encode());
 
 			WithLen::remove_all(None);
 			assert_eq!(WithLen::decode_len((3, 30)), None);
@@ -1054,10 +1052,10 @@ mod test {
 			);
 			assert_eq!(A::NAME, "Foo");
 			assert_eq!(
-				AValueQueryWithAnOnEmpty::DEFAULT.0.default_byte(),
+				AValueQueryWithAnOnEmpty::default(),
 				98u32.encode()
 			);
-			assert_eq!(A::DEFAULT.0.default_byte(), Option::<u32>::None.encode());
+			assert_eq!(A::default(), Option::<u32>::None.encode());
 
 			WithLen::remove_all(None);
 			assert_eq!(WithLen::decode_len((3, 30, 300)), None);

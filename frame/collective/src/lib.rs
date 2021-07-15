@@ -50,6 +50,7 @@ use sp_runtime::{RuntimeDebug, traits::Hash};
 use frame_support::{
 	decl_error, decl_event, decl_module, decl_storage, ensure, BoundedVec,
 	codec::{Decode, Encode},
+	scale_info::TypeInfo,
 	dispatch::{
 		DispatchError, DispatchResult, DispatchResultWithPostInfo, Dispatchable, Parameter,
 		PostDispatchInfo,
@@ -154,7 +155,7 @@ pub trait Config<I: Instance=DefaultInstance>: frame_system::Config {
 }
 
 /// Origin for the collective module.
-#[derive(PartialEq, Eq, Clone, RuntimeDebug, Encode, Decode)]
+#[derive(PartialEq, Eq, Clone, RuntimeDebug, Encode, Decode, TypeInfo)]
 pub enum RawOrigin<AccountId, I> {
 	/// It has been condoned by a given number of members of the collective from a given total.
 	Members(MemberCount, MemberCount),
@@ -176,7 +177,7 @@ impl<AccountId, I> GetBacking for RawOrigin<AccountId, I> {
 /// Origin for the collective module.
 pub type Origin<T, I=DefaultInstance> = RawOrigin<<T as frame_system::Config>::AccountId, I>;
 
-#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug)]
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
 /// Info for keeping track of a motion being voted on.
 pub struct Votes<AccountId, BlockNumber> {
 	/// The proposal's unique index.

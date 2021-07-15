@@ -16,6 +16,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 serde = { version = "1.0.126", optional = true }
 hex-literal = { version = "0.3.1", optional = true }
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 frame-support = { version = "4.0.0-dev", default-features = false, path = "../support" }
 frame-system = { version = "4.0.0-dev", default-features = false, path = "../system" }
 pallet-balances = { version = "4.0.0-dev", default-features = false, path = "../balances" }
@@ -40,6 +41,7 @@ runtime-benchmarks = [
 std = [
 	"serde",
 	"codec/std",
+	"scale-info/std",
 	"sp-runtime/std",
 	"frame-support/std",
 	"frame-system/std",

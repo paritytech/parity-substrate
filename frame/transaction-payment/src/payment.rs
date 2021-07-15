@@ -20,7 +20,8 @@ type NegativeImbalanceOf<C, T> =
 /// Handle withdrawing, refunding and depositing of transaction fees.
 pub trait OnChargeTransaction<T: Config> {
 	/// The underlying integer type in which fees are calculated.
-	type Balance: AtLeast32BitUnsigned + FullCodec + Copy + MaybeSerializeDeserialize + Debug + Default;
+	type Balance: AtLeast32BitUnsigned + FullCodec + Copy + MaybeSerializeDeserialize + Debug + Default
+		+ scale_info::TypeInfo;
 	type LiquidityInfo: Default;
 
 	/// Before the transaction is executed the payment of the transaction fees

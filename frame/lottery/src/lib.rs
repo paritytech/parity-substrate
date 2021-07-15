@@ -76,7 +76,7 @@ type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Con
 // We use this to uniquely match someone's incoming call with the calls configured for the lottery.
 type CallIndex = (u8, u8);
 
-#[derive(Encode, Decode, Default, Eq, PartialEq, RuntimeDebug)]
+#[derive(Encode, Decode, Default, Eq, PartialEq, RuntimeDebug, scale_info::TypeInfo)]
 pub struct LotteryConfig<BlockNumber, Balance> {
 	/// Price per entry.
 	price: Balance,
@@ -164,7 +164,6 @@ pub mod pallet {
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
-	#[pallet::metadata(T::AccountId = "AccountId", BalanceOf<T> = "Balance")]
 	pub enum Event<T: Config> {
 		/// A lottery has been started!
 		LotteryStarted,

@@ -16,6 +16,7 @@
 // limitations under the License.
 
 use super::helper;
+use frame_support_procedural_tools::get_doc_literals;
 use syn::spanned::Spanned;
 
 /// List of additional token to be used for parsing.
@@ -107,7 +108,7 @@ impl ExtraConstantsDef {
 			extra_constants.push(ExtraConstantDef {
 				ident: method.sig.ident.clone(),
 				type_,
-				doc: helper::get_doc_literals(&method.attrs),
+				doc: get_doc_literals(&method.attrs),
 			});
 		}
 

@@ -24,6 +24,7 @@ use sp_std::vec::Vec;
 
 use sp_std::cmp::Ordering;
 use codec::{Encode, Decode, MaxEncodedLen};
+use scale_info::TypeInfo;
 
 #[cfg(feature = "full_crypto")]
 use core::convert::{TryFrom, TryInto};
@@ -52,7 +53,7 @@ pub const CRYPTO_ID: CryptoTypeId = CryptoTypeId(*b"ecds");
 type Seed = [u8; 32];
 
 /// The ECDSA compressed public key.
-#[derive(Clone, Encode, Decode, PassByInner, MaxEncodedLen)]
+#[derive(Clone, Encode, Decode, PassByInner, MaxEncodedLen, TypeInfo)]
 pub struct Public(pub [u8; 33]);
 
 impl PartialOrd for Public {
@@ -227,7 +228,7 @@ impl sp_std::hash::Hash for Public {
 }
 
 /// A signature (a 512-bit value, plus 8 bits for recovery ID).
-#[derive(Encode, Decode, PassByInner)]
+#[derive(Encode, Decode, PassByInner, TypeInfo)]
 pub struct Signature(pub [u8; 65]);
 
 impl sp_std::convert::TryFrom<&[u8]> for Signature {
@@ -359,7 +360,7 @@ impl Signature {
 	#[cfg(feature = "full_crypto")]
 	pub fn recover_prehashed(&self, message: &[u8; 32]) -> Option<Public> {
 		let message = secp256k1::Message::parse(message);
-		
+
 		let sig: (_, _) = self.try_into().ok()?;
 
 		secp256k1::recover(&message, &sig.0, &sig.1)
@@ -554,17 +555,17 @@ impl Pair {
 	/// and thus matches the given `public` key.
 	pub fn verify_prehashed(sig: &Signature, message: &[u8; 32], public: &Public) -> bool {
 		let message = secp256k1::Message::parse(message);
-	
+
 		let sig: (_, _) = match sig.try_into() {
 			Ok(x) => x,
 			_ => return false,
 		};
-	
+
 		match secp256k1::recover(&message, &sig.0, &sig.1) {
 			Ok(actual) => public.0[..] == actual.serialize_compressed()[..],
 			_ => false,
 		}
-	}	
+	}
 }
 
 impl CryptoType for Public {
@@ -823,7 +824,7 @@ mod test {
 	#[test]
 	fn verify_prehashed_works() {
 		let (pair, _, _) = Pair::generate_with_phrase(Some("password"));
-		
+
 		// `msg` and `sig` match
 		let msg = keccak_256(b"this should be hashed");
 		let sig = pair.sign_prehashed(&msg);

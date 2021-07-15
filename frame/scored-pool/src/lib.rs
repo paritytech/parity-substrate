@@ -133,7 +133,8 @@ pub mod pallet {
 
 		/// The score attributed to a member or candidate.
 		type Score:
-			AtLeast32Bit + Clone + Copy + Default + FullCodec + MaybeSerializeDeserialize + Debug;
+			AtLeast32Bit + Clone + Copy + Default + FullCodec + MaybeSerializeDeserialize + Debug
+			+ scale_info::TypeInfo;
 
 		/// The overarching event type.
 		type Event: From<Event<Self, I>> + IsType<<Self as frame_system::Config>::Event>;

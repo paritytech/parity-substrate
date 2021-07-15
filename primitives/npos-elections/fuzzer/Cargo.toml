@@ -15,6 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
+scale-info = { version = "0.9.0", default-features = false, features = ["derive"] }
 honggfuzz = "0.5"
 rand = { version = "0.7.3", features = ["std", "small_rng"] }
 sp-arithmetic = { version = "4.0.0-dev", path = "../../arithmetic" }

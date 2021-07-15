@@ -23,6 +23,7 @@ use crate::{
 	weights::WeightInfo,
 };
 use codec::{Codec, Encode, Decode};
+use scale_info::TypeInfo;
 use sp_std::prelude::*;
 use sp_std::{marker::PhantomData, fmt::Debug};
 use sp_io::hashing::blake2_256;
@@ -45,7 +46,8 @@ pub type TombstoneContractInfo<T> =
 
 /// Information for managing an account and its sub trie abstraction.
 /// This is the required info to cache for an account
-#[derive(Encode, Decode, RuntimeDebug)]
+#[derive(Encode, Decode, RuntimeDebug, TypeInfo)]
+#[scale_info(skip_type_params(T))]
 pub enum ContractInfo<T: Config> {
 	Alive(AliveContractInfo<T>),
 	Tombstone(TombstoneContractInfo<T>),
@@ -83,7 +85,7 @@ impl<T: Config> ContractInfo<T> {
 
 /// Information for managing an account and its sub trie abstraction.
 /// This is the required info to cache for an account.
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo)]
 pub struct RawAliveContractInfo<CodeHash, Balance, BlockNumber> {
 	/// Unique ID for the subtree encoded as a bytes vector.
 	pub trie_id: TrieId,
@@ -121,7 +123,7 @@ fn child_trie_info(trie_id: &[u8]) -> ChildInfo {
 	ChildInfo::new_default(trie_id)
 }
 
-#[derive(Encode, Decode, PartialEq, Eq, RuntimeDebug)]
+#[derive(Encode, Decode, PartialEq, Eq, RuntimeDebug, TypeInfo)]
 pub struct RawTombstoneContractInfo<H, Hasher>(H, PhantomData<Hasher>);
 
 impl<H, Hasher> RawTombstoneContractInfo<H, Hasher>
@@ -145,7 +147,7 @@ impl<T: Config> From<AliveContractInfo<T>> for ContractInfo<T> {
 	}
 }
 
-#[derive(Encode, Decode)]
+#[derive(Encode, Decode, TypeInfo)]
 pub struct DeletedContract {
 	pair_count: u32,
 	trie_id: TrieId,

@@ -160,7 +160,7 @@ fn struct_def(
 
 	let derives_and_maybe_compact_encoding = if compact_encoding {
 		// custom compact encoding.
-		let compact_impl = codec::codec_impl(
+		let compact_impl = codec::codec_and_info_impl(
 			ident.clone(),
 			voter_type.clone(),
 			target_type.clone(),
@@ -173,7 +173,12 @@ fn struct_def(
 		}
 	} else {
 		// automatically derived.
-		quote!(#[derive(Default, PartialEq, Eq, Clone, Debug, _npos::codec::Encode, _npos::codec::Decode)])
+		quote! {
+			#[derive(
+				Default, PartialEq, Eq, Clone, Debug, _npos::codec::Encode, _npos::codec::Decode,
+				_npos::scale_info::TypeInfo,
+			)]
+		}
 	};
 
 	let from_impl = assignment::from_impl(count);

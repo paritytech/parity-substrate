@@ -95,7 +95,6 @@ members = [
 	"frame/merkle-mountain-range",
 	"frame/merkle-mountain-range/primitives",
 	"frame/merkle-mountain-range/rpc",
-	"frame/metadata",
 	"frame/multisig",
 	"frame/nicks",
 	"frame/node-authorization",
@@ -272,3 +271,6 @@ zeroize = { opt-level = 3 }
 [profile.release]
 # Substrate runtime requires unwinding.
 panic = "unwind"
+
+[patch.crates-io]
+finality-grandpa = { git = "https://github.com/paritytech/finality-grandpa", branch = "aj-scale-info" }

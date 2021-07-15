@@ -158,6 +158,7 @@ use sp_runtime::{
 	traits::{Zero, Hash, Dispatchable, Saturating, Bounded},
 };
 use codec::{Encode, Decode, Input};
+use scale_info::TypeInfo;
 use frame_support::{
 	ensure, weights::Weight,
 	traits::{
@@ -201,7 +202,7 @@ type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Con
 type NegativeImbalanceOf<T> =
 	<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::NegativeImbalance;
 
-#[derive(Clone, Encode, Decode, RuntimeDebug)]
+#[derive(Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
 pub enum PreimageStatus<AccountId, Balance, BlockNumber> {
 	/// The preimage is imminently needed at the argument.
 	Missing(BlockNumber),
@@ -228,7 +229,7 @@ impl<AccountId, Balance, BlockNumber> PreimageStatus<AccountId, Balance, BlockNu
 // A value placed in storage that represents the current version of the Democracy storage.
 // This value is used by the `on_runtime_upgrade` logic to determine whether we run
 // storage migration logic.
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo)]
 enum Releases {
 	V1,
 }
@@ -488,13 +489,6 @@ pub mod pallet {
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
-	#[pallet::metadata(
-		T::AccountId = "AccountId",
-		Vec<T::AccountId> = "Vec<AccountId>",
-		BalanceOf<T> = "Balance",
-		T::BlockNumber = "BlockNumber",
-		T::Hash = "Hash",
-	)]
 	pub enum Event<T: Config> {
 		/// A motion has been proposed by a public account. \[proposal_index, deposit\]
 		Proposed(PropIndex, BalanceOf<T>),

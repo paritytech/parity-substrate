@@ -16,7 +16,6 @@
 // limitations under the License.
 
 use crate::pallet::Def;
-use frame_support_procedural_tools::clean_type_string;
 use crate::COUNTER;
 use syn::spanned::Spanned;
 
@@ -64,19 +63,6 @@ pub fn expand_call(def: &mut Def) -> proc_macro2::TokenStream {
 				} else {
 					quote::quote!()
 				}
-			})
-			.collect::<Vec<_>>()
-	});
-
-	let args_metadata_type = methods.iter().map(|method| {
-		method.args.iter()
-			.map(|(is_compact, _, type_)| {
-				let final_type = if *is_compact {
-					quote::quote_spanned!(type_.span() => Compact<#type_>)
-				} else {
-					quote::quote!(#type_)
-				};
-				clean_type_string(&final_type.to_string())
 			})
 			.collect::<Vec<_>>()
 	});
@@ -129,9 +115,11 @@ pub fn expand_call(def: &mut Def) -> proc_macro2::TokenStream {
 			#frame_support::PartialEqNoBound,
 			#frame_support::codec::Encode,
 			#frame_support::codec::Decode,
+			#frame_support::scale_info::TypeInfo,
 		)]
 		#[codec(encode_bound())]
 		#[codec(decode_bound())]
+		#[scale_info(skip_type_params(#type_use_gen))]
 		#[allow(non_camel_case_types)]
 		pub enum #call_ident<#type_decl_bounded_gen> #where_clause {
 			#[doc(hidden)]
@@ -229,30 +217,8 @@ pub fn expand_call(def: &mut Def) -> proc_macro2::TokenStream {
 
 		impl<#type_impl_gen> #pallet_ident<#type_use_gen> #where_clause {
 			#[doc(hidden)]
-			#[allow(dead_code)]
-			pub fn call_functions() -> &'static [#frame_support::dispatch::FunctionMetadata] {
-				&[ #(
-					#frame_support::dispatch::FunctionMetadata {
-						name: #frame_support::dispatch::DecodeDifferent::Encode(
-							stringify!(#fn_name)
-						),
-						arguments: #frame_support::dispatch::DecodeDifferent::Encode(
-							&[ #(
-								#frame_support::dispatch::FunctionArgumentMetadata {
-									name: #frame_support::dispatch::DecodeDifferent::Encode(
-										stringify!(#args_name)
-									),
-									ty: #frame_support::dispatch::DecodeDifferent::Encode(
-										#args_metadata_type
-									),
-								},
-							)* ]
-						),
-						documentation: #frame_support::dispatch::DecodeDifferent::Encode(
-							&[ #( #fn_doc ),* ]
-						),
-					},
-				)* ]
+			pub fn call_functions() -> #frame_support::metadata::PalletCallMetadata {
+				#frame_support::scale_info::meta_type::<#call_ident<#type_use_gen>>().into()
 			}
 		}
 	)

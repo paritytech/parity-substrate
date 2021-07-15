@@ -252,7 +252,6 @@ pub mod pallet {
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
-	#[pallet::metadata(T::AccountId = "AccountId", T::AccountIndex = "AccountIndex")]
 	pub enum Event<T: Config> {
 		/// A account index was assigned. \[index, who\]
 		IndexAssigned(T::AccountId, T::AccountIndex),
