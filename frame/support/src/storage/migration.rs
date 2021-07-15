@@ -175,7 +175,7 @@ pub fn storage_iter_with_suffix<T: Decode + Sized>(
 		Ok((raw_key_without_prefix.to_vec(), value))
 	};
 
-	PrefixIterator { prefix, previous_key, drain: false, closure }
+	PrefixIterator { prefix, previous_key, drain: false, closure, phantom: Default::default() }
 }
 
 /// Construct iterator to iterate over map items in `module` for the map called `item`.
@@ -203,7 +203,7 @@ pub fn storage_key_iter_with_suffix<K: Decode + Sized, T: Decode + Sized, H: Rev
 		let value = T::decode(&mut &raw_value[..])?;
 		Ok((key, value))
 	};
-	PrefixIterator { prefix, previous_key, drain: false, closure }
+	PrefixIterator { prefix, previous_key, drain: false, closure, phantom: Default::default() }
 }
 
 /// Get a particular value in storage by the `module`, the map's `item` name and the key `hash`.
@@ -332,11 +332,12 @@ pub fn move_prefix(from_prefix: &[u8], to_prefix: &[u8]) {
 		return
 	}
 
-	let iter = PrefixIterator {
+	let iter = PrefixIterator::<_> {
 		prefix: from_prefix.to_vec(),
 		previous_key: from_prefix.to_vec(),
 		drain: true,
 		closure: |key, value| Ok((key.to_vec(), value.to_vec())),
+		phantom: Default::default(),
 	};
 
 	for (key, value) in iter {

@@ -176,6 +176,15 @@ fn signed_ext_watch_dummy_works() {
 }
 
 #[test]
+fn counted_map_works() {
+	new_test_ext().execute_with(|| {
+		assert_eq!(CountedMap::<Test>::count(), 0);
+		CountedMap::<Test>::insert(3, 3);
+		assert_eq!(CountedMap::<Test>::count(), 1);
+	})
+}
+
+#[test]
 fn weights_work() {
 	// must have a defined weight.
 	let default_call = <pallet_example::Call<Test>>::accumulate_dummy(10);

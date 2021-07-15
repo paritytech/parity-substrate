@@ -702,10 +702,12 @@ pub trait StorageNMap<K: KeyGenerator, V: FullCodec> {
 		KArg: EncodeLikeTuple<K::KArg> + TupleToEncodedIter;
 }
 
-/// Iterate over a prefix and decode raw_key and raw_value into `T`.
+/// Iterate or drain over a prefix and decode raw_key and raw_value into `T`.
 ///
 /// If any decoding fails it skips it and continues to the next key.
-pub struct PrefixIterator<T> {
+///
+/// If draining, then the hook `OnRemoval::on_removal` is called after each removal.
+pub struct PrefixIterator<T, OnRemoval=()> {
 	prefix: Vec<u8>,
 	previous_key: Vec<u8>,
 	/// If true then value are removed while iterating
@@ -713,9 +715,20 @@ pub struct PrefixIterator<T> {
 	/// Function that take `(raw_key_without_prefix, raw_value)` and decode `T`.
 	/// `raw_key_without_prefix` is the raw storage key without the prefix iterated on.
 	closure: fn(&[u8], &[u8]) -> Result<T, codec::Error>,
+	phantom: core::marker::PhantomData<OnRemoval>,
 }
 
-impl<T> PrefixIterator<T> {
+/// Trait for specialising on removal logic of [`PrefixIterator`].
+pub trait PrefixIteratorOnRemoval {
+	fn on_removal();
+}
+
+/// No-op implement.
+impl PrefixIteratorOnRemoval for () {
+	fn on_removal() {}
+}
+
+impl<T, OnRemoval> PrefixIterator<T, OnRemoval> {
 	/// Mutate this iterator into a draining iterator; items iterated are removed from storage.
 	pub fn drain(mut self) -> Self {
 		self.drain = true;
@@ -723,7 +736,7 @@ impl<T> PrefixIterator<T> {
 	}
 }
 
-impl<T> Iterator for PrefixIterator<T> {
+impl<T, OnRemoval: PrefixIteratorOnRemoval> Iterator for PrefixIterator<T, OnRemoval> {
 	type Item = T;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -744,7 +757,8 @@ impl<T> Iterator for PrefixIterator<T> {
 						}
 					};
 					if self.drain {
-						unhashed::kill(&self.previous_key)
+						unhashed::kill(&self.previous_key);
+						OnRemoval::on_removal();
 					}
 					let raw_key_without_prefix = &self.previous_key[self.prefix.len()..];
 					let item = match (self.closure)(raw_key_without_prefix, &raw_value[..]) {
@@ -980,6 +994,7 @@ pub trait StoragePrefixedMap<Value: FullCodec> {
 			previous_key: prefix.to_vec(),
 			drain: false,
 			closure: |_raw_key, mut raw_value| Value::decode(&mut raw_value),
+			phantom: Default::default(),
 		}
 	}
 

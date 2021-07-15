@@ -276,6 +276,15 @@ pub mod pallet {
 		u32,
 	>;
 
+	#[pallet::storage]
+	#[pallet::storage_prefix = "RenamedCountedMap"]
+	#[pallet::getter(fn counted_storage_map)]
+	pub type SomeCountedStorageMap<T> = CountedStorageMap<
+		Hasher = Twox64Concat,
+		Key = u8,
+		Value = u32,
+	>;
+
 	#[pallet::genesis_config]
 	#[derive(Default)]
 	pub struct GenesisConfig {
@@ -803,6 +812,13 @@ fn storage_expand() {
 			pallet::ConditionalDoubleMap::<Runtime>::insert(1, 2, 3);
 			pallet::ConditionalNMap::<Runtime>::insert((1, 2), 3);
 		}
+
+		pallet::SomeCountedStorageMap::<Runtime>::insert(1, 2);
+		let mut k = [twox_128(b"Example"), twox_128(b"RenamedCountedMap")].concat();
+		k.extend(1u8.using_encoded(twox_64_concat));
+		assert_eq!(unhashed::get::<u32>(&k), Some(2u32));
+		let k = [twox_128(b"Example"), twox_128(b"CounterForRenamedCountedMap")].concat();
+		assert_eq!(unhashed::get::<u32>(&k), Some(1u32));
 	})
 }
 
@@ -1009,6 +1025,27 @@ fn metadata() {
 					},
 					default: DecodeDifferent::Decoded(vec![0]),
 					documentation: DecodeDifferent::Decoded(vec![]),
+				},
+				StorageEntryMetadata {
+					name: DecodeDifferent::Decoded("RenamedCountedMap".to_string()),
+					modifier: StorageEntryModifier::Optional,
+					ty: StorageEntryType::Map {
+						key: DecodeDifferent::Decoded("u8".to_string()),
+						value: DecodeDifferent::Decoded("u32".to_string()),
+						hasher: StorageHasher::Twox64Concat,
+						unused: false,
+					},
+					default: DecodeDifferent::Decoded(vec![0]),
+					documentation: DecodeDifferent::Decoded(vec![]),
+				},
+				StorageEntryMetadata {
+					name: DecodeDifferent::Decoded("CounterForRenamedCountedMap".to_string()),
+					modifier: StorageEntryModifier::Default,
+					ty: StorageEntryType::Plain(DecodeDifferent::Decoded("u32".to_string())),
+					default: DecodeDifferent::Decoded(vec![0, 0, 0, 0]),
+					documentation: DecodeDifferent::Decoded(vec![
+						"Counter for the related counted storage map".to_string(),
+					]),
 				},
 			]),
 		})),
@@ -1272,6 +1309,16 @@ fn test_storage_info() {
 					max_values: None,
 					max_size: Some(7 + 16 + 8),
 				}
+			},
+			StorageInfo {
+				prefix: prefix(b"Example", b"RenamedCountedMap"),
+				max_values: None,
+				max_size: Some(1 + 4 + 8),
+			},
+			StorageInfo {
+				prefix: prefix(b"Example", b"CounterForRenamedCountedMap"),
+				max_values: Some(1),
+				max_size: Some(4),
 			},
 		],
 	);
