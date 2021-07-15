@@ -574,7 +574,7 @@
 			"displayName": "Moonbeam",
 			"symbols": ["GLMR"],
 			"decimals": [18],
-			"standardAccount": "*25519",
+			"standardAccount": "secp256k1",
 			"website": "https://moonbeam.network"
 		},
 		{
@@ -583,7 +583,7 @@
 			"displayName": "Moonriver",
 			"symbols": ["MOVR"],
 			"decimals": [18],
-			"standardAccount": "*25519",
+			"standardAccount": "secp256k1",
 			"website": "https://moonbeam.network"
 		},
 		{
