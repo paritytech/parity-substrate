@@ -130,7 +130,7 @@ pub struct WasmtimeInstance {
 }
 
 // This is safe because `WasmtimeInstance` does not leak reference to `self.imports`
-// and all imports don't reference any anything, other than host functions and memory
+// and all imports don't reference anything, other than host functions and memory
 unsafe impl Send for WasmtimeInstance {}
 
 impl WasmInstance for WasmtimeInstance {

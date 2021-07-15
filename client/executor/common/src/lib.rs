@@ -25,3 +25,4 @@ pub mod error;
 pub mod sandbox;
 pub mod wasm_runtime;
 pub mod runtime_blob;
+pub mod util;

@@ -20,16 +20,17 @@
 //! required for execution of host.
 
 use crate::instance_wrapper::InstanceWrapper;
-use crate::util;
 use std::{cell::RefCell, rc::Rc};
 use log::trace;
 use codec::{Encode, Decode};
+use sc_executor_common::util::MemoryTransfer;
 use sc_allocator::FreeingBumpHeapAllocator;
 use sc_executor_common::error::Result;
 use sc_executor_common::sandbox::{self, SandboxCapabilities, SupervisorFuncIndex};
 use sp_core::sandbox as sandbox_primitives;
 use sp_wasm_interface::{FunctionContext, MemoryId, Pointer, Sandbox, WordSize};
 use wasmtime::{Func, Val};
+use sandbox::SandboxCapabilitiesHolder;
 
 /// Wrapper type for pointer to a Wasm table entry.
 ///
@@ -41,7 +42,12 @@ pub struct SupervisorFuncRef(Func);
 /// The state required to construct a HostContext context. The context only lasts for one host
 /// call, whereas the state is maintained for the duration of a Wasm runtime call, which may make
 /// many different host calls that must share state.
+#[derive(Clone)]
 pub struct HostState {
+	inner: Rc<Inner>,
+}
+
+struct Inner {
 	// We need some interior mutability here since the host state is shared between all host
 	// function handlers and the wasmtime backend's `impl WasmRuntime`.
 	//
@@ -59,32 +65,23 @@ pub struct HostState {
 impl HostState {
 	/// Constructs a new `HostState`.
 	pub fn new(allocator: FreeingBumpHeapAllocator, instance: Rc<InstanceWrapper>) -> Self {
+		#[cfg(feature = "wasmer-sandbox")]
+		let backend = sandbox::SandboxBackend::Wasmer;
+
+		#[cfg(not(feature = "wasmer-sandbox"))]
+		let backend = sandbox::SandboxBackend::Wasmi;
+
 		HostState {
-			sandbox_store: RefCell::new(sandbox::Store::new()),
-			allocator: RefCell::new(allocator),
-			instance,
+			inner: Rc::new(Inner {
+				sandbox_store: RefCell::new(sandbox::Store::new(backend)),
+				allocator: RefCell::new(allocator),
+				instance,
+			})
 		}
 	}
-
-	/// Materialize `HostContext` that can be used to invoke a substrate host `dyn Function`.
-	pub fn materialize<'a>(&'a self) -> HostContext<'a> {
-		HostContext(self)
-	}
 }
 
-/// A `HostContext` implements `FunctionContext` for making host calls from a Wasmtime
-/// runtime. The `HostContext` exists only for the lifetime of the call and borrows state from
-/// a longer-living `HostState`.
-pub struct HostContext<'a>(&'a HostState);
-
-impl<'a> std::ops::Deref for HostContext<'a> {
-	type Target = HostState;
-	fn deref(&self) -> &HostState {
-		self.0
-	}
-}
-
-impl<'a> SandboxCapabilities for HostContext<'a> {
+impl SandboxCapabilities for HostState {
 	type SupervisorFuncRef = SupervisorFuncRef;
 
 	fn invoke(
@@ -124,32 +121,36 @@ impl<'a> SandboxCapabilities for HostContext<'a> {
 	}
 }
 
-impl<'a> sp_wasm_interface::FunctionContext for HostContext<'a> {
+impl sp_wasm_interface::FunctionContext for HostState {
 	fn read_memory_into(
 		&self,
 		address: Pointer<u8>,
 		dest: &mut [u8],
 	) -> sp_wasm_interface::Result<()> {
-		self.instance
+		self.inner
+			.instance
 			.read_memory_into(address, dest)
 			.map_err(|e| e.to_string())
 	}
 
 	fn write_memory(&mut self, address: Pointer<u8>, data: &[u8]) -> sp_wasm_interface::Result<()> {
-		self.instance
+		self.inner
+			.instance
 			.write_memory_from(address, data)
 			.map_err(|e| e.to_string())
 	}
 
 	fn allocate_memory(&mut self, size: WordSize) -> sp_wasm_interface::Result<Pointer<u8>> {
-		self.instance
-			.allocate(&mut *self.allocator.borrow_mut(), size)
+		self.inner
+			.instance
+			.allocate(&mut *self.inner.allocator.borrow_mut(), size)
 			.map_err(|e| e.to_string())
 	}
 
 	fn deallocate_memory(&mut self, ptr: Pointer<u8>) -> sp_wasm_interface::Result<()> {
-		self.instance
-			.deallocate(&mut *self.allocator.borrow_mut(), ptr)
+		self.inner
+			.instance
+			.deallocate(&mut *self.inner.allocator.borrow_mut(), ptr)
 			.map_err(|e| e.to_string())
 	}
 
@@ -158,7 +159,7 @@ impl<'a> sp_wasm_interface::FunctionContext for HostContext<'a> {
 	}
 }
 
-impl<'a> Sandbox for HostContext<'a> {
+impl Sandbox for HostState {
 	fn memory_get(
 		&mut self,
 		memory_id: MemoryId,
@@ -167,30 +168,24 @@ impl<'a> Sandbox for HostContext<'a> {
 		buf_len: WordSize,
 	) -> sp_wasm_interface::Result<u32> {
 		let sandboxed_memory = self
+			.inner
 			.sandbox_store
 			.borrow()
 			.memory(memory_id)
 			.map_err(|e| e.to_string())?;
-		sandboxed_memory.with_direct_access(|sandboxed_memory| {
-			let len = buf_len as usize;
-			let src_range = match util::checked_range(offset as usize, len, sandboxed_memory.len())
-			{
-				Some(range) => range,
-				None => return Ok(sandbox_primitives::ERR_OUT_OF_BOUNDS),
-			};
-			let supervisor_mem_size = self.instance.memory_size() as usize;
-			let dst_range = match util::checked_range(buf_ptr.into(), len, supervisor_mem_size) {
-				Some(range) => range,
-				None => return Ok(sandbox_primitives::ERR_OUT_OF_BOUNDS),
-			};
-			self.instance
-				.write_memory_from(
-					Pointer::new(dst_range.start as u32),
-					&sandboxed_memory[src_range],
-				)
-				.expect("ranges are checked above; write can't fail; qed");
-			Ok(sandbox_primitives::ERR_OK)
-		})
+
+		let len = buf_len as usize;
+
+		let buffer = match sandboxed_memory.read(Pointer::new(offset as u32), len) {
+			Err(_) => return Ok(sandbox_primitives::ERR_OUT_OF_BOUNDS),
+			Ok(buffer) => buffer,
+		};
+
+		if let Err(_) = self.inner.instance.write_memory_from(buf_ptr, &buffer) {
+			return Ok(sandbox_primitives::ERR_OUT_OF_BOUNDS)
+		}
+
+		Ok(sandbox_primitives::ERR_OK)
 	}
 
 	fn memory_set(
@@ -200,42 +195,37 @@ impl<'a> Sandbox for HostContext<'a> {
 		val_ptr: Pointer<u8>,
 		val_len: WordSize,
 	) -> sp_wasm_interface::Result<u32> {
-		let sandboxed_memory = self
+		let sandboxed_memory = self.inner
 			.sandbox_store
 			.borrow()
 			.memory(memory_id)
 			.map_err(|e| e.to_string())?;
-		sandboxed_memory.with_direct_access_mut(|sandboxed_memory| {
-			let len = val_len as usize;
-			let supervisor_mem_size = self.instance.memory_size() as usize;
-			let src_range = match util::checked_range(val_ptr.into(), len, supervisor_mem_size) {
-				Some(range) => range,
-				None => return Ok(sandbox_primitives::ERR_OUT_OF_BOUNDS),
-			};
-			let dst_range = match util::checked_range(offset as usize, len, sandboxed_memory.len())
-			{
-				Some(range) => range,
-				None => return Ok(sandbox_primitives::ERR_OUT_OF_BOUNDS),
-			};
-			self.instance
-				.read_memory_into(
-					Pointer::new(src_range.start as u32),
-					&mut sandboxed_memory[dst_range],
-				)
-				.expect("ranges are checked above; read can't fail; qed");
-			Ok(sandbox_primitives::ERR_OK)
-		})
+
+		let len = val_len as usize;
+
+		let buffer = match self.inner.instance.read_memory(val_ptr, len) {
+			Err(_) => return Ok(sandbox_primitives::ERR_OUT_OF_BOUNDS),
+			Ok(buffer) => buffer,
+		};
+
+		if let Err(_) = sandboxed_memory.write_from(Pointer::new(offset as u32), &buffer) {
+			return Ok(sandbox_primitives::ERR_OUT_OF_BOUNDS)
+		}
+
+		Ok(sandbox_primitives::ERR_OK)
 	}
 
 	fn memory_teardown(&mut self, memory_id: MemoryId) -> sp_wasm_interface::Result<()> {
-		self.sandbox_store
+		self.inner
+			.sandbox_store
 			.borrow_mut()
 			.memory_teardown(memory_id)
 			.map_err(|e| e.to_string())
 	}
 
 	fn memory_new(&mut self, initial: u32, maximum: u32) -> sp_wasm_interface::Result<u32> {
-		self.sandbox_store
+		self.inner
+			.sandbox_store
 			.borrow_mut()
 			.new_memory(initial, maximum)
 			.map_err(|e| e.to_string())
@@ -260,11 +250,13 @@ impl<'a> Sandbox for HostContext<'a> {
 			.collect::<Vec<_>>();
 
 		let instance = self
+			.inner
 			.sandbox_store
 			.borrow()
 			.instance(instance_id)
 			.map_err(|e| e.to_string())?;
-		let result = instance.invoke(export_name, &args, self, state);
+
+		let result = instance.invoke::<_, CapsHolder, ThunkHolder>(export_name, &args, state);
 
 		match result {
 			Ok(None) => Ok(sandbox_primitives::ERR_OK),
@@ -274,7 +266,7 @@ impl<'a> Sandbox for HostContext<'a> {
 					if val.len() > return_val_len as usize {
 						Err("Return value buffer is too small")?;
 					}
-					<HostContext as FunctionContext>::write_memory(self, return_val, val)
+					<HostState as FunctionContext>::write_memory(self, return_val, val)
 						.map_err(|_| "can't write return value")?;
 					Ok(sandbox_primitives::ERR_OK)
 				})
@@ -284,7 +276,8 @@ impl<'a> Sandbox for HostContext<'a> {
 	}
 
 	fn instance_teardown(&mut self, instance_id: u32) -> sp_wasm_interface::Result<()> {
-		self.sandbox_store
+		self.inner
+			.sandbox_store
 			.borrow_mut()
 			.instance_teardown(instance_id)
 			.map_err(|e| e.to_string())
@@ -300,6 +293,7 @@ impl<'a> Sandbox for HostContext<'a> {
 		// Extract a dispatch thunk from the instance's table by the specified index.
 		let dispatch_thunk = {
 			let table_item = self
+				.inner
 				.instance
 				.table()
 				.as_ref()
@@ -315,20 +309,29 @@ impl<'a> Sandbox for HostContext<'a> {
 			SupervisorFuncRef(func_ref)
 		};
 
-		let guest_env =
-			match sandbox::GuestEnvironment::decode(&*self.sandbox_store.borrow(), raw_env_def) {
-				Ok(guest_env) => guest_env,
-				Err(_) => return Ok(sandbox_primitives::ERR_MODULE as u32),
-			};
+		let guest_env = match sandbox::GuestEnvironment::decode(
+			&*self.inner.sandbox_store.borrow(),
+			raw_env_def,
+		) {
+			Ok(guest_env) => guest_env,
+			Err(_) => return Ok(sandbox_primitives::ERR_MODULE as u32),
+		};
 
-		let instance_idx_or_err_code =
-			match sandbox::instantiate(self, dispatch_thunk, wasm, guest_env, state)
-				.map(|i| i.register(&mut *self.sandbox_store.borrow_mut()))
-			{
-				Ok(instance_idx) => instance_idx,
-				Err(sandbox::InstantiationError::StartTrapped) => sandbox_primitives::ERR_EXECUTION,
-				Err(_) => sandbox_primitives::ERR_MODULE,
-			};
+		let store = &mut *self.inner.sandbox_store.borrow_mut();
+		let result = DISPATCH_THUNK.set(&dispatch_thunk, || {
+			store.instantiate::<_, CapsHolder, ThunkHolder>(
+				wasm,
+				guest_env,
+				state
+			)
+				.map(|i| i.register(store))
+		});
+
+		let instance_idx_or_err_code = match result {
+			Ok(instance_idx) => instance_idx,
+			Err(sandbox::InstantiationError::StartTrapped) => sandbox_primitives::ERR_EXECUTION,
+			Err(_) => sandbox_primitives::ERR_MODULE,
+		};
 
 		Ok(instance_idx_or_err_code as u32)
 	}
@@ -338,10 +341,48 @@ impl<'a> Sandbox for HostContext<'a> {
 		instance_idx: u32,
 		name: &str,
 	) -> sp_wasm_interface::Result<Option<sp_wasm_interface::Value>> {
-		self.sandbox_store
+		self.inner.sandbox_store
 			.borrow()
 			.instance(instance_idx)
 			.map(|i| i.get_global_val(name))
 			.map_err(|e| e.to_string())
+	}
+}
+
+/// Wasmtime specific implementation of `SandboxCapabilitiesHolder` that provides
+/// sandbox with a scoped thread local access to a function executor.
+/// This is a way to calm down the borrow checker since host function closures
+/// require exclusive access to it.
+struct CapsHolder;
+
+impl SandboxCapabilitiesHolder for CapsHolder {
+	type SupervisorFuncRef = SupervisorFuncRef;
+	type SC = HostState;
+
+	fn with_sandbox_capabilities<R, F: FnOnce(&mut Self::SC) -> R>(f: F) -> R {
+		crate::state_holder::with_context(|ctx| {
+			f(&mut ctx.expect("wasmtime executor is not set"))
+		})
+	}
+}
+
+/// Wasmtime specific implementation of `DispatchThunkHolder` that provides
+/// sandbox with a scoped thread local access to a dispatch thunk.
+/// This is a way to calm down the borrow checker since host function closures
+/// require exclusive access to it.
+struct ThunkHolder;
+
+scoped_tls::scoped_thread_local!(static DISPATCH_THUNK: SupervisorFuncRef);
+
+impl sandbox::DispatchThunkHolder for ThunkHolder {
+	type DispatchThunk = SupervisorFuncRef;
+
+	fn with_dispatch_thunk<R, F: FnOnce(&mut Self::DispatchThunk) -> R>(f: F) -> R {
+		assert!(DISPATCH_THUNK.is_set(), "dispatch thunk is not set");
+		DISPATCH_THUNK.with(|thunk| f(&mut thunk.clone()))
+	}
+
+	fn initialize_thunk<R, F>(s: &Self::DispatchThunk, f: F) -> R where F: FnOnce() -> R {
+		DISPATCH_THUNK.set(s, f)
 	}
 }

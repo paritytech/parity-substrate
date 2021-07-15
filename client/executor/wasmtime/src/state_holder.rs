@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::host::{HostContext, HostState};
+use crate::host::HostState;
 
 scoped_tls::scoped_thread_local!(static HOST_STATE: HostState);
 
@@ -36,10 +36,10 @@ where
 /// context will be `None`.
 pub fn with_context<R, F>(f: F) -> R
 where
-	F: FnOnce(Option<HostContext>) -> R,
+	F: FnOnce(Option<HostState>) -> R,
 {
 	if !HOST_STATE.is_set() {
-		return f(None)
+		return f(None);
 	}
-	HOST_STATE.with(|state| f(Some(state.materialize())))
+	HOST_STATE.with(|state| f(Some(state.clone())))
 }

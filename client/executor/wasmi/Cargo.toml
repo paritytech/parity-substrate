@@ -22,3 +22,7 @@ sc-allocator = { version = "4.0.0-dev", path = "../../allocator" }
 sp-wasm-interface = { version = "4.0.0-dev", path = "../../../primitives/wasm-interface" }
 sp-runtime-interface = { version = "4.0.0-dev", path = "../../../primitives/runtime-interface" }
 sp-core = { version = "4.0.0-dev", path = "../../../primitives/core" }
+scoped-tls = "1.0"
+
+[features]
+wasmer-sandbox = []

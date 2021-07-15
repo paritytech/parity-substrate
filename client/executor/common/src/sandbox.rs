@@ -18,18 +18,21 @@
 
 //! This module implements sandboxing support in the runtime.
 //!
-//! Sandboxing is baked by wasmi at the moment. In future, however, we would like to add/switch to
-//! a compiled execution engine.
+//! Sandboxing is backed by wasmi and wasmer, depending on the configuration.
 
-use crate::error::{Result, Error};
+use crate::{error::{Result, Error}, util};
 use std::{collections::HashMap, rc::Rc};
 use codec::{Decode, Encode};
 use sp_core::sandbox as sandbox_primitives;
 use wasmi::{
-	Externals, ImportResolver, MemoryInstance, MemoryRef, Module, ModuleInstance,
-	ModuleRef, RuntimeArgs, RuntimeValue, Trap, TrapKind, memory_units::Pages,
+	Externals, ImportResolver, MemoryInstance, Module,
+	ModuleInstance, RuntimeArgs, RuntimeValue, Trap, TrapKind, memory_units::Pages
 };
 use sp_wasm_interface::{FunctionContext, Pointer, WordSize};
+
+#[cfg(feature = "wasmer-sandbox")]
+use crate::util::wasmer::MemoryWrapper as WasmerMemoryWrapper;
+use crate::util::wasmi::MemoryWrapper as WasmiMemoryWrapper;
 
 /// Index of a function inside the supervisor.
 ///
@@ -46,34 +49,55 @@ impl From<SupervisorFuncIndex> for usize {
 
 /// Index of a function within guest index space.
 ///
-/// This index is supposed to be used with as index for `Externals`.
+/// This index is supposed to be used as index for `Externals`.
 #[derive(Copy, Clone, Debug, PartialEq)]
 struct GuestFuncIndex(usize);
 
 /// This struct holds a mapping from guest index space to supervisor.
 struct GuestToSupervisorFunctionMapping {
+	/// Position of elements in this vector are interpreted
+	/// as indices of guest functions and are mapped to
+	/// corresponding supervisor function indices.
 	funcs: Vec<SupervisorFuncIndex>,
 }
 
 impl GuestToSupervisorFunctionMapping {
+	/// Create an empty function mapping
 	fn new() -> GuestToSupervisorFunctionMapping {
 		GuestToSupervisorFunctionMapping { funcs: Vec::new() }
 	}
 
+	/// Add a new supervisor function to the mapping.
+	/// Returns a newly assigned guest function index.
 	fn define(&mut self, supervisor_func: SupervisorFuncIndex) -> GuestFuncIndex {
 		let idx = self.funcs.len();
 		self.funcs.push(supervisor_func);
 		GuestFuncIndex(idx)
 	}
 
+	/// Find supervisor function index by its corresponding guest function index
 	fn func_by_guest_index(&self, guest_func_idx: GuestFuncIndex) -> Option<SupervisorFuncIndex> {
 		self.funcs.get(guest_func_idx.0).cloned()
 	}
 }
 
+/// Holds sandbox function and memory imports and performs name resolution
 struct Imports {
+	/// Maps qualified function name to its guest function index
 	func_map: HashMap<(Vec<u8>, Vec<u8>), GuestFuncIndex>,
-	memories_map: HashMap<(Vec<u8>, Vec<u8>), MemoryRef>,
+
+	/// Maps qualified field name to its memory reference
+	memories_map: HashMap<(Vec<u8>, Vec<u8>), Memory>,
+}
+
+impl Imports {
+	fn func_by_name(&self, module_name: &str, func_name: &str) -> Option<GuestFuncIndex> {
+		self.func_map.get(&(module_name.as_bytes().to_owned(), func_name.as_bytes().to_owned())).cloned()
+	}
+
+	fn memory_by_name(&self, module_name: &str, memory_name: &str) -> Option<Memory> {
+		self.memories_map.get(&(module_name.as_bytes().to_owned(), memory_name.as_bytes().to_owned())).cloned()
+	}
 }
 
 impl ImportResolver for Imports {
@@ -83,16 +107,14 @@ impl ImportResolver for Imports {
 		field_name: &str,
 		signature: &::wasmi::Signature,
 	) -> std::result::Result<wasmi::FuncRef, wasmi::Error> {
-		let key = (
-			module_name.as_bytes().to_owned(),
-			field_name.as_bytes().to_owned(),
-		);
-		let idx = *self.func_map.get(&key).ok_or_else(|| {
-			wasmi::Error::Instantiation(format!(
-				"Export {}:{} not found",
-				module_name, field_name
-			))
-		})?;
+		let idx = self.func_by_name(module_name, field_name)
+			.ok_or_else(|| {
+				wasmi::Error::Instantiation(format!(
+					"Export {}:{} not found",
+					module_name, field_name
+				))
+			})?;
+
 		Ok(wasmi::FuncInstance::alloc_host(signature.clone(), idx.0))
 	}
 
@@ -101,20 +123,28 @@ impl ImportResolver for Imports {
 		module_name: &str,
 		field_name: &str,
 		_memory_type: &::wasmi::MemoryDescriptor,
-	) -> std::result::Result<MemoryRef, wasmi::Error> {
-		let key = (
-			module_name.as_bytes().to_vec(),
-			field_name.as_bytes().to_vec(),
-		);
-		let mem = self.memories_map
-			.get(&key)
+	) -> std::result::Result<wasmi::MemoryRef, wasmi::Error> {
+		let mem = self.memory_by_name(module_name, field_name)
 			.ok_or_else(|| {
 				wasmi::Error::Instantiation(format!(
 					"Export {}:{} not found",
 					module_name, field_name
 				))
-			})?
-			.clone();
+			})?;
+
+		let wrapper = mem
+			.as_wasmi()
+			.ok_or_else(|| {
+				wasmi::Error::Instantiation(format!(
+					"Unsupported non-wasmi export {}:{}",
+					module_name, field_name
+				))
+			})?;
+
+		// Here we use inner memory reference only to resolve
+		// the imports wthout accessing the memory contents.
+		let mem = unsafe { wrapper.clone_inner() };
+
 		Ok(mem)
 	}
 
@@ -148,6 +178,7 @@ impl ImportResolver for Imports {
 /// Note that this functions are only called in the `supervisor` context.
 pub trait SandboxCapabilities: FunctionContext {
 	/// Represents a function reference into the supervisor environment.
+	/// Provides an abstraction over execution environment.
 	type SupervisorFuncRef;
 
 	/// Invoke a function in the supervisor environment.
@@ -155,7 +186,7 @@ pub trait SandboxCapabilities: FunctionContext {
 	/// This first invokes the dispatch_thunk function, passing in the function index of the
 	/// desired function to call and serialized arguments. The thunk calls the desired function
 	/// with the deserialized arguments, then serializes the result into memory and returns
-	/// reference. The pointer to and length of the result in linear memory is encoded into an i64,
+	/// reference. The pointer to and length of the result in linear memory is encoded into an `i64`,
 	/// with the upper 32 bits representing the pointer and the lower 32 bits representing the
 	/// length.
 	///
@@ -178,11 +209,17 @@ pub trait SandboxCapabilities: FunctionContext {
 ///
 /// [`Externals`]: ../wasmi/trait.Externals.html
 pub struct GuestExternals<'a, FE: SandboxCapabilities + 'a> {
+	/// Supervisor function environment
 	supervisor_externals: &'a mut FE,
+
+	/// Instance of sandboxed module to be dispatched
 	sandbox_instance: &'a SandboxInstance<FE::SupervisorFuncRef>,
+
+	/// External state passed to guest environment, see the `instantiate` function
 	state: u32,
 }
 
+/// Construct trap error from specified message
 fn trap(msg: &'static str) -> Trap {
 	TrapKind::Host(Box::new(Error::Other(msg.into()))).into()
 }
@@ -211,14 +248,15 @@ impl<'a, FE: SandboxCapabilities + 'a> Externals for GuestExternals<'a, FE> {
 		// Make `index` typesafe again.
 		let index = GuestFuncIndex(index);
 
+		// Convert function index from guest to supervisor space
 		let func_idx = self.sandbox_instance
 			.guest_to_supervisor_mapping
 			.func_by_guest_index(index)
 			.expect(
 				"`invoke_index` is called with indexes registered via `FuncInstance::alloc_host`;
-					`FuncInstance::alloc_host` is called with indexes that was obtained from `guest_to_supervisor_mapping`;
-					`func_by_guest_index` called with `index` can't return `None`;
-					qed"
+				`FuncInstance::alloc_host` is called with indexes that were obtained from `guest_to_supervisor_mapping`;
+				`func_by_guest_index` called with `index` can't return `None`;
+				qed"
 			);
 
 		// Serialize arguments into a byte vector.
@@ -231,7 +269,7 @@ impl<'a, FE: SandboxCapabilities + 'a> Externals for GuestExternals<'a, FE> {
 
 		let state = self.state;
 
-		// Move serialized arguments inside the memory and invoke dispatch thunk and
+		// Move serialized arguments inside the memory, invoke dispatch thunk and
 		// then free allocated memory.
 		let invoke_args_len = invoke_args_data.len() as WordSize;
 		let invoke_args_ptr = self
@@ -304,6 +342,16 @@ where
 	f(&mut guest_externals)
 }
 
+/// Module instance in terms of selected backend
+enum BackendInstance {
+	/// Wasmi module instance
+	Wasmi(wasmi::ModuleRef),
+
+	/// Wasmer module instance
+	#[cfg(feature = "wasmer-sandbox")]
+	Wasmer(wasmer::Instance),
+}
+
 /// Sandboxed instance of a wasm module.
 ///
 /// It's primary purpose is to [`invoke`] exported functions on it.
@@ -319,7 +367,7 @@ where
 ///
 /// [`invoke`]: #method.invoke
 pub struct SandboxInstance<FR> {
-	instance: ModuleRef,
+	backend_instance: BackendInstance,
 	dispatch_thunk: FR,
 	guest_to_supervisor_mapping: GuestToSupervisorFunctionMapping,
 }
@@ -332,34 +380,115 @@ impl<FR> SandboxInstance<FR> {
 	///
 	/// The `state` parameter can be used to provide custom data for
 	/// these syscall implementations.
-	pub fn invoke<FE: SandboxCapabilities<SupervisorFuncRef=FR>>(
+	pub fn invoke<'a, FE, SCH, DTH>(
 		&self,
+
+		// function to call that is exported from the module
 		export_name: &str,
+
+		// arguments passed to the function
 		args: &[RuntimeValue],
-		supervisor_externals: &mut FE,
+
+		// arbitraty context data of the call
 		state: u32,
-	) -> std::result::Result<Option<wasmi::RuntimeValue>, wasmi::Error> {
-		with_guest_externals(
-			supervisor_externals,
-			self,
-			state,
-			|guest_externals| {
-				self.instance
-					.invoke_export(export_name, args, guest_externals)
-			},
-		)
+	) -> std::result::Result<Option<wasmi::RuntimeValue>, wasmi::Error>
+	where
+		FE: SandboxCapabilities<SupervisorFuncRef = FR> + 'a,
+		SCH: SandboxCapabilitiesHolder<SupervisorFuncRef = FR, SC = FE>,
+		DTH: DispatchThunkHolder<DispatchThunk = FR>,
+	{
+		SCH::with_sandbox_capabilities(|supervisor_externals| {
+			with_guest_externals(
+				supervisor_externals,
+				self,
+				state,
+				|guest_externals| {
+					match &self.backend_instance {
+						BackendInstance::Wasmi(wasmi_instance) => {
+							let wasmi_result = wasmi_instance
+								.invoke_export(export_name, args, guest_externals)?;
+							
+							Ok(wasmi_result)
+						}
+
+						#[cfg(feature = "wasmer-sandbox")]
+						BackendInstance::Wasmer(wasmer_instance) => {
+							let function = wasmer_instance
+								.exports
+								.get_function(export_name)
+								.map_err(|error| wasmi::Error::Function(error.to_string()))?;
+
+							let args: Vec<wasmer::Val> = args
+								.iter()
+								.map(|v| match *v {
+									RuntimeValue::I32(val) => wasmer::Val::I32(val),
+									RuntimeValue::I64(val) => wasmer::Val::I64(val),
+									RuntimeValue::F32(val) => wasmer::Val::F32(val.into()),
+									RuntimeValue::F64(val) => wasmer::Val::F64(val.into()),
+								})
+								.collect();
+
+							let wasmer_result = DTH::initialize_thunk(&self.dispatch_thunk, || function.call(&args))
+								.map_err(|error| wasmi::Error::Function(error.to_string()))?;
+
+							if wasmer_result.len() > 1 {
+								return Err(wasmi::Error::Function(
+									"multiple return types are not supported yet".to_owned())
+								);
+							}
+
+							let wasmer_result = if let Some(wasmer_value) = wasmer_result.first() {
+								let wasmer_value = match *wasmer_value {
+									wasmer::Val::I32(val) => RuntimeValue::I32(val),
+									wasmer::Val::I64(val) => RuntimeValue::I64(val),
+									wasmer::Val::F32(val) => RuntimeValue::F32(val.into()),
+									wasmer::Val::F64(val) => RuntimeValue::F64(val.into()),
+									_ => unreachable!(),
+								};
+
+								Some(wasmer_value)
+							} else {
+								None
+							};
+
+							Ok(wasmer_result)
+						}
+					}
+				},
+			)
+		})
 	}
 
 	/// Get the value from a global with the given `name`.
 	///
 	/// Returns `Some(_)` if the global could be found.
 	pub fn get_global_val(&self, name: &str) -> Option<sp_wasm_interface::Value> {
-		let global = self.instance
-			.export_by_name(name)?
-			.as_global()?
-			.get();
+		match &self.backend_instance {
+			BackendInstance::Wasmi(wasmi_instance) => {
+				let wasmi_global = wasmi_instance
+					.export_by_name(name)?
+					.as_global()?
+					.get();
 
-		Some(global.into())
+				Some(wasmi_global.into())
+			}
+
+			#[cfg(feature = "wasmer-sandbox")]
+			BackendInstance::Wasmer(wasmer_instance) => {
+				use sp_wasm_interface::Value;
+
+				let global = wasmer_instance.exports.get_global(name).ok()?;
+				let wasmtime_value = match global.get() {
+					wasmer::Val::I32(val) => Value::I32(val),
+					wasmer::Val::I64(val) => Value::I64(val),
+					wasmer::Val::F32(val) => Value::F32(f32::to_bits(val)),
+					wasmer::Val::F64(val) => Value::F64(f64::to_bits(val)),
+					_ => None?,
+				};
+
+				Some(wasmtime_value)
+			}
+		}
 	}
 }
 
@@ -380,7 +509,7 @@ pub enum InstantiationError {
 
 fn decode_environment_definition(
 	mut raw_env_def: &[u8],
-	memories: &[Option<MemoryRef>],
+	memories: &[Option<Memory>],
 ) -> std::result::Result<(Imports, GuestToSupervisorFunctionMapping), InstantiationError> {
 	let env_def = sandbox_primitives::EnvironmentDefinition::decode(&mut raw_env_def)
 		.map_err(|_| InstantiationError::EnvironmentDefinitionCorrupted)?;
@@ -421,7 +550,10 @@ fn decode_environment_definition(
 
 /// An environment in which the guest module is instantiated.
 pub struct GuestEnvironment {
+	/// Function and memory imports of the guest module
 	imports: Imports,
+
+	/// Supervisor functinons mapped to guest index space
 	guest_to_supervisor_mapping: GuestToSupervisorFunctionMapping,
 }
 
@@ -433,8 +565,7 @@ impl GuestEnvironment {
 		store: &Store<FR>,
 		raw_env_def: &[u8],
 	) -> std::result::Result<Self, InstantiationError> {
-		let (imports, guest_to_supervisor_mapping) =
-			decode_environment_definition(raw_env_def, &store.memories)?;
+		let (imports, guest_to_supervisor_mapping) = decode_environment_definition(raw_env_def, &store.memories)?;
 		Ok(Self {
 			imports,
 			guest_to_supervisor_mapping,
@@ -459,52 +590,148 @@ impl<FR> UnregisteredInstance<FR> {
 	}
 }
 
-/// Instantiate a guest module and return it's index in the store.
-///
-/// The guest module's code is specified in `wasm`. Environment that will be available to
-/// guest module is specified in `raw_env_def` (serialized version of [`EnvironmentDefinition`]).
-/// `dispatch_thunk` is used as function that handle calls from guests.
-///
-/// # Errors
-///
-/// Returns `Err` if any of the following conditions happens:
-///
-/// - `raw_env_def` can't be deserialized as a [`EnvironmentDefinition`].
-/// - Module in `wasm` is invalid or couldn't be instantiated.
-///
-/// [`EnvironmentDefinition`]: ../sandbox/struct.EnvironmentDefinition.html
-pub fn instantiate<'a, FE: SandboxCapabilities>(
-	supervisor_externals: &mut FE,
-	dispatch_thunk: FE::SupervisorFuncRef,
-	wasm: &[u8],
-	host_env: GuestEnvironment,
-	state: u32,
-) -> std::result::Result<UnregisteredInstance<FE::SupervisorFuncRef>, InstantiationError> {
-	let module = Module::from_buffer(wasm).map_err(|_| InstantiationError::ModuleDecoding)?;
-	let instance = ModuleInstance::new(&module, &host_env.imports)
-		.map_err(|_| InstantiationError::Instantiation)?;
+/// Helper type to provide sandbox capabilities to the inner context
+pub trait SandboxCapabilitiesHolder {
+	/// Supervisor function reference
+	type SupervisorFuncRef;
 
-	let sandbox_instance = Rc::new(SandboxInstance {
-		// In general, it's not a very good idea to use `.not_started_instance()` for anything
-		// but for extracting memory and tables. But in this particular case, we are extracting
-		// for the purpose of running `start` function which should be ok.
-		instance: instance.not_started_instance().clone(),
-		dispatch_thunk,
-		guest_to_supervisor_mapping: host_env.guest_to_supervisor_mapping,
-	});
+	/// Capabilities trait
+	type SC: SandboxCapabilities<SupervisorFuncRef = Self::SupervisorFuncRef>;
 
-	with_guest_externals(
-		supervisor_externals,
-		&sandbox_instance,
-		state,
-		|guest_externals| {
-			instance
-				.run_start(guest_externals)
-				.map_err(|_| InstantiationError::StartTrapped)
-		},
-	)?;
+	/// Wrapper that provides sandbox capabilities in a limited context
+	fn with_sandbox_capabilities<R, F: FnOnce(&mut Self::SC) -> R>(f: F) -> R;
+}
 
-	Ok(UnregisteredInstance { sandbox_instance })
+/// Helper type to provide dispatch thunk to the inner context
+pub trait DispatchThunkHolder {
+	/// Dispatch thunk for this particular context
+	type DispatchThunk;
+
+	/// Provide `DispatchThunk` for the runtime method call and execute the given function `f`.
+	///
+	/// During the execution of the provided function `dispatch_thunk` will be callable.
+	fn initialize_thunk<R, F>(s: &Self::DispatchThunk, f: F) -> R where F: FnOnce() -> R;
+
+	/// Wrapper that provides dispatch thunk in a limited context
+	fn with_dispatch_thunk<R, F: FnOnce(&mut Self::DispatchThunk) -> R>(f: F) -> R;
+}
+
+/// Sandbox backend to use
+pub enum SandboxBackend {
+	/// Wasm interpreter
+	Wasmi,
+
+	/// Wasmer environment
+	#[cfg(feature = "wasmer-sandbox")]
+	Wasmer,
+}
+
+/// Memory reference in terms of a selected backend
+#[derive(Clone, Debug)]
+pub enum Memory {
+	/// Wasmi memory reference
+	Wasmi(WasmiMemoryWrapper),
+
+	/// Wasmer memory refernce
+	#[cfg(feature = "wasmer-sandbox")]
+	Wasmer(WasmerMemoryWrapper),
+}
+
+impl Memory {
+	/// View as wasmi memory
+	pub fn as_wasmi(&self) -> Option<WasmiMemoryWrapper> {
+		match self {
+			Memory::Wasmi(memory) => Some(memory.clone()),
+
+			#[cfg(feature = "wasmer-sandbox")]
+			Memory::Wasmer(_) => None,
+		}
+	}
+
+	/// View as wasmer memory
+	#[cfg(feature = "wasmer-sandbox")]
+	pub fn as_wasmer(&self) -> Option<WasmerMemoryWrapper> {
+		match self {
+			Memory::Wasmer(memory) => Some(memory.clone()),
+			Memory::Wasmi(_) => None,
+		}
+	}
+}
+
+impl util::MemoryTransfer for Memory {
+	fn read(&self, source_addr: Pointer<u8>, size: usize) -> Result<Vec<u8>> {
+		match self {
+			Memory::Wasmi(sandboxed_memory) => {
+				sandboxed_memory.read(source_addr, size)
+			},
+
+			#[cfg(feature = "wasmer-sandbox")]
+			Memory::Wasmer(sandboxed_memory) => {
+				sandboxed_memory.read(source_addr, size)
+			},
+		}
+	}
+
+	fn read_into(&self, source_addr: Pointer<u8>, destination: &mut [u8]) -> Result<()> {
+		match self {
+			Memory::Wasmi(sandboxed_memory) => {
+				sandboxed_memory.read_into(source_addr, destination)
+			},
+
+			#[cfg(feature = "wasmer-sandbox")]
+			Memory::Wasmer(sandboxed_memory) => {
+				sandboxed_memory.read_into(source_addr, destination)
+			},
+		}
+	}
+
+	fn write_from(&self, dest_addr: Pointer<u8>, source: &[u8]) -> Result<()> {
+		match self {
+			Memory::Wasmi(sandboxed_memory) => {
+				sandboxed_memory.write_from(dest_addr, source)
+			},
+
+			#[cfg(feature = "wasmer-sandbox")]
+			Memory::Wasmer(sandboxed_memory) => {
+				sandboxed_memory.write_from(dest_addr, source)
+			},
+		}
+	}
+}
+
+/// Wasmer specific context
+#[cfg(feature = "wasmer-sandbox")]
+struct WasmerBackend {
+	store: wasmer::Store,
+}
+
+/// Information specific to a particular execution backend
+enum BackendContext {
+	/// Wasmi specific context
+	Wasmi,
+
+	/// Wasmer specific context
+	#[cfg(feature = "wasmer-sandbox")]
+	Wasmer(WasmerBackend),
+}
+
+impl BackendContext {
+	pub fn new(backend: SandboxBackend) -> BackendContext {
+		match backend {
+			SandboxBackend::Wasmi => BackendContext::Wasmi,
+
+			#[cfg(feature = "wasmer-sandbox")]
+			SandboxBackend::Wasmer => {
+				let compiler = wasmer_compiler_singlepass::Singlepass::default();
+
+				BackendContext::Wasmer(
+					WasmerBackend {
+						store: wasmer::Store::new(&wasmer::JIT::new(compiler).engine()),
+					}
+				)
+			}
+		}
+	}
 }
 
 /// This struct keeps track of all sandboxed components.
@@ -513,15 +740,17 @@ pub fn instantiate<'a, FE: SandboxCapabilities>(
 pub struct Store<FR> {
 	// Memories and instances are `Some` until torn down.
 	instances: Vec<Option<Rc<SandboxInstance<FR>>>>,
-	memories: Vec<Option<MemoryRef>>,
+	memories: Vec<Option<Memory>>,
+	backend_context: BackendContext,
 }
 
 impl<FR> Store<FR> {
 	/// Create a new empty sandbox store.
-	pub fn new() -> Self {
+	pub fn new(backend: SandboxBackend) -> Self {
 		Store {
 			instances: Vec::new(),
 			memories: Vec::new(),
+			backend_context: BackendContext::new(backend),
 		}
 	}
 
@@ -532,19 +761,41 @@ impl<FR> Store<FR> {
 	/// Returns `Err` if the memory couldn't be created.
 	/// Typically happens if `initial` is more than `maximum`.
 	pub fn new_memory(&mut self, initial: u32, maximum: u32) -> Result<u32> {
+		let memories = &mut self.memories;
+		let backend_context = &self.backend_context;
+
 		let maximum = match maximum {
 			sandbox_primitives::MEM_UNLIMITED => None,
-			specified_limit => Some(Pages(specified_limit as usize)),
+			specified_limit => Some(specified_limit),
 		};
 
-		let mem =
-			MemoryInstance::alloc(
-				Pages(initial as usize),
-				maximum,
-			)?;
+		let memory = match &backend_context {
+			BackendContext::Wasmi => {
+				Memory::Wasmi(
+					WasmiMemoryWrapper::new(
+						MemoryInstance::alloc(
+						Pages(initial as usize),
+						maximum.map(|m| Pages(m as usize)),
+						)?
+					)
+				)
+			}
 
-		let mem_idx = self.memories.len();
-		self.memories.push(Some(mem));
+			#[cfg(feature = "wasmer-sandbox")]
+			BackendContext::Wasmer(context) => {
+				let ty = wasmer::MemoryType::new(initial, maximum, false);
+				Memory::Wasmer(
+					WasmerMemoryWrapper::new(
+						wasmer::Memory::new(&context.store, ty)
+							.map_err(|_| Error::InvalidMemoryReference)?
+					)
+				)
+			}
+		};
+
+		let mem_idx = memories.len();
+		memories.push(Some(memory.clone()));
+
 		Ok(mem_idx as u32)
 	}
 
@@ -568,7 +819,7 @@ impl<FR> Store<FR> {
 	///
 	/// Returns `Err` If `memory_idx` isn't a valid index of an memory or
 	/// if memory has been torn down.
-	pub fn memory(&self, memory_idx: u32) -> Result<MemoryRef> {
+	pub fn memory(&self, memory_idx: u32) -> Result<Memory> {
 		self.memories
 			.get(memory_idx as usize)
 			.cloned()
@@ -610,9 +861,311 @@ impl<FR> Store<FR> {
 		}
 	}
 
+	/// Instantiate a guest module and return it's index in the store.
+	///
+	/// The guest module's code is specified in `wasm`. Environment that will be available to
+	/// guest module is specified in `guest_env`. A dispatch thunk is used as function that
+	/// handle calls from guests. `state` is an opaque pointer to caller's arbitrary context
+	/// normally created by `sp_sandbox::Instance` primitive.
+	///
+	/// Note: Due to borrowing constraints dispatch thunk is now propagated using DTH
+	///
+	/// Returns uninitialized sandboxed module instance or an instantiation error.
+	pub fn instantiate<'a, FE, SCH, DTH>(
+		&mut self,
+		wasm: &[u8],
+		guest_env: GuestEnvironment,
+		state: u32,
+	) -> std::result::Result<UnregisteredInstance<FR>, InstantiationError>
+	where
+		FR: Clone + 'static,
+		FE: SandboxCapabilities<SupervisorFuncRef = FR> + 'a,
+		SCH: SandboxCapabilitiesHolder<SupervisorFuncRef = FR, SC = FE>,
+		DTH: DispatchThunkHolder<DispatchThunk = FR>,
+	{
+		let backend_context = &self.backend_context;
+
+		let sandbox_instance = match backend_context {
+			BackendContext::Wasmi => Self::instantiate_wasmi::<FE, SCH, DTH>(wasm, guest_env, state)?,
+
+			#[cfg(feature = "wasmer-sandbox")]
+			BackendContext::Wasmer(context) => {
+				Self::instantiate_wasmer::<FE, SCH, DTH>(
+					context,
+					wasm,
+					guest_env,
+					state
+				)?
+			}
+		};
+
+		Ok(UnregisteredInstance { sandbox_instance })
+	}
+}
+
+// Private routines
+impl<FR> Store<FR> {
 	fn register_sandbox_instance(&mut self, sandbox_instance: Rc<SandboxInstance<FR>>) -> u32 {
 		let instance_idx = self.instances.len();
 		self.instances.push(Some(sandbox_instance));
 		instance_idx as u32
+	}
+
+	fn instantiate_wasmi<'a, FE, SCH, DTH>(
+		wasm: &[u8],
+		guest_env: GuestEnvironment,
+		state: u32
+	) -> std::result::Result<Rc<SandboxInstance<FR>>, InstantiationError>
+	where
+		FR: Clone + 'static,
+		FE: SandboxCapabilities<SupervisorFuncRef = FR> + 'a,
+		SCH: SandboxCapabilitiesHolder<SupervisorFuncRef = FR, SC = FE>,
+		DTH: DispatchThunkHolder<DispatchThunk = FR>,
+	{
+		let wasmi_module = Module::from_buffer(wasm).map_err(|_| InstantiationError::ModuleDecoding)?;
+		let wasmi_instance = ModuleInstance::new(&wasmi_module, &guest_env.imports)
+			.map_err(|_| InstantiationError::Instantiation)?;
+
+		let sandbox_instance = DTH::with_dispatch_thunk(|dispatch_thunk| {
+				Rc::new(SandboxInstance {
+					// In general, it's not a very good idea to use `.not_started_instance()` for anything
+					// but for extracting memory and tables. But in this particular case, we are extracting
+					// for the purpose of running `start` function which should be ok.
+					backend_instance: BackendInstance::Wasmi(wasmi_instance.not_started_instance().clone()),
+					dispatch_thunk: dispatch_thunk.clone(),
+					guest_to_supervisor_mapping: guest_env.guest_to_supervisor_mapping,
+				})
+			});
+
+			SCH::with_sandbox_capabilities(|supervisor_externals| {
+				with_guest_externals(
+					supervisor_externals,
+					&sandbox_instance,
+					state,
+					|guest_externals| {
+						wasmi_instance
+							.run_start(guest_externals)
+							.map_err(|_| InstantiationError::StartTrapped)
+
+						// Note: no need to run start on wasmtime instance, since it's done automatically
+					},
+				)
+			})?;
+
+		Ok(sandbox_instance)
+	}
+
+	#[cfg(feature = "wasmer-sandbox")]
+	fn instantiate_wasmer<'a, FE, SCH, DTH>(
+		context: &WasmerBackend,
+		wasm: &[u8],
+		guest_env: GuestEnvironment,
+		state: u32
+	) -> std::result::Result<Rc<SandboxInstance<FR>>, InstantiationError>
+	where
+		FR: Clone + 'static,
+		FE: SandboxCapabilities<SupervisorFuncRef = FR> + 'a,
+		SCH: SandboxCapabilitiesHolder<SupervisorFuncRef = FR, SC = FE>,
+		DTH: DispatchThunkHolder<DispatchThunk = FR>,
+	{
+		let module = wasmer::Module::new(&context.store, wasm).map_err(|_| InstantiationError::ModuleDecoding)?;
+
+		type Exports = HashMap<String, wasmer::Exports>;
+		let mut exports_map = Exports::new();
+
+		for import in module.imports().into_iter() {
+			match import.ty() {
+				// Nothing to do here
+				wasmer::ExternType::Global(_) | wasmer::ExternType::Table(_) => (),
+
+				wasmer::ExternType::Memory(_) => {
+					let exports = exports_map
+						.entry(import.module().to_string())
+						.or_insert(wasmer::Exports::new());
+
+					let memory = guest_env.imports.memory_by_name(
+						import.module(),
+						import.name()
+					).ok_or(InstantiationError::ModuleDecoding)?;
+
+					let mut wasmer_memory_ref = memory.as_wasmer().expect(
+						"memory is created by wasmer; \
+						exported by the same module and backend; \
+						thus the operation can't fail; \
+						qed"
+					);
+
+					// This is safe since we're only instantiating the module and populating
+					// the export table, so no memory access can happen at this time.
+					// All subsequent memory accesses should happen through the wrapper,
+					// that enforces the memory access protocol.
+					let wasmer_memory = unsafe { wasmer_memory_ref.clone_inner() };
+
+					exports.insert(import.name(), wasmer::Extern::Memory(wasmer_memory));
+				}
+
+				wasmer::ExternType::Function(func_ty) => {
+					let guest_func_index = guest_env.imports.func_by_name(import.module(), import.name());
+
+					let guest_func_index = if let Some(index) = guest_func_index {
+						index
+					} else {
+						// Missing import (should we abort here?)
+						continue;
+					};
+
+					let supervisor_func_index = guest_env.guest_to_supervisor_mapping
+						.func_by_guest_index(guest_func_index)
+						.ok_or(InstantiationError::ModuleDecoding)?;
+
+					let function = Self::wasmer_dispatch_function::<FE, SCH, DTH>(
+						supervisor_func_index,
+						&context.store,
+						func_ty,
+						state
+					);
+
+					let exports = exports_map
+						.entry(import.module().to_string())
+						.or_insert(wasmer::Exports::new());
+
+					exports.insert(import.name(), wasmer::Extern::Function(function));
+				}
+			}
+		}
+
+		let mut import_object = wasmer::ImportObject::new();
+		for (module_name, exports) in exports_map.into_iter() {
+			import_object.register(module_name, exports);
+		}
+
+		let instance = wasmer::Instance::new(&module, &import_object)
+			.map_err(|error| {
+				match error {
+					wasmer::InstantiationError::Link(_) => InstantiationError::Instantiation,
+					wasmer::InstantiationError::Start(_) => InstantiationError::StartTrapped,
+					wasmer::InstantiationError::HostEnvInitialization(_) => {
+						InstantiationError::EnvironmentDefinitionCorrupted
+					}
+				}
+			})?;
+
+		Ok(Rc::new(SandboxInstance {
+			backend_instance: BackendInstance::Wasmer(instance),
+			dispatch_thunk: DTH::with_dispatch_thunk(|dispatch_thunk| dispatch_thunk.clone()),
+			guest_to_supervisor_mapping: guest_env.guest_to_supervisor_mapping,
+		}))
+	}
+
+	#[cfg(feature = "wasmer-sandbox")]
+	fn wasmer_dispatch_function<'a, FE, SCH, DTH>(
+		supervisor_func_index: SupervisorFuncIndex,
+		store: &wasmer::Store,
+		func_ty: &wasmer::FunctionType,
+		state: u32
+	) -> wasmer::Function
+	where
+		FR: Clone + 'static,
+		FE: SandboxCapabilities<SupervisorFuncRef = FR> + 'a,
+		SCH: SandboxCapabilitiesHolder<SupervisorFuncRef = FR, SC = FE>,
+		DTH: DispatchThunkHolder<DispatchThunk = FR>,
+	{
+		wasmer::Function::new(store, func_ty, move |params| {
+			SCH::with_sandbox_capabilities(|supervisor_externals| {
+				use sp_wasm_interface::Value;
+
+				// Serialize arguments into a byte vector.
+				let invoke_args_data = params
+					.iter()
+					.map(|val| match val {
+						wasmer::Val::I32(val) => Value::I32(*val),
+						wasmer::Val::I64(val) => Value::I64(*val),
+						wasmer::Val::F32(val) => Value::F32(f32::to_bits(*val)),
+						wasmer::Val::F64(val) => Value::F64(f64::to_bits(*val)),
+						_ => unimplemented!()
+					})
+					.collect::<Vec<_>>()
+					.encode();
+
+				// Move serialized arguments inside the memory, invoke dispatch thunk and
+				// then free allocated memory.
+				let invoke_args_len = invoke_args_data.len() as WordSize;
+				let invoke_args_ptr = supervisor_externals
+					.allocate_memory(invoke_args_len)
+					.map_err(|_| wasmer::RuntimeError::new(
+						"Can't allocate memory in supervisor for the arguments")
+					)?;
+
+				let deallocate = |fe: &mut FE, ptr, fail_msg| {
+					fe
+						.deallocate_memory(ptr)
+						.map_err(|_| wasmer::RuntimeError::new(fail_msg))
+				};
+
+				if supervisor_externals
+					.write_memory(invoke_args_ptr, &invoke_args_data)
+					.is_err()
+				{
+					deallocate(
+						supervisor_externals,
+						invoke_args_ptr,
+						"Failed dealloction after failed write of invoke arguments"
+					)?;
+
+					return Err(wasmer::RuntimeError::new("Can't write invoke args into memory"));
+				}
+
+				// Perform the actuall call
+				let serialized_result = DTH::with_dispatch_thunk(|dispatch_thunk| {
+					supervisor_externals.invoke(
+						&dispatch_thunk,
+						invoke_args_ptr,
+						invoke_args_len,
+						state,
+						supervisor_func_index,
+					)
+				}).map_err(|e| wasmer::RuntimeError::new(e.to_string()))?;
+
+				// dispatch_thunk returns pointer to serialized arguments.
+				// Unpack pointer and len of the serialized result data.
+				let (serialized_result_val_ptr, serialized_result_val_len) = {
+					// Cast to u64 to use zero-extension.
+					let v = serialized_result as u64;
+					let ptr = (v as u64 >> 32) as u32;
+					let len = (v & 0xFFFFFFFF) as u32;
+					(Pointer::new(ptr), len)
+				};
+
+				let serialized_result_val = supervisor_externals
+					.read_memory(serialized_result_val_ptr, serialized_result_val_len)
+					.map_err(|_| wasmer::RuntimeError::new(
+						"Can't read the serialized result from dispatch thunk")
+					);
+
+				let deserialized_result = deallocate(
+					supervisor_externals,
+					serialized_result_val_ptr,
+					"Can't deallocate memory for dispatch thunk's result"
+				)
+					.and_then(|_| serialized_result_val)
+					.and_then(|serialized_result_val| {
+						deserialize_result(&serialized_result_val)
+							.map_err(|e| wasmer::RuntimeError::new(e.to_string()))
+					})?;
+
+				if let Some(value) = deserialized_result {
+					Ok(vec![
+						match value {
+							RuntimeValue::I32(val) => wasmer::Val::I32(val),
+							RuntimeValue::I64(val) => wasmer::Val::I64(val),
+							RuntimeValue::F32(val) => wasmer::Val::F32(val.into()),
+							RuntimeValue::F64(val) => wasmer::Val::F64(val.into()),
+						}
+					])
+				} else {
+					Ok(vec![])
+				}
+			})
+		})
 	}
 }

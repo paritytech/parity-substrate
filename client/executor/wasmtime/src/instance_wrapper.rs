@@ -19,7 +19,7 @@
 //! Defines data and logic needed for interaction with an WebAssembly instance of a substrate
 //! runtime module.
 
-use crate::util;
+use crate::util::{from_wasmtime_val, into_wasmtime_val};
 use crate::imports::Imports;
 
 use std::{slice, marker};
@@ -27,6 +27,7 @@ use sc_executor_common::{
 	error::{Error, Result},
 	runtime_blob,
 	wasm_runtime::InvokeMethod,
+	util::checked_range,
 };
 use sp_wasm_interface::{Pointer, WordSize, Value};
 use wasmtime::{Instance, Module, Memory, Table, Val, Func, Extern, Global, Store};
@@ -110,12 +111,16 @@ impl EntryPoint {
 /// routines.
 pub struct InstanceWrapper {
 	instance: Instance,
+
 	// The memory instance of the `instance`.
 	//
 	// It is important to make sure that we don't make any copies of this to make it easier to proof
 	// See `memory_as_slice` and `memory_as_slice_mut`.
 	memory: Memory,
+
+	/// Indirect functions table of the module
 	table: Option<Table>,
+
 	// Make this struct explicitly !Send & !Sync.
 	_not_send_nor_sync: marker::PhantomData<*const ()>,
 }
@@ -164,7 +169,7 @@ impl InstanceWrapper {
 			None => {
 				let memory = get_linear_memory(&instance)?;
 				if !memory.grow(heap_pages).is_ok() {
-					return Err("failed top increase the linear memory size".into());
+					return Err("failed to increase the linear memory size".into());
 				}
 				memory
 			},
@@ -245,11 +250,6 @@ impl InstanceWrapper {
 		self.table.as_ref()
 	}
 
-	/// Returns the byte size of the linear memory instance attached to this instance.
-	pub fn memory_size(&self) -> u32 {
-		self.memory.data_size() as u32
-	}
-
 	/// Reads `__heap_base: i32` global variable and returns it.
 	///
 	/// If it doesn't exist, not a global or of not i32 type returns an error.
@@ -313,32 +313,45 @@ fn get_table(instance: &Instance) -> Option<Table> {
 
 /// Functions related to memory.
 impl InstanceWrapper {
-	/// Read data from a slice of memory into a destination buffer.
+	/// Read data from a slice of memory into a newly allocated buffer.
 	///
 	/// Returns an error if the read would go out of the memory bounds.
-	pub fn read_memory_into(&self, address: Pointer<u8>, dest: &mut [u8]) -> Result<()> {
+	pub fn read_memory(&self, source_addr: Pointer<u8>, size: usize) -> Result<Vec<u8>> {
+		let range = checked_range(source_addr.into(), size, self.memory.data_size())
+			.ok_or_else(|| Error::Other("memory read is out of bounds".into()))?;
+
+		let mut buffer = vec![0; range.len()];
+		self.read_memory_into(source_addr, &mut buffer)?;
+
+		Ok(buffer)
+	}
+
+	/// Read data from the instance memory into a slice.
+	///
+	/// Returns an error if the read would go out of the memory bounds.
+	pub fn read_memory_into(&self, source_addr: Pointer<u8>, dest: &mut [u8]) -> Result<()> {
 		unsafe {
 			// This should be safe since we don't grow up memory while caching this reference and
 			// we give up the reference before returning from this function.
 			let memory = self.memory_as_slice();
 
-			let range = util::checked_range(address.into(), dest.len(), memory.len())
+			let range = checked_range(source_addr.into(), dest.len(), memory.len())
 				.ok_or_else(|| Error::Other("memory read is out of bounds".into()))?;
 			dest.copy_from_slice(&memory[range]);
 			Ok(())
 		}
 	}
 
-	/// Write data to a slice of memory.
+	/// Write data to the instance memory from a slice.
 	///
 	/// Returns an error if the write would go out of the memory bounds.
-	pub fn write_memory_from(&self, address: Pointer<u8>, data: &[u8]) -> Result<()> {
+	pub fn write_memory_from(&self, dest_addr: Pointer<u8>, data: &[u8]) -> Result<()> {
 		unsafe {
 			// This should be safe since we don't grow up memory while caching this reference and
 			// we give up the reference before returning from this function.
 			let memory = self.memory_as_slice_mut();
 
-			let range = util::checked_range(address.into(), data.len(), memory.len())
+			let range = checked_range(dest_addr.into(), data.len(), memory.len())
 				.ok_or_else(|| Error::Other("memory write is out of bounds".into()))?;
 			memory[range].copy_from_slice(data);
 			Ok(())
@@ -464,11 +477,11 @@ impl runtime_blob::InstanceGlobals for InstanceWrapper {
 	}
 
 	fn get_global_value(&self, global: &Self::Global) -> Value {
-		util::from_wasmtime_val(global.get())
+		from_wasmtime_val(global.get())
 	}
 
 	fn set_global_value(&self, global: &Self::Global, value: Value) {
-		global.set(util::into_wasmtime_val(value)).expect(
+		global.set(into_wasmtime_val(value)).expect(
 			"the value is guaranteed to be of the same value; the global is guaranteed to be mutable; qed",
 		);
 	}

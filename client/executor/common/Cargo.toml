@@ -25,5 +25,9 @@ sp-maybe-compressed-blob = { version = "4.0.0-dev", path = "../../../primitives/
 sp-serializer = { version = "3.0.0", path = "../../../primitives/serializer" }
 thiserror = "1.0.21"
 
+wasmer = { version = "1.0", optional = true }
+wasmer-compiler-singlepass = { version = "1.0", optional = true }
+
 [features]
 default = []
+wasmer-sandbox = [ "wasmer", "wasmer-compiler-singlepass" ]
