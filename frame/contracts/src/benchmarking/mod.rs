@@ -727,7 +727,7 @@ benchmarks! {
 		let origin = RawOrigin::Signed(instance.caller.clone());
 		assert_eq!(T::Currency::total_balance(&beneficiary), 0u32.into());
 		assert_eq!(T::Currency::total_balance(&instance.account_id), Endow::max::<T>());
-	}: call(origin, instance.addr, 0u32.into(), Weight::max_value(), vec![])
+	}: call(origin, instance.addr.clone(), 0u32.into(), Weight::max_value(), vec![])
 	verify {
 		if r > 0 {
 			assert_eq!(T::Currency::total_balance(&instance.account_id), 0u32.into());
