@@ -344,6 +344,7 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 					bitswap,
 					params.light_client_request_protocol_config,
 					params.network_config.request_response_protocols,
+					peerset_handle.clone(),
 				);
 
 				match result {
