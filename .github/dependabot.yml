@@ -2,6 +2,6 @@ version: 2
 updates:
   - package-ecosystem: "cargo"
     directory: "/"
-    labels: ["A2-insubstantial", "B0-silent", "C1-low 📌"]
+    labels: ["A2-insubstantial", "B0-silent", "C1-low 📌", "D3-trivial 🧸"]
     schedule:
       interval: "daily"
