@@ -21,8 +21,10 @@ use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT},
 };
-use crate::{StorageProof, ChangesProof};
+use crate::{StorageProof, ChangesProof, CompactProof};
 use sp_storage::{ChildInfo, StorageKey, PrefixedStorageKey};
+use sp_state_machine::{KeyValueStates, KeyValueStorageLevel};
+
 
 /// Interface for providing block proving utilities.
 pub trait ProofProvider<Block: BlockT> {
@@ -71,30 +73,43 @@ pub trait ProofProvider<Block: BlockT> {
 		key: &StorageKey,
 	) -> sp_blockchain::Result<ChangesProof<Block::Header>>;
 
-	/// Given a `BlockId` iterate over all storage values starting at `start_key` exclusively,
-	/// building proofs until size limit is reached. Returns combined proof and the number of collected keys.
+	/// Given a `BlockId` iterate over all storage values starting at `start_keys`.
+	/// Last `start_keys` element contains last accessed key value.
+	/// With multiple `start_keys`, first `start_keys` element is
+	/// the current storage key of of the last accessed child trie.
+	/// at last level the value to start at exclusively.
+	/// Proofs is build until size limit is reached and always include at
+	/// least one key following `start_keys`.
+	/// Returns combined proof and the numbers of collected keys.
 	fn read_proof_collection(
 		&self,
 		id: &BlockId<Block>,
-		start_key: &[u8],
+		start_keys: &[Vec<u8>],
 		size_limit: usize,
-	) -> sp_blockchain::Result<(StorageProof, u32)>;
+	) -> sp_blockchain::Result<(CompactProof, u32)>;
 
 	/// Given a `BlockId` iterate over all storage values starting at `start_key`.
 	/// Returns collected keys and values.
+	/// Returns the collected keys values content of the top trie followed by the
+	/// collected keys values of child tries.
+	/// Only child tries with their root part of the collected content or
+	/// related to `start_key` are attached.
+	/// For each collected state a boolean indicates if state reach
+	/// end.
 	fn storage_collection(
 		&self,
 		id: &BlockId<Block>,
-		start_key: &[u8],
+		start_key: &[Vec<u8>],
 		size_limit: usize,
-	) -> sp_blockchain::Result<Vec<(Vec<u8>, Vec<u8>)>>;
+	) -> sp_blockchain::Result<Vec<(KeyValueStorageLevel, bool)>>;
 
 	/// Verify read storage proof for a set of keys.
-	/// Returns collected key-value pairs and a flag indicating if iteration is complete.
+	/// Returns collected key-value pairs and a the nested state
+	/// depth of current iteration or 0 if completed.
 	fn verify_range_proof(
 		&self,
 		root: Block::Hash,
-		proof: StorageProof,
-		start_key: &[u8],
-	) -> sp_blockchain::Result<(Vec<(Vec<u8>, Vec<u8>)>, bool)>;
+		proof: CompactProof,
+		start_keys: &[Vec<u8>],
+	) -> sp_blockchain::Result<(KeyValueStates, usize)>;
 }

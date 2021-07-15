@@ -121,6 +121,11 @@ impl GenesisParameters {
 	pub fn set_wasm_code(&mut self, code: Vec<u8>) {
 		self.wasm_code = Some(code);
 	}
+
+	/// Access extra genesis storage.
+	pub fn extra_storage(&mut self) -> &mut Storage {
+		&mut self.extra_storage
+	}
 }
 
 impl substrate_test_client::GenesisInit for GenesisParameters {

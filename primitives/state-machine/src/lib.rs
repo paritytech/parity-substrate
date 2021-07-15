@@ -143,7 +143,10 @@ mod changes_trie {
 
 #[cfg(feature = "std")]
 mod std_reexport {
-	pub use sp_trie::{trie_types::{Layout, TrieDBMut}, StorageProof, TrieMut, DBValue, MemoryDB};
+	pub use sp_trie::{
+		trie_types::{Layout, TrieDBMut}, StorageProof, CompactProof, TrieMut,
+		DBValue, MemoryDB,
+	};
 	pub use crate::testing::TestExternalities;
 	pub use crate::basic::BasicExternalities;
 	pub use crate::read_only::{ReadOnlyExternalities, InspectState};
@@ -172,15 +175,17 @@ mod std_reexport {
 #[cfg(feature = "std")]
 mod execution {
 	use super::*;
-	use std::{fmt, result, collections::HashMap, panic::UnwindSafe};
+	use std::{fmt, result, collections::HashMap, collections::HashSet, panic::UnwindSafe};
 	use log::{warn, trace};
 	use hash_db::Hasher;
 	use codec::{Decode, Encode, Codec};
 	use sp_core::{
-		storage::ChildInfo, NativeOrEncoded, NeverNativeValue, hexdisplay::HexDisplay,
+		storage::{ChildInfo, ChildType, PrefixedStorageKey}, NativeOrEncoded,
+		NeverNativeValue, hexdisplay::HexDisplay,
 		traits::{CodeExecutor, ReadRuntimeVersionExt, RuntimeCode, SpawnNamed},
 	};
 	use sp_externalities::Extensions;
+	use smallvec::SmallVec;
 
 
 	const PROOF_CLOSE_TRANSACTION: &str = "\
@@ -726,6 +731,236 @@ mod execution {
 		prove_read_on_trie_backend(trie_backend, keys)
 	}
 
+	/// State machine only allows a single level
+	/// of child trie.
+	pub const MAX_NESTED_TRIE_DEPTH: usize = 2;
+
+	/// Multiple key value state.
+	/// States are ordered by root storage key.
+	#[derive(PartialEq, Eq, Clone)]
+	pub struct KeyValueStates(pub Vec<KeyValueStorageLevel>);
+
+	/// A key value state at any storage level.
+	#[derive(PartialEq, Eq, Clone)]
+	pub struct KeyValueStorageLevel {
+		/// State root of the level, for
+		/// top trie it is as an empty byte array.
+		pub state_root: Vec<u8>,
+		/// Storage of parents, empty for top root or
+		/// when exporting (building proof).
+		pub parent_storage_keys: Vec<Vec<u8>>,
+		/// Pair of key and values from this state.
+		pub key_values: Vec<(Vec<u8>, Vec<u8>)>,
+	}
+
+	impl<I> From<I> for KeyValueStates
+		where I: IntoIterator<Item = (Vec<u8>, (Vec<(Vec<u8>, Vec<u8>)>, Vec<Vec<u8>>))>
+	{
+		fn from(b: I) -> Self {
+			let mut result = Vec::new();
+			for (state_root, (key_values, storage_paths)) in b.into_iter() {
+				result.push(KeyValueStorageLevel {
+					state_root,
+					key_values,
+					parent_storage_keys: storage_paths,
+				})
+			}
+			KeyValueStates(result)
+		}
+	}
+
+	impl KeyValueStates {
+		/// Return total number of key values in states.
+		pub fn len(&self) -> usize {
+			self.0.iter().fold(0, |nb, state| nb + state.key_values.len())
+		}
+
+		/// Update last keys accessed from this state.
+		pub fn update_last_key(&self, stopped_at: usize, last: &mut SmallVec<[Vec<u8>; 2]>) -> bool {
+			if stopped_at == 0 || stopped_at > MAX_NESTED_TRIE_DEPTH {
+				return false;
+			}
+			match stopped_at {
+				1 => {
+					let top_last = self.0.get(0).and_then(|s| s.key_values.last().map(|kv| kv.0.clone()));
+					if let Some(top_last) = top_last {
+						match last.len() {
+							0 => {
+								last.push(top_last);
+								return true
+							},
+							2 => {
+								last.pop();
+							},
+							_ => (),
+						}
+						// update top trie access.
+						last[0] = top_last;
+						return true;
+					} else {
+						// No change in top trie accesses.
+						// Indicates end of reading of a child trie.
+						last.truncate(1);
+						return true;
+					}
+				},
+				2 => {
+					let top_last = self.0.get(0).and_then(|s| s.key_values.last().map(|kv| kv.0.clone()));
+					let child_last = self.0.last().and_then(|s| s.key_values.last().map(|kv| kv.0.clone()));
+
+					if let Some(child_last) = child_last {
+						if last.len() == 0 {
+							if let Some(top_last) = top_last {
+								last.push(top_last)
+							} else {
+								return false;
+							}
+						} else if let Some(top_last) = top_last {
+							last[0] = top_last;
+						}
+						if last.len() == 2 {
+							last.pop();
+						}
+						last.push(child_last);
+						return true;
+					} else {
+						// stopped at level 2 so child last is define.
+						return false;
+					}
+				},
+				_ => (),
+			}
+			false
+		}
+	}
+
+	/// Generate range storage read proof, with child tries
+	/// content.
+	/// A size limit is applied to the proof with the
+	/// exception that `start_at` and its following element
+	/// are always part of the proof.
+	/// If a key different than `start_at` is a child trie root,
+	/// the child trie content will be included in the proof.
+	pub fn prove_range_read_with_child_with_size<B, H>(
+		mut backend: B,
+		size_limit: usize,
+		start_at: &[Vec<u8>],
+	) -> Result<(StorageProof, u32), Box<dyn Error>>
+	where
+		B: Backend<H>,
+		H: Hasher,
+		H::Out: Ord + Codec,
+	{
+		let trie_backend = backend.as_trie_backend()
+			.ok_or_else(|| Box::new(ExecutionError::UnableToGenerateProof) as Box<dyn Error>)?;
+		prove_range_read_with_child_with_size_on_trie_backend(
+			trie_backend,
+			size_limit,
+			start_at,
+		)
+	}
+
+	/// Generate range storage read proof, with child tries
+	/// content.
+	/// See `prove_range_read_with_child_with_size`.
+	pub fn prove_range_read_with_child_with_size_on_trie_backend<S, H>(
+		trie_backend: &TrieBackend<S, H>,
+		size_limit: usize,
+		start_at: &[Vec<u8>],
+	) -> Result<(StorageProof, u32), Box<dyn Error>>
+	where
+		S: trie_backend_essence::TrieBackendStorage<H>,
+		H: Hasher,
+		H::Out: Ord + Codec,
+	{
+		if start_at.len() > MAX_NESTED_TRIE_DEPTH {
+			return Err(Box::new("Invalid start of range."));
+		}
+
+		let proving_backend = proving_backend::ProvingBackend::<S, H>::new(trie_backend);
+		let mut count = 0;
+
+		let mut child_roots = HashSet::new();
+		let (mut child_key, mut start_at) = if start_at.len() == 2 {
+			let storage_key = start_at.get(0).expect("Checked length.").clone();
+			if let Some(state_root) = proving_backend.storage(&storage_key)
+				.map_err(|e| Box::new(e) as Box<dyn Error>)? {
+				child_roots.insert(state_root.clone());
+			} else {
+				return Err(Box::new("Invalid range start child trie key."));
+			}
+
+			(Some(storage_key), start_at.get(1).cloned())
+		} else {
+			(None, start_at.get(0).cloned())
+		};
+
+		loop {
+			let (child_info, depth) = if let Some(storage_key) = child_key.as_ref() {
+				let storage_key = PrefixedStorageKey::new_ref(storage_key);
+				(Some(match ChildType::from_prefixed_key(&storage_key) {
+					Some((ChildType::ParentKeyId, storage_key)) => ChildInfo::new_default(storage_key),
+					None => return Err(Box::new("Invalid range start child trie key.")),
+				}), 2)
+			} else {
+				(None, 1)
+			};
+
+			let start_at_ref = start_at.as_ref().map(AsRef::as_ref);
+			let mut switch_child_key = None;
+			let mut first = start_at.is_some();
+			let completed = proving_backend.apply_to_key_values_while(
+				child_info.as_ref(),
+				None,
+				start_at_ref,
+				|key, value| {
+					if first {
+						if start_at_ref.as_ref().map(|start| &key.as_slice() > start)
+							.unwrap_or(true) {
+							first = false;
+						}
+					}
+					if first {
+						true
+					} else if depth < MAX_NESTED_TRIE_DEPTH
+							&& sp_core::storage::well_known_keys::is_child_storage_key(key.as_slice()) {
+						count += 1;
+						if !child_roots.contains(value.as_slice()) {
+							child_roots.insert(value);
+							switch_child_key = Some(key);
+							false
+						} else {
+							// do not add two child trie with same root
+							true
+						}
+					} else if proving_backend.estimate_encoded_size() <= size_limit {
+						count += 1;
+						true
+					} else {
+						false
+					}
+				},
+				false,
+			).map_err(|e| Box::new(e) as Box<dyn Error>)?;
+
+			if switch_child_key.is_none() {
+				if depth == 1 {
+					break;
+				} else {
+					if completed {
+						start_at = child_key.take();
+					} else {
+						break;
+					}
+				}
+			} else {
+				child_key = switch_child_key;
+				start_at = None;
+			}
+		}
+		Ok((proving_backend.extract_proof(), count))
+	}
+
 	/// Generate range storage read proof.
 	pub fn prove_range_read_with_size<B, H>(
 		mut backend: B,
@@ -852,7 +1087,28 @@ mod execution {
 		Ok(result)
 	}
 
-	/// Check child storage range proof, generated by `prove_range_read` call.
+	/// Check storage range proof with child trie included, generated by
+	/// `prove_range_read_with_child_with_size` call.
+	///
+	/// Returns key values contents and the depth of the pending state iteration
+	/// (0 if completed).
+	pub fn read_range_proof_check_with_child<H>(
+		root: H::Out,
+		proof: StorageProof,
+		start_at: &[Vec<u8>],
+	) -> Result<(KeyValueStates, usize), Box<dyn Error>>
+	where
+		H: Hasher,
+		H::Out: Ord + Codec,
+	{
+		let proving_backend = create_proof_check_backend::<H>(root, proof)?;
+		read_range_proof_check_with_child_on_proving_backend(
+			&proving_backend,
+			start_at,
+		)
+	}
+
+	/// Check child storage range proof, generated by `prove_range_read_with_size` call.
 	pub fn read_range_proof_check<H>(
 		root: H::Out,
 		proof: StorageProof,
@@ -951,6 +1207,117 @@ mod execution {
 			Ok(completed) => Ok((values, completed)),
 			Err(e) => Err(Box::new(e) as Box<dyn Error>),
 		}
+	}
+
+	/// Check storage range proof on pre-created proving backend.
+	///
+	/// See `read_range_proof_check_with_child`.
+	pub fn read_range_proof_check_with_child_on_proving_backend<H>(
+		proving_backend: &TrieBackend<MemoryDB<H>, H>,
+		start_at: &[Vec<u8>],
+	) -> Result<(KeyValueStates, usize), Box<dyn Error>>
+	where
+		H: Hasher,
+		H::Out: Ord + Codec,
+	{
+		let mut result = vec![KeyValueStorageLevel {
+			state_root: Default::default(),
+			key_values: Default::default(),
+			parent_storage_keys: Default::default(),
+		}];
+		if start_at.len() > MAX_NESTED_TRIE_DEPTH {
+			return Err(Box::new("Invalid start of range."));
+		}
+
+		let mut child_roots = HashSet::new();
+		let (mut child_key, mut start_at) = if start_at.len() == 2 {
+			let storage_key = start_at.get(0).expect("Checked length.").clone();
+			let child_key = if let Some(state_root) = proving_backend.storage(&storage_key)
+				.map_err(|e| Box::new(e) as Box<dyn Error>)? {
+				child_roots.insert(state_root.clone());
+				Some((storage_key, state_root))
+			} else {
+				return Err(Box::new("Invalid range start child trie key."));
+			};
+
+			(child_key, start_at.get(1).cloned())
+		} else {
+			(None, start_at.get(0).cloned())
+		};
+
+		let completed = loop {
+			let (child_info, depth) = if let Some((storage_key, state_root)) = child_key.as_ref() {
+				result.push(KeyValueStorageLevel {
+					state_root: state_root.clone(),
+					key_values: Default::default(),
+					parent_storage_keys: Default::default(),
+				});
+
+				let storage_key = PrefixedStorageKey::new_ref(storage_key);
+				(Some(match ChildType::from_prefixed_key(&storage_key) {
+					Some((ChildType::ParentKeyId, storage_key)) => ChildInfo::new_default(storage_key),
+					None => return Err(Box::new("Invalid range start child trie key.")),
+				}), 2)
+			} else {
+				(None, 1)
+			};
+
+			let values = if child_info.is_some() {
+				&mut result.last_mut().expect("Added above").key_values
+			} else {
+				&mut result[0].key_values
+			};
+			let start_at_ref = start_at.as_ref().map(AsRef::as_ref);
+			let mut switch_child_key = None;
+			let mut first = start_at.is_some();
+			let completed = proving_backend.apply_to_key_values_while(
+				child_info.as_ref(),
+				None,
+				start_at_ref,
+				|key, value| {
+					if first {
+						if start_at_ref.as_ref().map(|start| &key.as_slice() > start)
+							.unwrap_or(true) {
+							first = false;
+						}
+					}
+					if !first {
+						values.push((key.to_vec(), value.to_vec()));
+					}
+					if first {
+						true
+					} else if depth < MAX_NESTED_TRIE_DEPTH
+							&& sp_core::storage::well_known_keys::is_child_storage_key(key.as_slice()) {
+						if child_roots.contains(value.as_slice()) {
+							// Do not add two chid trie with same root.
+							true
+						} else {
+							child_roots.insert(value.clone());
+							switch_child_key = Some((key, value));
+							false
+						}
+					} else {
+						true
+					}
+				},
+				true,
+			).map_err(|e| Box::new(e) as Box<dyn Error>)?;
+
+			if switch_child_key.is_none() {
+				if !completed {
+					break depth;
+				}
+				if depth == 1 {
+					break 0;
+				} else {
+					start_at = child_key.take().map(|entry| entry.0);
+				}
+			} else {
+				child_key = switch_child_key;
+				start_at = None;
+			}
+		};
+		Ok((KeyValueStates(result), completed))
 	}
 }
 
@@ -1074,7 +1441,6 @@ mod tests {
 			vec![66],
 		);
 	}
-
 
 	#[test]
 	fn execute_works_with_native_else_wasm() {
@@ -1579,7 +1945,7 @@ mod tests {
 		).unwrap();
 		assert_eq!(
 			local_result1.into_iter().collect::<Vec<_>>(),
-			vec![(b"value3".to_vec(), Some(vec![142]))],
+			vec![(b"value3".to_vec(), Some(vec![142; 33]))],
 		);
 		assert_eq!(
 			local_result2.into_iter().collect::<Vec<_>>(),
@@ -1592,7 +1958,7 @@ mod tests {
 		let remote_backend = trie_backend::tests::test_trie();
 		let remote_root = remote_backend.storage_root(::std::iter::empty()).0;
 		let (proof, count) = prove_range_read_with_size(remote_backend, None, None, 0, None).unwrap();
-		// Alwasys contains at least some nodes.
+		// Always contains at least some nodes.
 		assert_eq!(proof.into_memory_db::<BlakeTwo256>().drain().len(), 3);
 		assert_eq!(count, 1);
 
@@ -1636,6 +2002,43 @@ mod tests {
 		).unwrap();
 		assert_eq!(results.len() as u32, count);
 		assert_eq!(completed, true);
+	}
+
+	#[test]
+	fn prove_range_with_child_works() {
+		let mut remote_backend = trie_backend::tests::test_trie();
+		let remote_root = remote_backend.storage_root(::std::iter::empty()).0;
+		let mut start_at = smallvec::SmallVec::<[Vec<u8>; 2]>::new();
+		let trie_backend = remote_backend.as_trie_backend().unwrap();
+		let max_iter = 1000;
+		let mut nb_loop = 0;
+		loop {
+			nb_loop += 1;
+			if max_iter == nb_loop {
+				panic!("Too many loop in prove range");
+			}
+			let (proof, count) = prove_range_read_with_child_with_size_on_trie_backend(
+				trie_backend,
+				1,
+				start_at.as_slice(),
+			).unwrap();
+			// Always contains at least some nodes.
+			assert!(proof.clone().into_memory_db::<BlakeTwo256>().drain().len() > 0);
+			assert!(count < 3); // when doing child we include parent and first child key.
+
+			let (result, completed_depth) = read_range_proof_check_with_child::<BlakeTwo256>(
+				remote_root,
+				proof.clone(),
+				start_at.as_slice(),
+			).unwrap();
+
+			if completed_depth == 0 {
+				break;
+			}
+			assert!(result.update_last_key(completed_depth, &mut start_at));
+		}
+
+		assert_eq!(nb_loop, 10);
 	}
 
 	#[test]
