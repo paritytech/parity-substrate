@@ -75,9 +75,24 @@ pub struct WasmtimeRuntime {
 	engine: Engine,
 }
 
+impl WasmtimeRuntime {
+	/// Creates the store respecting the set limits.
+	fn new_store(&self) -> Store {
+		match self.config.max_memory_pages {
+			Some(max_memory_pages) => Store::new_with_limits(
+				&self.engine,
+				wasmtime::StoreLimitsBuilder::new()
+					.memory_pages(max_memory_pages)
+					.build(),
+			),
+			None => Store::new(&self.engine),
+		}
+	}
+}
+
 impl WasmModule for WasmtimeRuntime {
 	fn new_instance(&self) -> Result<Box<dyn WasmInstance>> {
-		let store = Store::new(&self.engine);
+		let store = self.new_store();
 
 		// Scan all imports, find the matching host functions, and create stubs that adapt arguments
 		// and results.
@@ -348,6 +363,20 @@ pub struct Semantics {
 pub struct Config {
 	/// The number of wasm pages to be mounted after instantiation.
 	pub heap_pages: u32,
+
+	/// The total number of wasm pages an instance can request.
+	///
+	/// If specified, the runtime will be able to allocate only that much of wasm memory pages. This
+	/// is the total number and therefore the [`heap_pages`] is accounted for.
+	///
+	/// That means that the initial number of pages of a linear memory plus the [`heap_pages`] should
+	/// be less or equal to `max_memory_pages`, otherwise the instance won't be created.
+	///
+	/// Moreover, `memory.grow` will fail (return -1) if the sum of the number of currently mounted
+	/// pages and the number of additional pages exceeds `max_memory_pages`.
+	///
+	/// The default is `None`.
+	pub max_memory_pages: Option<u32>,
 
 	/// The WebAssembly standard requires all imports of an instantiated module to be resolved,
 	/// othewise, the instantiation fails. If this option is set to `true`, then this behavior is
