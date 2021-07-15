@@ -108,23 +108,16 @@ impl PassThroughVerifier {
 impl<B: BlockT> Verifier<B> for PassThroughVerifier {
 	async fn verify(
 		&mut self,
-		origin: BlockOrigin,
-		header: B::Header,
-		justifications: Option<Justifications>,
-		body: Option<Vec<B::Extrinsic>>
+		mut block: BlockImportParams<B, ()>,
 	) -> Result<(BlockImportParams<B, ()>, Option<Vec<(CacheKeyId, Vec<u8>)>>), String> {
-		let maybe_keys = header.digest()
+		let maybe_keys = block.header.digest()
 			.log(|l| l.try_as_raw(OpaqueDigestItemId::Consensus(b"aura"))
 				.or_else(|| l.try_as_raw(OpaqueDigestItemId::Consensus(b"babe")))
 			)
 			.map(|blob| vec![(well_known_cache_keys::AUTHORITIES, blob.to_vec())]);
-		let mut import = BlockImportParams::new(origin, header);
-		import.body = body;
-		import.finalized = self.finalized;
-		import.justifications = justifications;
-		import.fork_choice = Some(self.fork_choice.clone());
-
-		Ok((import, maybe_keys))
+		block.finalized = self.finalized;
+		block.fork_choice = Some(self.fork_choice.clone());
+		Ok((block, maybe_keys))
 	}
 }
 
@@ -372,11 +365,10 @@ impl<D, B> Peer<D, B> where
 				block.header.parent_hash,
 			);
 			let header = block.header.clone();
+			let mut import_block = BlockImportParams::new(origin, header.clone());
+			import_block.body = if headers_only { None } else { Some(block.extrinsics) };
 			let (import_block, cache) = futures::executor::block_on(self.verifier.verify(
-				origin,
-				header.clone(),
-				None,
-				if headers_only { None } else { Some(block.extrinsics) },
+				import_block,
 			)).unwrap();
 			let cache = if let Some(cache) = cache {
 				cache.into_iter().collect()
@@ -612,13 +604,10 @@ struct VerifierAdapter<B: BlockT> {
 impl<B: BlockT> Verifier<B> for VerifierAdapter<B> {
 	async fn verify(
 		&mut self,
-		origin: BlockOrigin,
-		header: B::Header,
-		justifications: Option<Justifications>,
-		body: Option<Vec<B::Extrinsic>>
+		block: BlockImportParams<B, ()>,
 	) -> Result<(BlockImportParams<B, ()>, Option<Vec<(CacheKeyId, Vec<u8>)>>), String> {
-		let hash = header.hash();
-		self.verifier.lock().await.verify(origin, header, justifications, body).await.map_err(|e| {
+		let hash = block.header.hash();
+		self.verifier.lock().await.verify(block).await.map_err(|e| {
 			self.failed_verifications.lock().insert(hash, e.clone());
 			e
 		})
@@ -821,6 +810,7 @@ pub trait TestNetFactory: Sized where <Self::BlockImport as BlockImport<Block>>:
 			block_request_protocol_config,
 			state_request_protocol_config,
 			light_client_request_protocol_config,
+			warp_sync: None,
 		}).unwrap();
 
 		trace!(target: "test_network", "Peer identifier: {}", network.service().local_peer_id());
@@ -915,6 +905,7 @@ pub trait TestNetFactory: Sized where <Self::BlockImport as BlockImport<Block>>:
 			block_request_protocol_config,
 			state_request_protocol_config,
 			light_client_request_protocol_config,
+			warp_sync: None,
 		}).unwrap();
 
 		self.mut_peers(|peers| {

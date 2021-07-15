@@ -230,16 +230,10 @@ pub fn new_full_base(
 	let auth_disc_publish_non_global_ips = config.network.allow_non_globals_in_dht;
 
 	config.network.extra_sets.push(grandpa::grandpa_peers_set_config());
-
-	#[cfg(feature = "cli")]
-	config.network.request_response_protocols.push(
-		sc_finality_grandpa_warp_sync::request_response_config_for_chain(
-			&config,
-			task_manager.spawn_handle(),
+	let warp_sync = Arc::new(grandpa::warp_proof::NetworkProvider::new(
 			backend.clone(),
 			import_setup.1.shared_authority_set().clone(),
-		)
-	);
+	));
 
 	let (network, system_rpc_tx, network_starter) =
 		sc_service::build_network(sc_service::BuildNetworkParams {
@@ -250,6 +244,7 @@ pub fn new_full_base(
 			import_queue,
 			on_demand: None,
 			block_announce_validator_builder: None,
+			warp_sync: Some(warp_sync),
 		})?;
 
 	if config.offchain_worker.enabled {
@@ -518,6 +513,11 @@ pub fn new_light_base(
 		telemetry.as_ref().map(|x| x.handle()),
 	)?;
 
+	let warp_sync = Arc::new(grandpa::warp_proof::NetworkProvider::new(
+		backend.clone(),
+		grandpa_link.shared_authority_set().clone(),
+	));
+
 	let (network, system_rpc_tx, network_starter) =
 		sc_service::build_network(sc_service::BuildNetworkParams {
 			config: &config,
@@ -527,6 +527,7 @@ pub fn new_light_base(
 			import_queue,
 			on_demand: Some(on_demand.clone()),
 			block_announce_validator_builder: None,
+			warp_sync: Some(warp_sync),
 		})?;
 
 	let enable_grandpa = !config.disable_grandpa;

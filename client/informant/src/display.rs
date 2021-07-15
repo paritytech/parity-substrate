@@ -96,16 +96,22 @@ impl<B: BlockT> InformantDisplay<B> {
 		let (level, status, target) = match (
 			net_status.sync_state,
 			net_status.best_seen_block,
-			net_status.state_sync
+			net_status.state_sync,
+			net_status.warp_sync,
 		) {
-			(_, _, Some(state)) => (
+			(_, _, _, Some(warp)) => (
+				"⏩",
+				"Warp sync".into(),
+				format!(", {}, ({:.2}) Mib", warp.phase, (warp.total_bytes as f32) / (1024f32 * 1024f32)),
+			),
+			(_, _, Some(state), _) => (
 				"⚙️ ",
 				"Downloading state".into(),
 				format!(", {}%, ({:.2}) Mib", state.percentage, (state.size as f32) / (1024f32 * 1024f32)),
 			),
-			(SyncState::Idle, _, _) => ("💤", "Idle".into(), "".into()),
-			(SyncState::Downloading, None, _) => ("⚙️ ", format!("Preparing{}", speed), "".into()),
-			(SyncState::Downloading, Some(n), None) => (
+			(SyncState::Idle, _, _, _) => ("💤", "Idle".into(), "".into()),
+			(SyncState::Downloading, None, _, _) => ("⚙️ ", format!("Preparing{}", speed), "".into()),
+			(SyncState::Downloading, Some(n), None, _) => (
 				"⚙️ ",
 				format!("Syncing{}", speed),
 				format!(", target=#{}", n),

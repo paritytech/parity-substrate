@@ -18,6 +18,7 @@
 //! Client parts
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use sp_consensus_babe::BabeApi;
+use sp_finality_grandpa::GrandpaApi;
 use crate::{ChainInfo, default_config};
 use manual_seal::consensus::babe::{BabeConsensusDataProvider, SlotTimestampProvider};
 use sp_keyring::sr25519::Keyring::Alice;
@@ -71,7 +72,8 @@ pub fn client_parts<T>(config_or_chain_spec: ConfigOrChainSpec) -> Result<Client
         <T::RuntimeApi as ConstructRuntimeApi<T::Block, TFullClient<T::Block, T::RuntimeApi, T::Executor>>>::RuntimeApi:
         Core<T::Block> + Metadata<T::Block> + OffchainWorkerApi<T::Block> + SessionKeys<T::Block>
         + TaggedTransactionQueue<T::Block> + BlockBuilder<T::Block> + BabeApi<T::Block>
-        + ApiExt<T::Block, StateBackend = <TFullBackend<T::Block> as Backend<T::Block>>::State>,
+        + ApiExt<T::Block, StateBackend = <TFullBackend<T::Block> as Backend<T::Block>>::State>
+		+ GrandpaApi<T::Block>,
         <T::Runtime as frame_system::Config>::Call: From<frame_system::Call<T::Runtime>>,
         <<T as ChainInfo>::Block as BlockT>::Hash: FromStr,
         <<<T as ChainInfo>::Block as BlockT>::Header as Header>::Number: num_traits::cast::AsPrimitive<usize>,
@@ -128,6 +130,7 @@ pub fn client_parts<T>(config_or_chain_spec: ConfigOrChainSpec) -> Result<Client
             import_queue,
             on_demand: None,
             block_announce_validator_builder: None,
+			warp_sync: None,
         };
         build_network(params)?
     };

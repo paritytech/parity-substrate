@@ -664,7 +664,7 @@ impl<Block: BlockT> HeaderMetadata<Block> for BlockchainDb<Block> {
 					header_metadata.clone(),
 				);
 				header_metadata
-			}).ok_or_else(|| ClientError::UnknownBlock(format!("header not found in db: {}", hash)))
+			}).ok_or_else(|| ClientError::UnknownBlock(format!("Header was not found in the database: {:?}", hash)))
 		}, Ok)
 	}
 
@@ -1176,9 +1176,11 @@ impl<Block: BlockT> Backend<Block> {
 		let mut retracted = Vec::default();
 
 		let meta = self.blockchain.meta.read();
+		let parent_exists = self.blockchain.status(BlockId::Hash(route_to))?
+			== sp_blockchain::BlockStatus::InChain;
 
-		// cannot find tree route with empty DB.
-		if meta.best_hash != Default::default() {
+		// Cannot find tree route with empty DB or when imported a detached block.
+		if meta.best_hash != Default::default() && parent_exists {
 			let tree_route = sp_blockchain::tree_route(
 				&self.blockchain,
 				meta.best_hash,
@@ -1235,10 +1237,12 @@ impl<Block: BlockT> Backend<Block> {
 		last_finalized: Option<Block::Hash>,
 	) -> ClientResult<()> {
 		let last_finalized = last_finalized.unwrap_or_else(|| self.blockchain.meta.read().finalized_hash);
-		if *header.parent_hash() != last_finalized {
-			return Err(::sp_blockchain::Error::NonSequentialFinalization(
-				format!("Last finalized {:?} not parent of {:?}", last_finalized, header.hash()),
-			).into());
+		if last_finalized != self.blockchain.meta.read().genesis_hash {
+			if *header.parent_hash() != last_finalized {
+				return Err(::sp_blockchain::Error::NonSequentialFinalization(
+					format!("Last finalized {:?} not parent of {:?}", last_finalized, header.hash()),
+				).into());
+			}
 		}
 		Ok(())
 	}
@@ -1554,14 +1558,14 @@ impl<Block: BlockT> Backend<Block> {
 				)?;
 				if !children.contains(&hash) {
 					children.push(hash);
+					children::write_children(
+						&mut transaction,
+						columns::META,
+						meta_keys::CHILDREN_PREFIX,
+						parent_hash,
+						children,
+					);
 				}
-				children::write_children(
-					&mut transaction,
-					columns::META,
-					meta_keys::CHILDREN_PREFIX,
-					parent_hash,
-					children,
-				);
 
 				meta_updates.push(MetaUpdate {
 					hash,

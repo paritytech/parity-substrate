@@ -203,6 +203,69 @@ integer representing the role of the node:
 
 In the future, though, these restrictions will be removed.
 
+# Sync
+
+The crate implements a number of syncing algorithms. The main purpose of the syncing algorithm is
+get the chain to the latest state and keep it synced with the rest of the network by downloading and
+importing new data as soon as it becomes available. Once the node starts it catches up with the network
+with one of the initial sync methods listed below, and once it is completed uses a keep-up sync to
+download new blocks.
+
+## Full and light sync
+
+This is the default syncing method for the initial and keep-up sync. The algorithm starts with the
+current best block and downloads block data progressively from multiple peers if available. Once
+there's a sequence of blocks ready to be imported they are fed to the import queue. Full nodes download
+and execute full blocks, while light nodes only download and import headers. This continues until each peers
+has no more new blocks to give.
+
+For each peer the sync maintains the number of our common best block with that peer. This number is updates
+whenever peer announce new blocks or our best block advances. This allows to keep track of peers that have new
+block data and request new information as soon as it is announced. In keep-up mode, we also track peers that
+announce blocks on all branches and not just the best branch. The sync algorithm tries to be greedy and download
+All data that's announced.
+
+## Fast sync
+
+In this mode the initial downloads and verifies full header history. This allows to validate
+authority set transitions and arrive at a recent header. After header chain is verified and imported
+the node starts downloading  a state snapshot using the state request protocol. Each `StateRequest`
+contains a starting storage key, which is empty for the first request.
+`StateResponse` contains a storage proof for a sequence of keys and values in the storage
+starting (but not including) from the key that is in the request. After iterating the proof trie against
+the storage root that is in the target header, the node issues The next `StateRequest` with set starting
+key set to the last key from the previous response. This continues until trie iteration reaches the end.
+The state is then imported into the database and the keep-up sync starts in normal full/light sync mode.
+
+## Warp sync
+
+This is similar to fast sync, but instead of downloading and verifying full header chain, the algorithm
+only downloads finalized authority set changes.
+
+### GRANDPA warp sync.
+
+GRANDPA keeps justifications for each finalized authority set change. Each change is signed by the
+authorities from the previous set. By downloading and verifying these signed hand-offs starting from genesis,
+we arrive at a recent header faster than downloading full header chain. Each `WarpSyncRequest` contains a block
+hash to a to start collecting proofs from. `WarpSyncResponse` contains a sequence of block headers and
+justifications. The proof downloader checks the justifications and continues requesting proofs from the last
+header hash, until it arrives at some recent header.
+
+Once the finality chain is proved for a header, the state matching the header is downloaded much like during
+the fast sync. The state is verified to match the header storage root. After the state is imported into the
+database it is queried for the information that allows GRANDPA and BABE to continue operating from that state.
+This includes BABE epoch information and GRANDPA authority set id.
+
+### Background block download.
+
+After the latest state has been imported the node is fully operational, but is still missing historic block
+data. I.e. it is unable to serve bock bodies and headers other than the most recent one. To make sure all
+nodes have block history available, a background sync process is started that downloads all the missing blocks.
+It is run in parallel with the keep-up sync and does not interfere with downloading of the recent blocks.
+During this download we also import GRANPA justifications for blocks with authority set changes, so that
+The warp-synced node has all the data to serve for other nodes nodes that might want to sync from it with
+any method.
+
 # Usage
 
 Using the `sc-network` crate is done through the [`NetworkWorker`] struct. Create this

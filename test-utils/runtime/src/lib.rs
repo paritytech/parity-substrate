@@ -882,6 +882,10 @@ cfg_if! {
 					Vec::new()
 				}
 
+				fn current_set_id() -> sp_finality_grandpa::SetId {
+					0
+				}
+
 				fn submit_report_equivocation_unsigned_extrinsic(
 					_equivocation_proof: sp_finality_grandpa::EquivocationProof<
 						<Block as BlockT>::Hash,

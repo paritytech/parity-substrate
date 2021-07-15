@@ -192,6 +192,12 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 		);
 
 		let default_notif_handshake_message = Roles::from(&params.role).encode();
+
+		let (warp_sync_provider, warp_sync_protocol_config) = match params.warp_sync {
+			Some((p, c)) => (Some(p), Some(c)),
+			None => (None, None),
+		};
+
 		let (protocol, peerset_handle, mut known_addresses) = Protocol::new(
 			protocol::ProtocolConfig {
 				roles: From::from(&params.role),
@@ -205,6 +211,7 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 				.map(|_| default_notif_handshake_message.clone())).collect(),
 			params.block_announce_validator,
 			params.metrics_registry.as_ref(),
+			warp_sync_provider,
 		)?;
 
 		// List of multiaddresses that we know in the network.
@@ -341,6 +348,7 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 					discovery_config,
 					params.block_request_protocol_config,
 					params.state_request_protocol_config,
+					warp_sync_protocol_config,
 					bitswap,
 					params.light_client_request_protocol_config,
 					params.network_config.request_response_protocols,
@@ -454,6 +462,7 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 			total_bytes_inbound: self.total_bytes_inbound(),
 			total_bytes_outbound: self.total_bytes_outbound(),
 			state_sync: status.state_sync,
+			warp_sync: status.warp_sync,
 		}
 	}
 

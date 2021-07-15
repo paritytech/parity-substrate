@@ -32,7 +32,7 @@ use sp_keystore::SyncCryptoStorePtr;
 
 use sp_api::{ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
-use sp_consensus::{BlockImportParams, BlockOrigin, ForkChoiceStrategy};
+use sp_consensus::{BlockImportParams, ForkChoiceStrategy};
 use sp_consensus_slots::Slot;
 use sp_consensus_babe::{
 	BabeApi, inherents::BabeInherentData, ConsensusLog, BABE_ENGINE_ID, AuthorityId,
@@ -41,7 +41,7 @@ use sp_consensus_babe::{
 use sp_inherents::{InherentData, InherentDataProvider, InherentIdentifier};
 use sp_runtime::{
 	traits::{DigestItemFor, DigestFor, Block as BlockT, Zero, Header},
-	generic::{Digest, BlockId}, Justifications,
+	generic::{Digest, BlockId},
 };
 use sp_timestamp::{InherentType, INHERENT_IDENTIFIER, TimestampInherentData};
 use sp_consensus::import_queue::{Verifier, CacheKeyId};
@@ -93,20 +93,15 @@ impl<B, C> Verifier<B> for BabeVerifier<B, C>
 {
 	async fn verify(
 		&mut self,
-		origin: BlockOrigin,
-		header: B::Header,
-		justifications: Option<Justifications>,
-		body: Option<Vec<B::Extrinsic>>,
+		mut import_params: BlockImportParams<B, ()>,
 	) -> Result<(BlockImportParams<B, ()>, Option<Vec<(CacheKeyId, Vec<u8>)>>), String> {
-		let mut import_params = BlockImportParams::new(origin, header.clone());
-		import_params.justifications = justifications;
-		import_params.body = body;
+
 		import_params.finalized = false;
 		import_params.fork_choice = Some(ForkChoiceStrategy::LongestChain);
 
-		let pre_digest = find_pre_digest::<B>(&header)?;
+		let pre_digest = find_pre_digest::<B>(&import_params.header)?;
 
-		let parent_hash = header.parent_hash();
+		let parent_hash = import_params.header.parent_hash();
 		let parent = self.client.header(BlockId::Hash(*parent_hash))
 			.ok()
 			.flatten()

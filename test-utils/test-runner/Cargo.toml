@@ -16,6 +16,7 @@ sc-basic-authorship = { path = "../../client/basic-authorship" }
 sc-rpc = { path = "../../client/rpc" }
 sc-transaction-pool = { path = "../../client/transaction-pool" }
 grandpa = { package = "sc-finality-grandpa", path = "../../client/finality-grandpa" }
+sp-finality-grandpa = { path = "../../primitives/finality-grandpa" }
 sp-consensus-babe = { path = "../../primitives/consensus/babe" }
 sc-consensus-babe = { path = "../../client/consensus/babe" }
 sc-consensus = { path = "../../client/consensus/common" }

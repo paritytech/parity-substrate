@@ -23,6 +23,7 @@
 
 pub use crate::chain::Client;
 pub use crate::on_demand_layer::{AlwaysBadChecker, OnDemand};
+pub use crate::warp_request_handler::WarpSyncProvider;
 pub use crate::request_responses::{
 	IncomingRequest,
 	OutgoingResponse,
@@ -132,6 +133,9 @@ pub struct Params<B: BlockT, H: ExHashT> {
 	/// [`crate::state_requests::handler::StateRequestHandler::new`] allowing
 	/// both outgoing and incoming requests.
 	pub state_request_protocol_config: RequestResponseConfig,
+
+	/// Optional warp sync protocol support. Include protocol config and sync provider.
+	pub warp_sync: Option<(Arc<dyn WarpSyncProvider<B>>, RequestResponseConfig)>,
 }
 
 /// Role of the local node.
@@ -392,6 +396,8 @@ pub enum SyncMode {
 		/// Skip state proof download and verification.
 		skip_proofs: bool
 	},
+	/// GRANDPA Warp sync - verify authority set transitions and the latest state.
+	Warp,
 }
 
 impl Default for SyncMode {

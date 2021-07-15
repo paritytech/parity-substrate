@@ -296,6 +296,7 @@ impl<Block: BlockT, T: CacheItemT, S: Storage<Block, T>> ListCache<Block, T, S> 
 		let prev_operation = operations.operations.last();
 		debug_assert!(
 			entry_type != EntryType::Final ||
+			self.unfinalized.is_empty() ||
 			self.best_finalized_block.hash == parent.hash ||
 			match prev_operation {
 				Some(&CommitOperation::BlockFinalized(ref best_finalized_block, _, _))

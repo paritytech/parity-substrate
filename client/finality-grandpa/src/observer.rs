@@ -175,12 +175,11 @@ where
 {
 	let LinkHalf {
 		client,
-		select_chain: _,
 		persistent_data,
 		voter_commands_rx,
 		justification_sender,
-		justification_stream: _,
 		telemetry,
+		..
 	} = link;
 
 	let network = NetworkBridge::new(

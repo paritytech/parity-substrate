@@ -20,7 +20,7 @@
 
 pub mod migration;
 
-use std::{ops::Add, collections::BTreeMap, borrow::{Borrow, BorrowMut}};
+use std::{ops::{Add, Sub}, collections::BTreeMap, borrow::{Borrow, BorrowMut}};
 use codec::{Encode, Decode};
 use fork_tree::ForkTree;
 use sc_client_api::utils::is_descendent_of;
@@ -230,7 +230,7 @@ impl<Hash, Number, E: Epoch> ViableEpochDescriptor<Hash, Number, E> {
 }
 
 /// Persisted epoch stored in EpochChanges.
-#[derive(Clone, Encode, Decode, Debug)]
+#[derive(Clone, Encode, Decode)]
 pub enum PersistedEpoch<E: Epoch> {
 	/// Genesis persisted epoch data. epoch_0, epoch_1.
 	Genesis(E, E),
@@ -323,7 +323,7 @@ impl<Hash, Number, E: Epoch> Default for EpochChanges<Hash, Number, E> where
 
 impl<Hash, Number, E: Epoch> EpochChanges<Hash, Number, E> where
 	Hash: PartialEq + Ord + AsRef<[u8]> + AsMut<[u8]> + Copy,
-	Number: Ord + One + Zero + Add<Output=Number> + Copy,
+	Number: Ord + One + Zero + Add<Output=Number> + Sub<Output=Number> + Copy,
 {
 	/// Create a new epoch change.
 	pub fn new() -> Self {
@@ -640,6 +640,31 @@ impl<Hash, Number, E: Epoch> EpochChanges<Hash, Number, E> where
 	/// Return the inner fork tree.
 	pub fn tree(&self) -> &ForkTree<Hash, Number, PersistedEpochHeader<E>> {
 		&self.inner
+	}
+
+	/// Reset to a specified pair of epochs, as if they were announced at blocks `parent_hash` and `hash`.
+	pub fn reset(&mut self, parent_hash: Hash, hash: Hash, number: Number, current: E, next: E) {
+		self.inner = ForkTree::new();
+		self.epochs.clear();
+		let persisted = PersistedEpoch::Regular(current);
+		let header = PersistedEpochHeader::from(&persisted);
+		let _res = self.inner.import(
+			parent_hash,
+			number - One::one(),
+			header,
+			&|_, _| Ok(false) as Result<bool, fork_tree::Error<ClientError>>,
+		);
+		self.epochs.insert((parent_hash, number - One::one()), persisted);
+
+		let persisted = PersistedEpoch::Regular(next);
+		let header = PersistedEpochHeader::from(&persisted);
+		let _res = self.inner.import(
+			hash,
+			number,
+			header,
+			&|_, _| Ok(true) as Result<bool, fork_tree::Error<ClientError>>,
+		);
+		self.epochs.insert((hash, number), persisted);
 	}
 }
 
