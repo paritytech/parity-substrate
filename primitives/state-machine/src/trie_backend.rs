@@ -315,6 +315,13 @@ pub mod tests {
 			test_trie.child_storage(&ChildInfo::new_default(CHILD_KEY_1), b"value3").unwrap(),
 			Some(vec![142u8]),
 		);
+		// Change cache entry to check that caching is active.
+		test_trie.essence.cache.write().child_root.entry(b"sub1".to_vec())
+			.and_modify(|value| { *value = None; });
+		assert_eq!(
+			test_trie.child_storage(&ChildInfo::new_default(CHILD_KEY_1), b"value3").unwrap(),
+			None,
+		);
 	}
 
 	#[test]
