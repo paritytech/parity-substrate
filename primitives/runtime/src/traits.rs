@@ -18,7 +18,9 @@
 //! Primitives for the runtime modules.
 
 use sp_std::prelude::*;
-use sp_std::{self, marker::PhantomData, convert::{TryFrom, TryInto}, fmt::Debug};
+use sp_std::{
+    self, marker::PhantomData, convert::{TryFrom, TryInto}, fmt::Debug, mem::{size_of, size_of_val}
+};
 #[cfg(feature = "std")]
 use std::fmt::Display;
 #[cfg(feature = "std")]
@@ -1118,7 +1120,7 @@ impl<'a> codec::Input for TrailingZeroInput<'a> {
 /// This type can be converted into and possibly from an AccountId (which itself is generic).
 pub trait AccountIdConversion<AccountId>: Sized {
 	/// Convert into an account ID. This is infallible.
-	fn into_account(&self) -> AccountId { self.into_sub_account(&()) }
+	fn into_account(&self) -> AccountId { self.into_sub_account(&()).unwrap() }
 
 	/// Try to convert an account ID into this type. Might not succeed.
 	fn try_from_account(a: &AccountId) -> Option<Self> {
@@ -1134,7 +1136,11 @@ pub trait AccountIdConversion<AccountId>: Sized {
 	/// - `self.into_sub_account(0u32)`
 	/// - `self.into_sub_account(vec![0u8; 0])`
 	/// - `self.into_account()`
-	fn into_sub_account<S: Encode>(&self, sub: S) -> AccountId;
+	fn into_sub_account<S: Encode>(&self, sub: S) -> Option<AccountId>;
+
+	fn hash_into_sub_account<H: Hash, S: Encode + AsRef<[u8]>>(&self, sub: S) -> AccountId
+		where
+			H::Output: Encode;
 
 	/// Try to convert an account ID into this type. Might not succeed.
 	fn try_from_sub_account<S: Decode>(x: &AccountId) -> Option<(Self, S)>;
@@ -1143,8 +1149,21 @@ pub trait AccountIdConversion<AccountId>: Sized {
 /// Format is TYPE_ID ++ encode(parachain ID) ++ 00.... where 00... is indefinite trailing zeroes to
 /// fill AccountId.
 impl<T: Encode + Decode + Default, Id: Encode + Decode + TypeId> AccountIdConversion<T> for Id {
-	fn into_sub_account<S: Encode>(&self, sub: S) -> T {
-		(Id::TYPE_ID, self, sub).using_encoded(|b|
+	fn into_sub_account<S: Encode>(&self, sub: S) -> Option<T> {
+		if size_of::<T>() < size_of_val(&Id::TYPE_ID) + size_of::<Self>() + sub.size_hint() {
+            None
+        } else {
+		    (Id::TYPE_ID, self, sub).using_encoded(|b|
+			    T::decode(&mut TrailingZeroInput(b))
+		    ).ok()
+        }
+	}
+
+	fn hash_into_sub_account<H: Hash, S: Encode + AsRef<[u8]>>(&self, sub: S) -> T
+		where
+			H::Output: Encode
+	{
+		(Id::TYPE_ID, self, <H as Hash>::hash(sub.as_ref())).using_encoded(|b|
 			T::decode(&mut TrailingZeroInput(b))
 		).unwrap_or_default()
 	}
@@ -1549,6 +1568,30 @@ mod tests {
 		assert!(r.is_none());
 		let r = U16Value::try_from_account(&0x0100_c0da_f00dcafe_u64);
 		assert!(r.is_none());
+	}
+
+	#[test]
+	fn into_subaccount_should_work() {
+		let r = U16Value::try_from_account(&0x0000_c0da_f00dcafe_u64).unwrap();
+		assert_eq!(r, U16Value(0xc0da));
+		let sub: Option<AccountId> = r.into_sub_account(0xbeef_u16);
+		assert_eq!(sub,  Some(0x_beef_c0da_f00dcafe));
+	}
+
+    #[test]
+	fn into_subaccount_should_fail_on_seed_excess() {
+		let r = U16Value::try_from_account(&0x0000_c0da_f00dcafe_u64).unwrap();
+		assert_eq!(r, U16Value(0xc0da));
+		let sub: Option<AccountId> = r.into_sub_account(0xdeadbeef_u32);
+		assert!(sub.is_none());
+	}
+
+    #[test]
+	fn hash_into_subaccount_should_work() {
+		let r = U16Value::try_from_account(&0x0000_c0da_f00dcafe_u64).unwrap();
+		assert_eq!(r, U16Value(0xc0da));
+		let sub: AccountId = r.hash_into_sub_account::<BlakeTwo256, _>([0xef, 0xbe]);
+		assert_eq!(sub,  0xa50a_c0da_f00dcafe);
 	}
 
 	#[test]
