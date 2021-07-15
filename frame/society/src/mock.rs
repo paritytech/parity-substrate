@@ -106,6 +106,10 @@ impl pallet_balances::Config for Test {
 	type WeightInfo = ();
 }
 
+parameter_types! {
+	pub const MaxPayouts: u32 = 100;
+}
+
 impl Config for Test {
 	type Event = Event;
 	type Currency = pallet_balances::Pallet<Self>;
@@ -122,6 +126,7 @@ impl Config for Test {
 	type ChallengePeriod = ChallengePeriod;
 	type MaxCandidateIntake = MaxCandidateIntake;
 	type PalletId = SocietyPalletId;
+	type MaxPayouts = MaxPayouts;
 }
 
 pub struct EnvBuilder {

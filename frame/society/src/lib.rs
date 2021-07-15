@@ -252,7 +252,7 @@ mod mock;
 mod tests;
 
 use rand_chacha::{rand_core::{RngCore, SeedableRng}, ChaChaRng};
-use sp_std::prelude::*;
+use sp_std::{prelude::*, convert::TryInto};
 use codec::{Encode, Decode};
 use sp_runtime::{Percent, RuntimeDebug,
 	traits::{
@@ -260,7 +260,10 @@ use sp_runtime::{Percent, RuntimeDebug,
 		TrailingZeroInput, CheckedSub
 	}
 };
-use frame_support::{decl_error, decl_module, decl_storage, decl_event, ensure, dispatch::DispatchResult, PalletId};
+use frame_support::{
+	decl_error, decl_module, decl_storage, decl_event, ensure,
+	dispatch::DispatchResult, PalletId, BoundedVec,
+};
 use frame_support::weights::Weight;
 use frame_support::traits::{
 	Currency, ReservableCurrency, Randomness, Get, ChangeMembers, BalanceStatus,
@@ -319,6 +322,9 @@ pub trait Config<I = DefaultInstance>: system::Config {
 
 	/// The maximum number of candidates that we accept per round.
 	type MaxCandidateIntake: Get<u32>;
+
+	/// The maximum number of payouts that can be queued.
+	type MaxPayouts: Get<u32>;
 }
 
 /// A vote by a member on a candidate application.
@@ -404,6 +410,17 @@ impl<AccountId: PartialEq, Balance> BidKind<AccountId, Balance> {
 	}
 }
 
+// Note that accessing this struct isn't free. It requires a storage read,
+// but that is pretty much unavoidable.
+pub struct MaxMembersGetter<I>(sp_std::marker::PhantomData<I>);
+impl<I> Get<u32> for MaxMembersGetter<I>
+	where I: Instance,
+{
+	fn get() -> u32 {
+		MaxMembers::<I>::get()
+	}
+}
+
 // This module's storage items.
 decl_storage! {
 	trait Store for Module<T: Config<I>, I: Instance=DefaultInstance> as Society {
@@ -416,7 +433,10 @@ decl_storage! {
 		pub Rules get(fn rules): Option<T::Hash>;
 
 		/// The current set of candidates; bidders that are attempting to become members.
-		pub Candidates get(fn candidates): Vec<Bid<T::AccountId, BalanceOf<T, I>>>;
+		pub Candidates get(fn candidates): BoundedVec<
+			Bid<T::AccountId, BalanceOf<T, I>>,
+			T::MaxCandidateIntake,
+		>;
 
 		/// The set of suspended candidates.
 		pub SuspendedCandidates get(fn suspended_candidate):
@@ -431,11 +451,7 @@ decl_storage! {
 			Option<T::AccountId>;
 
 		/// The current set of members, ordered.
-		pub Members get(fn members) build(|config: &GenesisConfig<T, I>| {
-			let mut m = config.members.clone();
-			m.sort();
-			m
-		}): Vec<T::AccountId>;
+		pub Members get(fn members): BoundedVec<T::AccountId, MaxMembersGetter<I>>;
 
 		/// The set of suspended members.
 		pub SuspendedMembers get(fn suspended_member): map hasher(twox_64_concat) T::AccountId => bool;
@@ -447,7 +463,10 @@ decl_storage! {
 		Vouching get(fn vouching): map hasher(twox_64_concat) T::AccountId => Option<VouchingStatus>;
 
 		/// Pending payouts; ordered by block number, with the amount that should be paid out.
-		Payouts: map hasher(twox_64_concat) T::AccountId => Vec<(T::BlockNumber, BalanceOf<T, I>)>;
+		Payouts: map hasher(twox_64_concat) T::AccountId => BoundedVec<
+			(T::BlockNumber, BalanceOf<T, I>),
+			T::MaxPayouts,
+		>;
 
 		/// The ongoing number of losing votes cast by the member.
 		Strikes: map hasher(twox_64_concat) T::AccountId => StrikeCount;
@@ -465,10 +484,21 @@ decl_storage! {
 		DefenderVotes: map hasher(twox_64_concat) T::AccountId => Option<Vote>;
 
 		/// The max number of members for the society at one time.
-		MaxMembers get(fn max_members) config(): u32;
+		MaxMembers get(fn max_members): u32;
 	}
 	add_extra_genesis {
 		config(members): Vec<T::AccountId>;
+		config(max_members): u32;
+		build(|config| {
+			// We need to make sure to set `MaxMembers` first so that we can
+			// correctly create a bounded vec below.
+			MaxMembers::<I>::put(config.max_members);
+			let mut m = config.members.clone();
+			m.sort();
+			let bounded_members: BoundedVec<T::AccountId, MaxMembersGetter<I>>
+				= m.try_into().expect("Too many genesis members");
+			Members::<T, I>::put(bounded_members);
+		})
 	}
 }
 
@@ -1043,7 +1073,7 @@ decl_module! {
 		}
 
 		fn on_initialize(n: T::BlockNumber) -> Weight {
-			let mut members = vec![];
+			let mut members: BoundedVec<T::AccountId, MaxMembersGetter<I>> = Default::default();
 
 			let mut weight = 0;
 			let weights = T::BlockWeights::get();
@@ -1304,7 +1334,7 @@ impl<T: Config<I>, I: Instance> Module<T, I> {
 			Err(_) => Err(Error::<T, I>::NotMember)?,
 			Ok(i) => {
 				members.remove(i);
-				T::MembershipChanged::change_members_sorted(&[], &[m.clone()], &members[..]);
+				T::MembershipChanged::change_members_sorted(&[], &[m.clone()], &members);
 				<Members<T, I>>::put(members);
 				Ok(())
 			}
@@ -1444,7 +1474,11 @@ impl<T: Config<I>, I: Instance> Module<T, I> {
 				members.sort();
 				// NOTE: This may cause member length to surpass `MaxMembers`, but results in no consensus
 				// critical issues or side-effects. This is auto-correcting as members fall out of society.
-				<Members<T, I>>::put(&members[..]);
+				let bounded_members = BoundedVec::<T::AccountId, MaxMembersGetter<I>>::force_from(
+					members.to_vec(),
+					Some("Society Rotate Period"),
+				);
+				<Members<T, I>>::put(bounded_members);
 				<Head<T, I>>::put(&primary);
 
 				T::MembershipChanged::change_members_sorted(&accounts, &[], &members);
@@ -1490,7 +1524,11 @@ impl<T: Config<I>, I: Instance> Module<T, I> {
 					break;
 				}
 			}
-			<Payouts<T, I>>::insert(who, &payouts[dropped..]);
+			let payouts_after = BoundedVec::<_, T::MaxPayouts>::force_from(
+				payouts[dropped..].to_vec(),
+				Some("Society Slash Payout"),
+			);
+			<Payouts<T, I>>::insert(who, payouts_after);
 		}
 		value - rest
 	}
@@ -1546,7 +1584,7 @@ impl<T: Config<I>, I: Instance> Module<T, I> {
 	}
 
 	/// End the current challenge period and start a new one.
-	fn rotate_challenge(members: &mut Vec<T::AccountId>) {
+	fn rotate_challenge(members: &mut BoundedVec<T::AccountId, MaxMembersGetter<I>>) {
 		// Assume there are members, else don't run this logic.
 		if !members.is_empty() {
 			// End current defender rotation
@@ -1586,7 +1624,8 @@ impl<T: Config<I>, I: Instance> Module<T, I> {
 				let seed = <[u8; 32]>::decode(&mut TrailingZeroInput::new(seed.as_ref()))
 					.expect("input is padded with zeroes; qed");
 				let mut rng = ChaChaRng::from_seed(seed);
-				let chosen = pick_item(&mut rng, &members[1..members.len() - 1])
+				let members_len: usize = members.len();
+				let chosen = pick_item(&mut rng, &members[1..members_len - 1])
 					.expect("exited if members empty; qed");
 				<Defender<T, I>>::put(&chosen);
 				Self::deposit_event(RawEvent::Challenged(chosen.clone()));
@@ -1628,7 +1667,7 @@ impl<T: Config<I>, I: Instance> Module<T, I> {
 	pub fn take_selected(
 		members_len: usize,
 		pot: BalanceOf<T, I>,
-	) -> Vec<Bid<T::AccountId, BalanceOf<T, I>>> {
+	) -> BoundedVec<Bid<T::AccountId, BalanceOf<T, I>>, T::MaxCandidateIntake> {
 		let max_members = MaxMembers::<I>::get() as usize;
 		let mut max_selections: usize =
 			(T::MaxCandidateIntake::get() as usize).min(max_members.saturating_sub(members_len));
@@ -1679,9 +1718,13 @@ impl<T: Config<I>, I: Instance> Module<T, I> {
 					<Bids<T, I>>::put(bids);
 				}
 			}
-			selected
+			// Length should be less than `max_selections` <= `MaxCandidateIntake`
+			BoundedVec::<_, T::MaxCandidateIntake>::force_from(
+				selected,
+				Some("Society Take Selected"),
+			)
 		} else {
-			vec![]
+			Default::default()
 		}
 	}
 }
