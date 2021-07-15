@@ -176,3 +176,42 @@ pub trait GetPalletVersion {
 	/// this function returns `None`.
 	fn storage_version() -> Option<PalletVersion>;
 }
+
+/// Conversion trait to allow a pallet instance to be converted into an account ID.
+///
+/// The same account ID will be returned as long as the pallet remains with the same name and index
+/// within the runtime construction.
+pub trait PalletIntoAccount {
+	/// Convert into an account ID. This is infallible.
+	fn into_account<AccountId: Default + Encode + Decode>() -> AccountId { Self::into_sub_account(&()) }
+
+	/// Convert this value amalgamated with the a secondary "sub" value into an account ID. This is
+	/// infallible.
+	///
+	/// NOTE: The account IDs from this and from `into_account` are *not* guaranteed to be distinct
+	/// for any given value of `self`, nor are different invocations to this with different types
+	/// `T`. For example, the following will all encode to the same account ID value:
+	/// - `self.into_sub_account(0u32)`
+	/// - `self.into_sub_account(vec![0u8; 0])`
+	/// - `self.into_account()`
+	fn into_sub_account<AccountId: Default + Encode + Decode, S: Encode>(sub: S) -> AccountId;
+}
+
+impl<T: PalletInfoAccess> PalletIntoAccount for T {
+	fn into_sub_account<AccountId: Default + Encode + Decode, S: Encode>(sub: S) -> AccountId {
+		sp_runtime::traits::AccountIdConversion::into_sub_account(&PalletId::new::<T>(), sub)
+	}
+}
+
+#[derive(Encode, Decode)]
+pub struct PalletId(u32, sp_runtime::RuntimeString);
+
+impl sp_core::TypeId for PalletId {
+	const TYPE_ID: [u8; 4] = *b"PALI";
+}
+
+impl PalletId {
+	pub fn new<T: PalletInfoAccess>() -> Self {
+		Self(T::index() as u32, T::name().into())
+	}
+}
