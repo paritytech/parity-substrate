@@ -1173,7 +1173,7 @@ where
 	debug!(target: "afg", "Finding best chain containing block {:?} with number limit {:?}", block, limit);
 
 	let result = match select_chain.finality_target(block, None).await {
-		Ok(Some(best_hash)) => {
+		Ok(best_hash) => {
 			let best_header = client
 				.header(BlockId::Hash(best_hash))?
 				.expect("Header known to exist after `finality_target` call; qed");
@@ -1230,10 +1230,6 @@ where
 						restricted_number < target_header.number()
 				})
 				.or_else(|| Some((target_header.hash(), *target_header.number())))
-		}
-		Ok(None) => {
-			debug!(target: "afg", "Encountered error finding best chain containing {:?}: couldn't find target block", block);
-			None
 		}
 		Err(e) => {
 			debug!(target: "afg", "Encountered error finding best chain containing {:?}: {:?}", block, e);

@@ -118,10 +118,10 @@ where
 						)
 						.await
 				} else {
-					Ok(Some(pending_change.canon_hash))
+					Ok(pending_change.canon_hash)
 				};
 
-				if let Ok(Some(hash)) = effective_block_hash {
+				if let Ok(hash) = effective_block_hash {
 					if let Ok(Some(header)) = self.inner.header(BlockId::Hash(hash)) {
 						if *header.number() == pending_change.effective_number() {
 							out.push((header.hash(), *header.number()));

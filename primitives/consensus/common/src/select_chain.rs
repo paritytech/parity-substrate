@@ -51,7 +51,7 @@ pub trait SelectChain<Block: BlockT>: Sync + Send + Clone {
 		&self,
 		target_hash: <Block as BlockT>::Hash,
 		_maybe_max_number: Option<NumberFor<Block>>,
-	) -> Result<Option<<Block as BlockT>::Hash>, Error> {
-		Ok(Some(target_hash))
+	) -> Result<<Block as BlockT>::Hash, Error> {
+		Ok(target_hash)
 	}
 }
