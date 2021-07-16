@@ -1,0 +1,44 @@
+[package]
+name = "pallet-grandpa-accountable-safety"
+version = "3.0.0"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2018"
+license = "Apache-2.0"
+homepage = "https://substrate.dev"
+repository = "https://github.com/paritytech/substrate/"
+description = "FRAME pallet for GRANDPA finality gadget accountable safety functionality"
+readme = "README.md"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
+grandpa = { package = "finality-grandpa", version = "0.14.0", default-features = false, features = ["derive-codec"] }
+sp-core = { version = "3.0.0", default-features = false, path = "../../primitives/core" }
+sp-finality-grandpa = { version = "3.0.0", default-features = false, path = "../../primitives/finality-grandpa" }
+sp-io = { version = "3.0.0", default-features = false, path = "../../primitives/io" }
+sp-std = { version = "3.0.0", default-features = false, path = "../../primitives/std" }
+sp-runtime = { version = "3.0.0", default-features = false, path = "../../primitives/runtime" }
+frame-support = { version = "3.0.0", default-features = false, path = "../support" }
+frame-system = { version = "3.0.0", default-features = false, path = "../system" }
+log = { version = "0.4.14", default-features = false }
+
+[dev-dependencies]
+grandpa = { package = "finality-grandpa", version = "0.14.0", features = ["derive-codec"] }
+sp-keyring = { version = "3.0.0", path = "../../primitives/keyring" }
+pallet-balances = { version = "3.0.0", path = "../balances" }
+
+[features]
+default = ["std"]
+std = [
+	"codec/std",
+	"sp-core/std",
+	"sp-finality-grandpa/std",
+	"sp-std/std",
+	"frame-support/std",
+	"sp-runtime/std",
+	"frame-system/std",
+	"log/std",
+]
+try-runtime = ["frame-support/try-runtime"]

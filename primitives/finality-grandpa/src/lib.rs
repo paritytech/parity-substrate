@@ -76,6 +76,9 @@ pub type RoundNumber = u64;
 /// A list of Grandpa authorities with associated weights.
 pub type AuthorityList = Vec<(AuthorityId, AuthorityWeight)>;
 
+/// WIP: consider not exposing grandpa::Commit in the API
+pub type Commit<H, N> = grandpa::Commit<H, N, AuthoritySignature, AuthorityId>;
+
 /// A scheduled change of authority set.
 #[cfg_attr(feature = "std", derive(Serialize))]
 #[derive(Clone, Eq, PartialEq, Encode, Decode, RuntimeDebug)]
@@ -307,6 +310,99 @@ where
 		}
 		Equivocation::Precommit(equivocation) => {
 			check!(equivocation, grandpa::Message::Precommit);
+		}
+	}
+}
+
+pub mod accountable_safety {
+	use super::{
+		Encode, Decode, AuthorityId, AuthoritySignature, RoundNumber, SetId,
+	};
+	use sp_std::vec::Vec;
+	use sp_runtime::RuntimeDebug;
+
+	#[derive(Clone, RuntimeDebug, Encode, Decode, Eq, PartialEq)]
+	pub enum Query<H, N> {
+		WaitingForReply,
+		WaitingForPrevoteReply,
+		Replied(QueryResponse<H, N>),
+	}
+
+	#[derive(Clone, RuntimeDebug, Encode, Decode, Eq, PartialEq)]
+	pub enum QueryResponse<H, N> {
+		Prevotes(Vec<grandpa::SignedPrevote<H, N, AuthoritySignature, AuthorityId>>),
+		Precommits(Vec<grandpa::SignedPrecommit<H, N, AuthoritySignature, AuthorityId>>),
+	}
+
+	impl<H, N> QueryResponse<H, N> {
+		pub fn authorities(&self) -> Vec<AuthorityId> {
+			match self {
+				QueryResponse::Prevotes(votes) => {
+					votes.iter().map(|vote| vote.id.clone()).collect()
+				},
+				QueryResponse::Precommits(votes) => {
+					votes.iter().map(|vote| vote.id.clone()).collect()
+				},
+			}
+		}
+
+		pub fn target_numbers(&self) -> Vec<N>
+		where
+			N: Clone,
+		{
+			match self {
+				QueryResponse::Prevotes(votes) => {
+					votes.iter().map(|vote| vote.prevote.target_number.clone()).collect()
+				}
+				QueryResponse::Precommits(votes) => {
+					votes.iter().map(|vote| vote.precommit.target_number.clone()).collect()
+				}
+			}
+		}
+
+		pub fn id_and_targets(&self) -> Vec<(AuthorityId, N)>
+		where
+			N: Clone,
+		{
+			match self {
+				QueryResponse::Prevotes(votes) => {
+					votes.iter().map(|vote| {
+						(
+							vote.id.clone(), 
+							vote.prevote.target_number.clone(),
+						)
+					}).collect()
+				}
+				QueryResponse::Precommits(votes) => {
+					votes.iter().map(|vote| {
+						(
+							vote.id.clone(), 
+							vote.precommit.target_number.clone(),
+						)
+					}).collect()
+				}
+			}
+		}
+	}
+
+	#[derive(Clone, Encode, Decode, RuntimeDebug, PartialEq, Eq)]
+	pub enum Equivocation<H, N> {
+		Prevote(Vec<grandpa::SignedPrevote<H, N, AuthoritySignature, AuthorityId>>),
+		Precommit(Vec<grandpa::SignedPrecommit<H, N, AuthoritySignature, AuthorityId>>),
+		InvalidResponse(AuthorityId),
+	}
+
+	impl<H, N> Equivocation<H, N> {
+		pub fn id(&self) -> Vec<AuthorityId> {
+			match self {
+				Equivocation::Prevote(votes) => {
+					Vec::new()
+				},
+				Equivocation::Precommit(votes) => {
+					Vec::new()
+				},
+				Equivocation::InvalidResponse(id) => vec![id.clone()],
+			}
 		}
 	}
 }

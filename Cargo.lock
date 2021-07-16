@@ -5127,6 +5127,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-grandpa-accountable-safety"
+version = "3.0.0"
+dependencies = [
+ "finality-grandpa",
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-balances",
+ "parity-scale-codec",
+ "sp-core",
+ "sp-finality-grandpa",
+ "sp-io",
+ "sp-keyring",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-identity"
 version = "4.0.0-dev"
 dependencies = [
